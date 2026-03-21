@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hidden Gems Template</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    html { scroll-behavior: smooth; }
+    body { background:#000; }
+  </style>
+</head>
+<body class="min-h-screen bg-black text-white">
+  <!--
+    ======================================================
+    HIDDEN GEMS - EASY HTML TEMPLATE
+    Edit text, images, prices, and links directly below.
+    This file can be uploaded to GitHub and deployed on Vercel.
+    ======================================================
+  -->
+
+  <!-- HEADER -->
+  <header class="sticky top-0 z-50 border-b border-white/10 bg-black/75 backdrop-blur-xl">
+    <div class="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+      <div class="flex items-center gap-4">
+        <!-- EDIT LOGO PATH HERE -->
+        <img
+          src="./assets/hidden-gems-logo.png"
+          alt="Hidden Gems logo"
+          class="h-14 w-14 rounded-2xl object-contain shadow-lg shadow-pink-500/20"
+        />
+        <div>
+          <!-- EDIT BRAND NAME HERE -->
+          <h1 class="text-2xl font-bold tracking-[0.08em] text-pink-400">Hidden Gems</h1>
+          <!-- EDIT TAGLINE HERE -->
+          <p class="text-xs text-neutral-400">Premium video marketplace</p>
+        </div>
+      </div>
+
+      <nav class="hidden gap-6 text-sm text-neutral-300 md:flex">
+        <a href="#featured" class="transition hover:text-pink-300">Featured</a>
+        <a href="#categories" class="transition hover:text-pink-300">Categories</a>
+        <a href="#points" class="transition hover:text-pink-300">Points</a>
+        <a href="#vip" class="transition hover:text-pink-300">VIP</a>
+        <a href="#dashboard" class="transition hover:text-pink-300">Dashboard</a>
+      </nav>
+
+      <div class="flex items-center gap-3">
+        <button class="rounded-xl border border-white/15 px-4 py-2 text-sm text-white transition hover:bg-white/5">Log In</button>
+        <button class="rounded-xl bg-pink-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-pink-500/20 transition hover:bg-pink-400">Sign Up</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- HERO -->
+  <section class="relative overflow-hidden">
+    <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(236,72,153,0.28),transparent_30%),radial-gradient(circle_at_left,rgba(217,70,239,0.16),transparent_25%)]"></div>
+    <div class="relative mx-auto grid max-w-7xl gap-12 px-6 py-20 lg:grid-cols-2 lg:items-center">
+      <div>
+        <!-- EDIT BADGE -->
+        <span class="inline-flex rounded-full border border-pink-400/30 bg-pink-500/10 px-4 py-1 text-xs font-medium uppercase tracking-[0.25em] text-pink-300">
+          Exclusive premium content
+        </span>
+
+        <!-- EDIT MAIN HEADLINE -->
+        <h2 class="mt-6 text-5xl font-black leading-tight md:text-6xl">
+          Unlock rare videos inside <span class="text-pink-400">Hidden Gems</span>
+        </h2>
+
+        <!-- EDIT HERO DESCRIPTION -->
+        <p class="mt-6 max-w-xl text-lg text-neutral-300">
+          Buy points, unlock individual videos, and upgrade to VIP for access to exclusive content and premium drops.
+        </p>
+
+        <div class="mt-8 flex flex-wrap gap-4">
+          <button class="rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white shadow-xl shadow-pink-500/20 transition hover:scale-[1.02] hover:bg-pink-400">Buy Points</button>
+          <button class="rounded-2xl border border-white/15 px-6 py-3 font-semibold text-white transition hover:bg-white/5">Explore Videos</button>
+        </div>
+
+        <div class="mt-10 flex flex-wrap gap-6 text-sm text-neutral-400">
+          <div>
+            <p class="text-2xl font-bold text-white">1.2K+</p>
+            <p>Videos available</p>
+          </div>
+          <div>
+            <p class="text-2xl font-bold text-white">4</p>
+            <p>Premium categories</p>
+          </div>
+          <div>
+            <p class="text-2xl font-bold text-white">24/7</p>
+            <p>VIP access</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="rounded-[2rem] border border-white/10 bg-white/5 p-4 shadow-xl shadow-black/20 backdrop-blur">
+        <!-- EDIT HERO PREVIEW IMAGE -->
+        <img
+          src="https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1400&q=80"
+          alt="Site preview"
+          class="h-[420px] w-full rounded-[1.5rem] object-cover"
+        />
+        <div class="mt-4 grid gap-3 md:grid-cols-3">
+          <div class="rounded-2xl bg-neutral-900/80 p-4">
+            <p class="text-xs uppercase tracking-[0.2em] text-neutral-500">Balance</p>
+            <p class="mt-2 text-2xl font-bold text-pink-400">1,480 pts</p>
+            <p class="text-sm text-neutral-400">Available points</p>
+          </div>
+          <div class="rounded-2xl bg-neutral-900/80 p-4">
+            <p class="text-xs uppercase tracking-[0.2em] text-neutral-500">Unlocked</p>
+            <p class="mt-2 text-2xl font-bold text-white">37</p>
+            <p class="text-sm text-neutral-400">Videos owned</p>
+          </div>
+          <div class="rounded-2xl bg-neutral-900/80 p-4">
+            <p class="text-xs uppercase tracking-[0.2em] text-neutral-500">Status</p>
+            <p class="mt-2 text-2xl font-bold text-pink-300">VIP</p>
+            <p class="text-sm text-neutral-400">Member access active</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURED VIDEOS -->
+  <section id="featured" class="mx-auto max-w-7xl px-6 py-16">
+    <div class="mb-8 flex items-end justify-between gap-4">
+      <div>
+        <p class="text-sm uppercase tracking-[0.25em] text-pink-300">Featured Drops</p>
+        <h3 class="mt-2 text-3xl font-bold">Trending videos</h3>
+      </div>
+      <button class="rounded-xl border border-white/15 px-4 py-2 text-sm text-neutral-300 transition hover:bg-white/5 hover:text-white">View All</button>
+    </div>
+
+    <div class="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+      <!-- VIDEO CARD 1 -->
+      <div class="group overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/5 shadow-xl shadow-black/20 transition hover:-translate-y-1 hover:border-pink-400/30">
+        <div class="relative">
+          <img src="https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?auto=format&fit=crop&w=1200&q=80" alt="Featured video" class="h-64 w-full object-cover transition duration-500 group-hover:scale-105" />
+          <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent"></div>
+          <span class="absolute left-4 top-4 rounded-full bg-black/60 px-3 py-1 text-xs text-white backdrop-blur">Music</span>
+        </div>
+        <div class="p-5">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <h4 class="text-xl font-semibold">Neon Night Session</h4>
+              <p class="mt-1 text-sm text-neutral-400">by Hidden Gems</p>
+            </div>
+            <div class="rounded-xl bg-pink-500/15 px-3 py-2 text-right text-sm font-semibold text-pink-300">120 pts</div>
+          </div>
+          <div class="mt-5 flex gap-3">
+            <button class="flex-1 rounded-xl bg-pink-500 px-4 py-3 font-medium text-white transition hover:bg-pink-400">Unlock Video</button>
+            <button class="rounded-xl border border-white/15 px-4 py-3 text-sm text-neutral-300 transition hover:bg-white/5">Preview</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- VIDEO CARD 2 -->
+      <div class="group overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/5 shadow-xl shadow-black/20 transition hover:-translate-y-1 hover:border-pink-400/30">
+        <div class="relative">
+          <img src="https://images.unsplash.com/photo-1516280440614-37939bbacd81?auto=format&fit=crop&w=1200&q=80" alt="Featured video" class="h-64 w-full object-cover transition duration-500 group-hover:scale-105" />
+          <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent"></div>
+          <span class="absolute left-4 top-4 rounded-full bg-black/60 px-3 py-1 text-xs text-white backdrop-blur">Behind the Scenes</span>
+        </div>
+        <div class="p-5">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <h4 class="text-xl font-semibold">Studio Secrets Vol. 1</h4>
+              <p class="mt-1 text-sm text-neutral-400">by Vault Access</p>
+            </div>
+            <div class="rounded-xl bg-pink-500/15 px-3 py-2 text-right text-sm font-semibold text-pink-300">85 pts</div>
+          </div>
+          <div class="mt-5 flex gap-3">
+            <button class="flex-1 rounded-xl bg-pink-500 px-4 py-3 font-medium text-white transition hover:bg-pink-400">Unlock Video</button>
+            <button class="rounded-xl border border-white/15 px-4 py-3 text-sm text-neutral-300 transition hover:bg-white/5">Preview</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- VIDEO CARD 3 -->
+      <div class="group overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/5 shadow-xl shadow-black/20 transition hover:-translate-y-1 hover:border-pink-400/30">
+        <div class="relative">
+          <img src="https://images.unsplash.com/photo-1501386761578-eac5c94b800a?auto=format&fit=crop&w=1200&q=80" alt="Featured video" class="h-64 w-full object-cover transition duration-500 group-hover:scale-105" />
+          <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent"></div>
+          <span class="absolute left-4 top-4 rounded-full bg-black/60 px-3 py-1 text-xs text-white backdrop-blur">Live Performance</span>
+        </div>
+        <div class="p-5">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <h4 class="text-xl font-semibold">Midnight Live Cut</h4>
+              <p class="mt-1 text-sm text-neutral-400">by Hidden Gems</p>
+            </div>
+            <div class="rounded-xl bg-pink-500/15 px-3 py-2 text-right text-sm font-semibold text-pink-300">150 pts</div>
+          </div>
+          <div class="mt-5 flex gap-3">
+            <button class="flex-1 rounded-xl bg-pink-500 px-4 py-3 font-medium text-white transition hover:bg-pink-400">Unlock Video</button>
+            <button class="rounded-xl border border-white/15 px-4 py-3 text-sm text-neutral-300 transition hover:bg-white/5">Preview</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CATEGORIES -->
+  <section id="categories" class="border-y border-white/10 bg-white/[0.03]">
+    <div class="mx-auto max-w-7xl px-6 py-16">
+      <p class="text-sm uppercase tracking-[0.25em] text-pink-300">Browse by Type</p>
+      <h3 class="mt-2 text-3xl font-bold">Video categories</h3>
+
+      <div class="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+        <div class="rounded-[1.75rem] border border-white/10 bg-neutral-900/70 p-6 transition hover:border-pink-400/30 hover:bg-neutral-900">
+          <div class="mb-8 inline-flex rounded-2xl bg-pink-500/10 px-4 py-2 text-sm font-medium text-pink-300">24 videos</div>
+          <h4 class="text-2xl font-bold">Music Videos</h4>
+          <p class="mt-3 text-sm text-neutral-400">Performance clips, visual drops, and premium releases.</p>
+          <button class="mt-6 text-sm font-semibold text-pink-300 transition hover:text-pink-200">View category →</button>
+        </div>
+
+        <div class="rounded-[1.75rem] border border-white/10 bg-neutral-900/70 p-6 transition hover:border-pink-400/30 hover:bg-neutral-900">
+          <div class="mb-8 inline-flex rounded-2xl bg-pink-500/10 px-4 py-2 text-sm font-medium text-pink-300">18 videos</div>
+          <h4 class="text-2xl font-bold">Behind the Scenes</h4>
+          <p class="mt-3 text-sm text-neutral-400">Studio sessions, recording moments, and exclusive footage.</p>
+          <button class="mt-6 text-sm font-semibold text-pink-300 transition hover:text-pink-200">View category →</button>
+        </div>
+
+        <div class="rounded-[1.75rem] border border-white/10 bg-neutral-900/70 p-6 transition hover:border-pink-400/30 hover:bg-neutral-900">
+          <div class="mb-8 inline-flex rounded-2xl bg-pink-500/10 px-4 py-2 text-sm font-medium text-pink-300">12 videos</div>
+          <h4 class="text-2xl font-bold">Live Performances</h4>
+          <p class="mt-3 text-sm text-neutral-400">Concert cuts, rehearsals, and special stage recordings.</p>
+          <button class="mt-6 text-sm font-semibold text-pink-300 transition hover:text-pink-200">View category →</button>
+        </div>
+
+        <div class="rounded-[1.75rem] border border-white/10 bg-neutral-900/70 p-6 transition hover:border-pink-400/30 hover:bg-neutral-900">
+          <div class="mb-8 inline-flex rounded-2xl bg-pink-500/10 px-4 py-2 text-sm font-medium text-pink-300">9 videos</div>
+          <h4 class="text-2xl font-bold">Exclusive Drops</h4>
+          <p class="mt-3 text-sm text-neutral-400">Limited-access content only available on Hidden Gems.</p>
+          <button class="mt-6 text-sm font-semibold text-pink-300 transition hover:text-pink-200">View category →</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- POINT PACKAGES -->
+  <section id="points" class="mx-auto max-w-7xl px-6 py-16">
+    <div class="text-center">
+      <p class="text-sm uppercase tracking-[0.25em] text-pink-300">Point Store</p>
+      <h3 class="mt-2 text-3xl font-bold">Choose your bundle</h3>
+      <p class="mx-auto mt-4 max-w-2xl text-neutral-400">Purchase points and use them to unlock the videos you want, whenever you want.</p>
+    </div>
+
+    <div class="mt-10 grid gap-6 md:grid-cols-3">
+      <div class="rounded-[2rem] border border-white/10 bg-white/5 p-8 text-center shadow-xl shadow-black/20">
+        <p class="text-sm uppercase tracking-[0.25em] text-neutral-400">Starter Pack</p>
+        <p class="mt-4 text-5xl font-black">250</p>
+        <p class="mt-2 text-neutral-400">Points included</p>
+        <p class="mt-6 text-3xl font-bold text-pink-300">$9.99</p>
+        <p class="mt-2 text-sm text-neutral-500">Best for new users</p>
+        <button class="mt-8 w-full rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Buy Now</button>
+      </div>
+
+      <div class="rounded-[2rem] border border-pink-400/40 bg-pink-500/10 p-8 text-center shadow-xl shadow-pink-500/10">
+        <p class="text-sm uppercase tracking-[0.25em] text-neutral-400">Creator Pack</p>
+        <p class="mt-4 text-5xl font-black">750</p>
+        <p class="mt-2 text-neutral-400">Points included</p>
+        <p class="mt-6 text-3xl font-bold text-pink-300">$24.99</p>
+        <p class="mt-2 text-sm text-neutral-500">Most popular</p>
+        <button class="mt-8 w-full rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Buy Now</button>
+      </div>
+
+      <div class="rounded-[2rem] border border-white/10 bg-white/5 p-8 text-center shadow-xl shadow-black/20">
+        <p class="text-sm uppercase tracking-[0.25em] text-neutral-400">Premium Pack</p>
+        <p class="mt-4 text-5xl font-black">2000</p>
+        <p class="mt-2 text-neutral-400">Points included</p>
+        <p class="mt-6 text-3xl font-bold text-pink-300">$49.99</p>
+        <p class="mt-2 text-sm text-neutral-500">Best value</p>
+        <button class="mt-8 w-full rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Buy Now</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- VIP SECTION -->
+  <section id="vip" class="mx-6 mb-16 rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent">
+    <div class="mx-auto grid max-w-7xl gap-10 px-8 py-16 lg:grid-cols-[1.2fr_0.8fr] lg:items-center">
+      <div>
+        <p class="text-sm uppercase tracking-[0.25em] text-pink-300">VIP ACCESS</p>
+        <h3 class="mt-3 text-4xl font-black">Get inside the VIP vault</h3>
+        <p class="mt-5 max-w-2xl text-lg text-neutral-300">Unlock members-only videos, early access drops, and premium hidden content reserved for your top supporters.</p>
+
+        <div class="mt-8 grid gap-3 sm:grid-cols-2">
+          <div class="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-neutral-200">✦ Exclusive members-only videos</div>
+          <div class="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-neutral-200">✦ Early access to new drops</div>
+          <div class="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-neutral-200">✦ Discounted point redemptions</div>
+          <div class="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-neutral-200">✦ Premium creator vault access</div>
+        </div>
+
+        <div class="mt-8 flex flex-wrap gap-4">
+          <button class="rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white transition hover:bg-pink-400">Join VIP — $19.99 / month</button>
+          <button class="rounded-2xl border border-white/15 px-6 py-3 font-semibold text-white transition hover:bg-white/5">See Perks</button>
+        </div>
+      </div>
+
+      <div class="rounded-[2rem] border border-white/10 bg-black/30 p-6 backdrop-blur">
+        <p class="text-sm uppercase tracking-[0.25em] text-neutral-400">VIP Preview</p>
+        <div class="mt-6 space-y-4">
+          <div class="rounded-2xl bg-white/5 p-4">
+            <p class="font-semibold">Hidden Sessions Archive</p>
+            <p class="mt-1 text-sm text-neutral-400">Exclusive VIP-only series</p>
+          </div>
+          <div class="rounded-2xl bg-white/5 p-4">
+            <p class="font-semibold">Private Creator Rooms</p>
+            <p class="mt-1 text-sm text-neutral-400">Members-only content hub</p>
+          </div>
+          <div class="rounded-2xl bg-white/5 p-4">
+            <p class="font-semibold">Early Release Access</p>
+            <p class="mt-1 text-sm text-neutral-400">Watch before public drops</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DASHBOARD -->
+  <section id="dashboard" class="mx-auto max-w-7xl px-6 pb-20">
+    <div class="mb-8">
+      <p class="text-sm uppercase tracking-[0.25em] text-pink-300">User Dashboard</p>
+      <h3 class="mt-2 text-3xl font-bold">Your account overview</h3>
+    </div>
+
+    <div class="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+      <div class="rounded-[2rem] border border-white/10 bg-white/5 p-6">
+        <h4 class="text-xl font-semibold">Account summary</h4>
+        <div class="mt-6 space-y-4 text-sm text-neutral-300">
+          <div class="flex items-center justify-between rounded-2xl bg-neutral-900/80 px-4 py-4">
+            <span>Current point balance</span>
+            <span class="font-bold text-pink-300">1,480 pts</span>
+          </div>
+          <div class="flex items-center justify-between rounded-2xl bg-neutral-900/80 px-4 py-4">
+            <span>VIP membership</span>
+            <span class="font-bold text-pink-300">Active</span>
+          </div>
+          <div class="flex items-center justify-between rounded-2xl bg-neutral-900/80 px-4 py-4">
+            <span>Videos unlocked</span>
+            <span class="font-bold text-white">37</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="rounded-[2rem] border border-white/10 bg-white/5 p-6">
+        <div class="flex items-center justify-between gap-4">
+          <h4 class="text-xl font-semibold">Purchased videos</h4>
+          <button class="rounded-xl border border-white/15 px-4 py-2 text-sm text-neutral-300 transition hover:bg-white/5">View Library</button>
+        </div>
+
+        <div class="mt-6 space-y-4">
+          <div class="flex items-center justify-between rounded-2xl bg-neutral-900/80 px-4 py-4">
+            <div>
+              <p class="font-medium text-white">Neon Night Session</p>
+              <p class="text-sm text-neutral-400">Unlocked #1</p>
+            </div>
+            <button class="rounded-xl bg-pink-500/15 px-4 py-2 text-sm font-medium text-pink-300 transition hover:bg-pink-500/25">Watch</button>
+          </div>
+
+          <div class="flex items-center justify-between rounded-2xl bg-neutral-900/80 px-4 py-4">
+            <div>
+              <p class="font-medium text-white">Lost Tape: Episode 2</p>
+              <p class="text-sm text-neutral-400">Unlocked #2</p>
+            </div>
+            <button class="rounded-xl bg-pink-500/15 px-4 py-2 text-sm font-medium text-pink-300 transition hover:bg-pink-500/25">Watch</button>
+          </div>
+
+          <div class="flex items-center justify-between rounded-2xl bg-neutral-900/80 px-4 py-4">
+            <div>
+              <p class="font-medium text-white">Studio Secrets Vol. 1</p>
+              <p class="text-sm text-neutral-400">Unlocked #3</p>
+            </div>
+            <button class="rounded-xl bg-pink-500/15 px-4 py-2 text-sm font-medium text-pink-300 transition hover:bg-pink-500/25">Watch</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</body>
+</html>
