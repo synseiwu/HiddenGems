@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hidden Gems | Sign Up</title>
+  <link rel="icon" href="./assets/hidden-gems-logo.png" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-black text-white" style="background:
+  radial-gradient(circle at top right, rgba(236,72,153,0.22), transparent 30%),
+  radial-gradient(circle at left, rgba(217,70,239,0.14), transparent 24%),
+  #000;">
+  <header class="sticky top-0 z-50 border-b border-white/10 bg-black/75 backdrop-blur-xl">
+    <div class="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+      <a href="index.html" class="flex items-center gap-4">
+        <img src="./assets/hidden-gems-logo.png" alt="Hidden Gems logo" class="h-14 w-14 rounded-2xl object-contain shadow-lg shadow-pink-500/20" />
+        <div>
+          <h1 class="text-2xl font-bold tracking-[0.08em] text-pink-400">HIDDEN GEMS</h1>
+          <p class="text-xs text-neutral-400">View-only video access with VIP downloads</p>
+        </div>
+      </a>
+      <div class="flex items-center gap-3">
+        <a href="index.html" class="rounded-xl border border-white/15 px-4 py-2 text-sm text-white transition hover:bg-white/5">Home</a>
+        <a href="login.html" class="rounded-xl border border-white/15 px-4 py-2 text-sm text-white transition hover:bg-white/5">Log In</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto grid max-w-7xl gap-8 px-6 py-14 lg:grid-cols-[1fr_0.95fr]">
+    <section class="rounded-[2rem] border border-white/10 bg-white/5 p-8 shadow-xl shadow-black/20 backdrop-blur">
+      <span class="inline-flex rounded-full border border-pink-400/30 bg-pink-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] text-pink-300">Create Account</span>
+      <h2 class="mt-6 text-5xl font-black leading-tight">
+        Start your <span class="text-pink-400">Hidden Gems</span> account
+      </h2>
+      <p class="mt-5 max-w-xl text-lg text-neutral-300">
+        Create an account now so you can later hold point balances, VIP status, unlocked videos, and premium access in one place.
+      </p>
+
+      <div class="mt-10 space-y-4">
+        <div class="rounded-[1.5rem] border border-white/10 bg-black/20 p-5">
+          <p class="text-xl font-bold text-white">Built for your future points system</p>
+          <p class="mt-2 text-neutral-400">This auth setup is the base for tracking purchases, points, VIP status, and locked content later.</p>
+        </div>
+        <div class="rounded-[1.5rem] border border-white/10 bg-black/20 p-5">
+          <p class="text-xl font-bold text-white">VIP will stay separate from normal purchases</p>
+          <p class="mt-2 text-neutral-400">Regular unlocks can stay view-only while VIP later controls downloads and special videos.</p>
+        </div>
+        <div class="rounded-[1.5rem] border border-white/10 bg-black/20 p-5">
+          <p class="text-xl font-bold text-white">Ready for category pages and dashboards</p>
+          <p class="mt-2 text-neutral-400">Once users can sign in, you can connect their account to dashboards and unlock pages.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="rounded-[2rem] border border-white/10 bg-white/5 p-7 shadow-xl shadow-black/20 backdrop-blur">
+      <h3 class="text-4xl font-black">Create your account</h3>
+      <p class="mt-3 text-neutral-300">Use email and password to sign up.</p>
+
+      <div class="mt-7 rounded-[1.5rem] border border-pink-400/30 bg-gradient-to-r from-pink-500/15 via-fuchsia-500/10 to-transparent p-5">
+        <p class="text-xs font-semibold uppercase tracking-[0.25em] text-pink-300">VIP Special</p>
+        <div class="mt-2 flex items-center gap-3">
+          <p class="text-4xl font-black text-white">$20.00 VIP</p>
+          <p class="text-xl text-neutral-500 line-through">$40.00</p>
+        </div>
+        <p class="mt-1 text-lg font-semibold text-pink-300">Deal leaving soon</p>
+      </div>
+
+      <form id="signup-form" class="mt-8 space-y-5">
+        <div>
+          <label for="email" class="mb-2 block text-sm font-medium text-neutral-200">Email address</label>
+          <input id="email" type="email" required class="w-full rounded-2xl border border-pink-400/20 bg-black/50 px-4 py-4 text-white outline-none transition focus:border-pink-400" placeholder="you@example.com" />
+        </div>
+
+        <div>
+          <label for="password" class="mb-2 block text-sm font-medium text-neutral-200">Password</label>
+          <input id="password" type="password" required minlength="6" class="w-full rounded-2xl border border-pink-400/20 bg-black/50 px-4 py-4 text-white outline-none transition focus:border-pink-400" placeholder="Create a password" />
+        </div>
+
+        <div>
+          <label for="confirm-password" class="mb-2 block text-sm font-medium text-neutral-200">Confirm password</label>
+          <input id="confirm-password" type="password" required minlength="6" class="w-full rounded-2xl border border-pink-400/20 bg-black/50 px-4 py-4 text-white outline-none transition focus:border-pink-400" placeholder="Confirm your password" />
+        </div>
+
+        <div id="message" class="hidden rounded-2xl border px-4 py-3 text-sm"></div>
+
+        <button id="submit-btn" type="submit" class="w-full rounded-2xl bg-pink-500 px-6 py-4 font-semibold text-white shadow-xl shadow-pink-500/20 transition hover:bg-pink-400">
+          Create account
+        </button>
+
+        <a href="login.html" class="block w-full rounded-2xl border border-white/15 px-6 py-4 text-center font-semibold text-white transition hover:bg-white/5">
+          Already have an account?
+        </a>
+
+        <p class="text-sm text-neutral-400">Use a strong password like <span class="font-semibold text-neutral-200">HiddenGems123!</span> for testing.</p>
+        <p class="text-sm text-neutral-400">Already registered? <a href="login.html" class="font-semibold text-pink-300 hover:text-pink-200">Log in here.</a></p>
+      </form>
+    </section>
+  </main>
+
+  <script>
+    const SUPABASE_URL = 'https://netolzyxnifogojwwesq.supabase.co';
+    const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_UP52ijiwCiMghxs8OOEmIQ_V0GJR8Hi';
+    const REDIRECT_AFTER_SIGNUP = 'login.html';
+
+    function showMessage(text, type = 'info') {
+      const message = document.getElementById('message');
+      const classes = {
+        info: 'border-white/15 bg-white/5 text-white',
+        success: 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200',
+        error: 'border-rose-400/30 bg-rose-500/10 text-rose-200'
+      };
+      message.textContent = text;
+      message.className = `block rounded-2xl border px-4 py-3 text-sm ${classes[type] || classes.info}`;
+    }
+
+    function setupError(message) {
+      console.error(message);
+      showMessage(message, 'error');
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      const form = document.getElementById('signup-form');
+      const emailInput = document.getElementById('email');
+      const passwordInput = document.getElementById('password');
+      const confirmPasswordInput = document.getElementById('confirm-password');
+      const submitBtn = document.getElementById('submit-btn');
+
+      if (!window.supabase || typeof window.supabase.createClient !== 'function') {
+        setupError('Supabase library failed to load. Turn off browser shields/extensions for this page and refresh.');
+        return;
+      }
+
+      if (!form || !emailInput || !passwordInput || !confirmPasswordInput || !submitBtn) {
+        setupError('Signup form is missing required elements.');
+        return;
+      }
+
+      const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+
+      console.log('signup script loaded', {
+        formExists: !!form,
+        emailExists: !!emailInput,
+        passwordExists: !!passwordInput,
+        confirmExists: !!confirmPasswordInput,
+        submitExists: !!submitBtn
+      });
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        console.log('submit handler fired');
+
+        const email = emailInput.value.trim();
+        const password = passwordInput.value;
+        const confirmPassword = confirmPasswordInput.value;
+
+        if (!email) {
+          showMessage('Please enter an email address.', 'error');
+          return;
+        }
+
+        if (password.length < 6) {
+          showMessage('Password must be at least 6 characters.', 'error');
+          return;
+        }
+
+        if (password !== confirmPassword) {
+          showMessage('Passwords do not match.', 'error');
+          return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Creating account...';
+        showMessage('Creating account...', 'info');
+
+        try {
+          const { data, error } = await supabase.auth.signUp({
+            email,
+            password
+          });
+
+          console.log('SIGNUP RESULT:', { data, error, email });
+
+          if (error) {
+            showMessage(error.message, 'error');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Create account';
+            return;
+          }
+
+          showMessage('Account created successfully. Redirecting to login...', 'success');
+
+          setTimeout(() => {
+            window.location.href = REDIRECT_AFTER_SIGNUP;
+          }, 1200);
+        } catch (err) {
+          console.error('SIGNUP UNEXPECTED ERROR:', err);
+          showMessage(err && err.message ? err.message : 'Unexpected signup error.', 'error');
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Create account';
+        }
+      });
+    });
+  </script>
+</body>
+</html>
