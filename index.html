@@ -27,6 +27,7 @@
         <a href="#categories" class="transition hover:text-pink-300">Categories</a>
         <a href="#points" class="transition hover:text-pink-300">Points</a>
         <a href="#vip" class="transition hover:text-pink-300">VIP</a>
+        <a href="#dashboard" class="transition hover:text-pink-300">Dashboard</a>
       </nav>
 
       <div class="relative flex items-center gap-3">
@@ -37,7 +38,7 @@
 
         <div id="logged-in-actions" class="hidden relative">
           <button id="account-menu-button" class="flex items-center gap-3 rounded-2xl border border-pink-400/20 bg-white/5 px-4 py-2 text-sm text-white transition hover:bg-white/10">
-            <div class="flex h-9 w-9 items-center justify-center rounded-full bg-pink-500/20 font-bold text-pink-300" id="account-avatar">HG</div>
+            <div id="account-avatar" class="flex h-9 w-9 items-center justify-center rounded-full bg-pink-500/20 font-bold text-pink-300">HG</div>
             <div class="hidden text-left sm:block">
               <p class="font-semibold text-white">My Account</p>
               <p id="account-email-short" class="max-w-[180px] truncate text-xs text-neutral-400"></p>
@@ -109,13 +110,13 @@
           <div class="mt-4 grid gap-3 md:grid-cols-3">
             <div class="rounded-2xl bg-neutral-900/80 p-4">
               <p class="text-xs uppercase tracking-[0.2em] text-neutral-500">Access</p>
-              <p class="mt-2 text-2xl font-bold text-pink-400">View / VIP</p>
+              <p id="hero-access-text" class="mt-2 text-2xl font-bold text-pink-400">View / VIP</p>
               <p class="text-sm text-neutral-400">Downloads require VIP</p>
             </div>
             <div class="rounded-2xl bg-neutral-900/80 p-4">
-              <p class="text-xs uppercase tracking-[0.2em] text-neutral-500">Unlocked</p>
-              <p class="mt-2 text-2xl font-bold text-white">37</p>
-              <p class="text-sm text-neutral-400">Videos owned</p>
+              <p class="text-xs uppercase tracking-[0.2em] text-neutral-500">Points</p>
+              <p id="hero-points-balance" class="mt-2 text-2xl font-bold text-white">0</p>
+              <p class="text-sm text-neutral-400">Current balance</p>
             </div>
             <div class="rounded-2xl bg-neutral-900/80 p-4">
               <p class="text-xs uppercase tracking-[0.2em] text-neutral-500">Status</p>
@@ -298,9 +299,18 @@
         <div class="rounded-[2rem] border border-white/10 bg-white/5 p-6">
           <h4 class="text-xl font-semibold">Account summary</h4>
           <div class="mt-6 space-y-4 text-sm text-neutral-300">
-            <div class="flex items-center justify-between rounded-2xl bg-neutral-900/80 px-4 py-4"><span>Download access</span><span class="font-bold text-pink-300">VIP only</span></div>
-            <div class="flex items-center justify-between rounded-2xl bg-neutral-900/80 px-4 py-4"><span>VIP membership</span><span id="dashboard-vip-status" class="font-bold text-pink-300">Guest</span></div>
-            <div class="flex items-center justify-between rounded-2xl bg-neutral-900/80 px-4 py-4"><span>Videos unlocked</span><span class="font-bold text-white">37</span></div>
+            <div class="flex items-center justify-between rounded-2xl bg-neutral-900/80 px-4 py-4">
+              <span>Download access</span>
+              <span id="dashboard-download-access" class="font-bold text-pink-300">VIP only</span>
+            </div>
+            <div class="flex items-center justify-between rounded-2xl bg-neutral-900/80 px-4 py-4">
+              <span>VIP membership</span>
+              <span id="dashboard-vip-status" class="font-bold text-pink-300">Guest</span>
+            </div>
+            <div class="flex items-center justify-between rounded-2xl bg-neutral-900/80 px-4 py-4">
+              <span>Points balance</span>
+              <span id="dashboard-points-balance" class="font-bold text-white">0</span>
+            </div>
           </div>
         </div>
 
@@ -345,59 +355,117 @@
     const accountEmailShort = document.getElementById('account-email-short');
     const accountEmailFull = document.getElementById('account-email-full');
     const accountAvatar = document.getElementById('account-avatar');
+
     const heroVipStatus = document.getElementById('hero-vip-status');
+    const heroPointsBalance = document.getElementById('hero-points-balance');
+    const heroAccessText = document.getElementById('hero-access-text');
+
     const dashboardVipStatus = document.getElementById('dashboard-vip-status');
+    const dashboardPointsBalance = document.getElementById('dashboard-points-balance');
+    const dashboardDownloadAccess = document.getElementById('dashboard-download-access');
 
     function initialsFromEmail(email) {
       if (!email) return 'HG';
       return email.slice(0, 2).toUpperCase();
     }
 
+    function setGuestStats() {
+      heroVipStatus.textContent = 'Guest';
+      heroPointsBalance.textContent = '0';
+      heroAccessText.textContent = 'View / VIP';
+      dashboardVipStatus.textContent = 'Guest';
+      dashboardPointsBalance.textContent = '0';
+      dashboardDownloadAccess.textContent = 'VIP only';
+    }
+
     function setLoggedOutView() {
       loggedOutActions.classList.remove('hidden');
       loggedInActions.classList.add('hidden');
-      heroVipStatus.textContent = 'Guest';
-      dashboardVipStatus.textContent = 'Guest';
+      setGuestStats();
     }
 
-    function setLoggedInView(user) {
+    function setLoggedInView(profile) {
       loggedOutActions.classList.add('hidden');
       loggedInActions.classList.remove('hidden');
-      const email = user && user.email ? user.email : 'Signed in';
+
+      const email = profile.email || '';
       accountEmailShort.textContent = email;
       accountEmailFull.textContent = email;
       accountAvatar.textContent = initialsFromEmail(email);
-      heroVipStatus.textContent = 'Member';
-      dashboardVipStatus.textContent = 'Member';
+
+      const vipText = profile.is_vip ? 'VIP Active' : 'Standard';
+      heroVipStatus.textContent = vipText;
+      heroPointsBalance.textContent = String(profile.points_balance ?? 0);
+      heroAccessText.textContent = profile.is_vip ? 'VIP / Download' : 'View / VIP';
+
+      dashboardVipStatus.textContent = vipText;
+      dashboardPointsBalance.textContent = String(profile.points_balance ?? 0);
+      dashboardDownloadAccess.textContent = profile.is_vip ? 'Enabled' : 'VIP only';
     }
 
-    accountMenuButton && accountMenuButton.addEventListener('click', () => {
-      accountDropdown.classList.toggle('hidden');
-    });
+    if (accountMenuButton) {
+      accountMenuButton.addEventListener('click', () => {
+        accountDropdown.classList.toggle('hidden');
+      });
+    }
 
     document.addEventListener('click', (event) => {
-      if (!loggedInActions.contains(event.target)) {
+      if (loggedInActions && !loggedInActions.contains(event.target)) {
         accountDropdown.classList.add('hidden');
       }
     });
 
-    logoutButton && logoutButton.addEventListener('click', async () => {
-      await supabase.auth.signOut();
-      window.location.href = 'index.html';
-    });
+    if (logoutButton) {
+      logoutButton.addEventListener('click', async () => {
+        await supabase.auth.signOut();
+        window.location.href = 'index.html';
+      });
+    }
 
     async function loadSession() {
       const { data, error } = await supabase.auth.getSession();
+      console.log('INDEX SESSION RESULT:', { data, error });
+
       if (error || !data || !data.session || !data.session.user) {
         setLoggedOutView();
         return;
       }
-      setLoggedInView(data.session.user);
+
+      const user = data.session.user;
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('email, is_vip, points_balance')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      console.log('INDEX PROFILE LOAD RESULT:', { profile, profileError });
+
+      if (profileError || !profile) {
+        setLoggedOutView();
+        return;
+      }
+
+      setLoggedInView(profile);
     }
 
-    supabase.auth.onAuthStateChange((_event, session) => {
-      if (session && session.user) setLoggedInView(session.user);
-      else setLoggedOutView();
+    supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!session || !session.user) {
+        setLoggedOutView();
+        return;
+      }
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('email, is_vip, points_balance')
+        .eq('id', session.user.id)
+        .maybeSingle();
+
+      if (!profile) {
+        setLoggedOutView();
+        return;
+      }
+
+      setLoggedInView(profile);
     });
 
     loadSession();
