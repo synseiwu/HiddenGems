@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hidden Gems | Sign Up</title>
+  <link rel="icon" href="assets/hidden-gems-logo.png" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="min-h-screen bg-black text-white">
+  <div class="mx-auto flex min-h-screen max-w-6xl items-center justify-center px-6 py-12">
+    <div class="grid w-full overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 shadow-2xl shadow-black/40 lg:grid-cols-2">
+      <div class="hidden bg-gradient-to-br from-pink-500/20 via-fuchsia-500/10 to-black p-10 lg:block">
+        <a href="index.html" class="inline-flex items-center gap-4">
+          <img src="assets/hidden-gems-logo.png" alt="Hidden Gems logo" class="h-14 w-14 rounded-2xl object-contain shadow-lg shadow-pink-500/20" />
+          <div>
+            <h1 class="text-2xl font-bold tracking-[0.08em] text-pink-400">Hidden Gems</h1>
+            <p class="text-xs text-neutral-400">Create your account</p>
+          </div>
+        </a>
+        <div class="mt-16 max-w-md">
+          <p class="text-sm font-semibold uppercase tracking-[0.25em] text-pink-300">Members Access</p>
+          <h2 class="mt-4 text-5xl font-black leading-tight">Sign up to unlock your Hidden Gems account.</h2>
+          <p class="mt-6 text-lg text-neutral-300">Use your account to buy point bundles, unlock videos, and manage VIP access.</p>
+        </div>
+      </div>
+
+      <div class="p-8 sm:p-10 lg:p-12">
+        <div class="mx-auto max-w-md">
+          <div class="mb-8 lg:hidden">
+            <a href="index.html" class="inline-flex items-center gap-4">
+              <img src="assets/hidden-gems-logo.png" alt="Hidden Gems logo" class="h-12 w-12 rounded-2xl object-contain shadow-lg shadow-pink-500/20" />
+              <div>
+                <h1 class="text-xl font-bold tracking-[0.08em] text-pink-400">Hidden Gems</h1>
+                <p class="text-xs text-neutral-400">Create your account</p>
+              </div>
+            </a>
+          </div>
+
+          <p class="text-sm font-semibold uppercase tracking-[0.25em] text-pink-300">Sign Up</p>
+          <h2 class="mt-3 text-4xl font-black">Create account</h2>
+          <p class="mt-3 text-neutral-400">Enter your email and password to create your Hidden Gems account.</p>
+
+          <form id="signup-form" class="mt-8 space-y-5">
+            <div>
+              <label for="email" class="mb-2 block text-sm text-neutral-300">Email</label>
+              <input id="email" type="email" required class="w-full rounded-2xl border border-white/10 bg-neutral-900/80 px-4 py-3 text-white outline-none transition focus:border-pink-400/50" placeholder="you@example.com" />
+            </div>
+
+            <div>
+              <label for="password" class="mb-2 block text-sm text-neutral-300">Password</label>
+              <input id="password" type="password" required minlength="6" class="w-full rounded-2xl border border-white/10 bg-neutral-900/80 px-4 py-3 text-white outline-none transition focus:border-pink-400/50" placeholder="At least 6 characters" />
+            </div>
+
+            <button id="submit-btn" type="submit" class="w-full rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Create Account</button>
+          </form>
+
+          <div id="message" class="mt-4 hidden rounded-2xl border px-4 py-3 text-sm"></div>
+
+          <div class="mt-6 text-sm text-neutral-400">
+            Already have an account?
+            <a href="login.html" class="font-medium text-pink-300 hover:text-pink-200">Log in</a>
+          </div>
+
+          <div class="mt-8 rounded-2xl border border-white/10 bg-neutral-900/60 p-4 text-xs text-neutral-500">
+            Debug tip: open your browser console before submitting. This page now shows startup and signup errors on-screen too.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = 'https://netolzyxnifogojwwesq.supabase.co';
+    const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_UP52ijiwCiMghxs8OOEmIQ_V0GJR8Hi';
+    const REDIRECT_AFTER_SIGNUP = 'login.html';
+
+    const form = document.getElementById('signup-form');
+    const message = document.getElementById('message');
+    const submitBtn = document.getElementById('submit-btn');
+
+    function showMessage(text, type = 'info') {
+      const styles = {
+        info: 'border-blue-400/30 bg-blue-500/10 text-blue-200',
+        success: 'border-green-400/30 bg-green-500/10 text-green-200',
+        error: 'border-red-400/30 bg-red-500/10 text-red-200'
+      };
+      message.textContent = text;
+      message.className = `mt-4 rounded-2xl border px-4 py-3 text-sm ${styles[type] || styles.info}`;
+    }
+
+    if (!window.supabase || !window.supabase.createClient) {
+      console.error('Supabase library did not load.', window.supabase);
+      showMessage('Supabase library failed to load. Disable Shields/ad blockers for this page and refresh.', 'error');
+    } else {
+      const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+      console.log('Supabase client created', { SUPABASE_URL, keyPrefix: SUPABASE_PUBLISHABLE_KEY.slice(0, 24) });
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        try {
+          const email = document.getElementById('email').value.trim();
+          const password = document.getElementById('password').value;
+
+          submitBtn.disabled = true;
+          showMessage('Creating account...', 'info');
+
+          const { data, error } = await supabase.auth.signUp({ email, password });
+          console.log('SIGNUP RESULT:', { data, error, email });
+
+          if (error) {
+            showMessage(error.message, 'error');
+            submitBtn.disabled = false;
+            return;
+          }
+
+          showMessage('Account created successfully. Redirecting to login...', 'success');
+          setTimeout(() => {
+            window.location.href = REDIRECT_AFTER_SIGNUP;
+          }, 1200);
+        } catch (err) {
+          console.error('SIGNUP UNEXPECTED ERROR:', err);
+          showMessage(err?.message || 'Unexpected signup error.', 'error');
+          submitBtn.disabled = false;
+        }
+      });
+    }
+  </script>
+</body>
+</html>
