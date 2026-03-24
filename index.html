@@ -461,6 +461,35 @@
       });
     }
 
+    async function getProfileForUser(user) {
+      if (!user) return null;
+
+      try {
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('email, is_vip, points_balance')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (profileError && profileError.code !== 'PGRST116') {
+          console.warn('Profile lookup warning:', profileError);
+        }
+
+        return {
+          email: profile?.email || user.email || '',
+          is_vip: !!profile?.is_vip,
+          points_balance: Number(profile?.points_balance || 0)
+        };
+      } catch (err) {
+        console.warn('Falling back to auth user only:', err);
+        return {
+          email: user.email || '',
+          is_vip: false,
+          points_balance: 0
+        };
+      }
+    }
+
     async function loadSession() {
       const { data, error } = await supabase.auth.getSession();
       if (error || !data || !data.session || !data.session.user) {
@@ -468,14 +497,8 @@
         return;
       }
 
-      const user = data.session.user;
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('email, is_vip, points_balance')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      if (profileError || !profile) {
+      const profile = await getProfileForUser(data.session.user);
+      if (!profile?.email) {
         setLoggedOutView();
         return;
       }
@@ -489,13 +512,8 @@
         return;
       }
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('email, is_vip, points_balance')
-        .eq('id', session.user.id)
-        .maybeSingle();
-
-      if (!profile) {
+      const profile = await getProfileForUser(session.user);
+      if (!profile?.email) {
         setLoggedOutView();
         return;
       }
