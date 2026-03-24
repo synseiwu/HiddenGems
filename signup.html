@@ -107,7 +107,7 @@
       showMessage(message, 'error');
     }
 
-    window.addEventListener('DOMContentLoaded', () => { HiddenGemsApp.mountSharedHeader();
+    window.addEventListener('DOMContentLoaded', () => { try { if (window.HiddenGemsApp && typeof HiddenGemsApp.mountSharedHeader === 'function') { HiddenGemsApp.mountSharedHeader(); } } catch (err) { console.warn('Header failed to mount on signup page:', err); }
       const form = document.getElementById('signup-form');
       const emailInput = document.getElementById('email');
       const passwordInput = document.getElementById('password');

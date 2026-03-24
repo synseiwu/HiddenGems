@@ -102,77 +102,87 @@
       showMessage(message, 'error');
     }
 
-    window.addEventListener('DOMContentLoaded', () => { HiddenGemsApp.mountSharedHeader();
+    async function handleLoginSubmit(event) {
+      if (event) event.preventDefault();
+
       const form = document.getElementById('login-form');
       const emailInput = document.getElementById('email');
       const passwordInput = document.getElementById('password');
       const submitBtn = document.getElementById('submit-btn');
-
-      if (!window.supabase || typeof window.supabase.createClient !== 'function') {
-        setupError('Supabase library failed to load. Turn off browser shields/extensions for this page and refresh.');
-        return;
-      }
 
       if (!form || !emailInput || !passwordInput || !submitBtn) {
         setupError('Login form is missing required elements.');
         return;
       }
 
+      if (!window.supabase || typeof window.supabase.createClient !== 'function') {
+        setupError('Supabase library failed to load. Turn off browser shields/extensions for this page and refresh.');
+        return;
+      }
+
+      if (submitBtn.disabled) return;
+
+      const email = emailInput.value.trim();
+      const password = passwordInput.value;
+
+      if (!email) {
+        showMessage('Please enter an email address.', 'error');
+        return;
+      }
+
+      if (password.length < 6) {
+        showMessage('Password must be at least 6 characters.', 'error');
+        return;
+      }
+
       const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Logging in...';
+      showMessage('Logging in...', 'info');
 
-      console.log('login script loaded', {
-        formExists: !!form,
-        emailExists: !!emailInput,
-        passwordExists: !!passwordInput,
-        submitExists: !!submitBtn
-      });
+      try {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
 
-      form.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        console.log('login submit handler fired');
-
-        const email = emailInput.value.trim();
-        const password = passwordInput.value;
-
-        if (!email) {
-          showMessage('Please enter an email address.', 'error');
-          return;
-        }
-
-        if (password.length < 6) {
-          showMessage('Password must be at least 6 characters.', 'error');
-          return;
-        }
-
-        submitBtn.disabled = true;
-        submitBtn.textContent = 'Logging in...';
-        showMessage('Logging in...', 'info');
-
-        try {
-          const { data, error } = await supabase.auth.signInWithPassword({
-            email,
-            password
-          });
-
-          console.log('LOGIN RESULT:', { data, error, email });
-
-          if (error) {
-            showMessage(error.message, 'error');
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Log in';
-            return;
-          }
-
-          showMessage('Login successful. Redirecting...', 'success');
-
-          setTimeout(() => {
-            window.location.href = REDIRECT_AFTER_LOGIN;
-          }, 1200);
-        } catch (err) {
-          console.error('LOGIN UNEXPECTED ERROR:', err);
-          showMessage(err && err.message ? err.message : 'Unexpected login error.', 'error');
+        if (error) {
+          showMessage(error.message, 'error');
           submitBtn.disabled = false;
           submitBtn.textContent = 'Log in';
+          return;
+        }
+
+        showMessage('Login successful. Redirecting...', 'success');
+        setTimeout(() => {
+          window.location.href = REDIRECT_AFTER_LOGIN;
+        }, 800);
+      } catch (err) {
+        console.error('LOGIN UNEXPECTED ERROR:', err);
+        showMessage(err && err.message ? err.message : 'Unexpected login error.', 'error');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Log in';
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      try {
+        if (window.HiddenGemsApp && typeof HiddenGemsApp.mountSharedHeader === 'function') {
+          HiddenGemsApp.mountSharedHeader();
+        }
+      } catch (err) {
+        console.warn('Header failed to mount on login page:', err);
+      }
+
+      const form = document.getElementById('login-form');
+      const submitBtn = document.getElementById('submit-btn');
+
+      if (!form || !submitBtn) {
+        setupError('Login form is missing required elements.');
+        return;
+      }
+
+      form.addEventListener('submit', handleLoginSubmit);
+      submitBtn.addEventListener('click', (event) => {
+        if (submitBtn.type !== 'submit') {
+          handleLoginSubmit(event);
         }
       });
     });
