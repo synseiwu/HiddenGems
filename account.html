@@ -7,6 +7,7 @@
   <link rel="icon" href="./assets/hidden-gems-logo.png" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="./config.js"></script>
   <script defer src="./assets/site.js"></script>
 </head>
 <body class="min-h-screen bg-black text-white" style="background:
@@ -90,8 +91,10 @@
   </main>
 
   <script>
-    const SUPABASE_URL = 'https://netolzyxnifogojwwesq.supabase.co';
-    const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_UP52ijiwCiMghxs8OOEmIQ_V0GJR8Hi';
+    const APP_CONFIG = window.GEMS_HIDDEN_CONFIG || {};
+    const AUTH_CONFIG = APP_CONFIG.auth || {};
+    const SUPABASE_URL = AUTH_CONFIG.supabaseUrl || 'https://netolzyxnifogojwwesq.supabase.co';
+    const SUPABASE_PUBLISHABLE_KEY = AUTH_CONFIG.supabaseAnonKey || 'sb_publishable_UP52ijiwCiMghxs8OOEmIQ_V0GJR8Hi';
     const REQUEST_TIMEOUT_MS = 10000;
 
     const statusBox = document.getElementById('status-box');
