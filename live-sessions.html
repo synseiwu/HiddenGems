@@ -20,7 +20,7 @@
         <img src="./assets/hidden-gems-logo.png" alt="Hidden Gems logo" class="h-14 w-14 rounded-2xl object-contain shadow-lg shadow-pink-500/20" />
         <div>
           <h1 class="text-2xl font-bold tracking-[0.08em] text-pink-400">HIDDEN GEMS</h1>
-          <p class="text-xs text-neutral-400">View-only video access with VIP downloads</p>
+          <p class="text-xs text-neutral-400">Guest, VIP, and admin access built in</p>
         </div>
       </a>
 
@@ -54,10 +54,11 @@
               <p id="account-email-full" class="mt-1 break-all text-xs text-neutral-400"></p>
             </div>
             <div class="p-2">
-              <a href="account.html" class="block rounded-xl px-3 py-3 text-sm text-white transition hover:bg-white/5">Profile</a>
-              <a href="#dashboard" class="block rounded-xl px-3 py-3 text-sm text-white transition hover:bg-white/5">Dashboard</a>
+              <a href="index.html" class="block rounded-xl px-3 py-3 text-sm text-white transition hover:bg-white/5">Home</a>
+              <a href="account.html" class="block rounded-xl px-3 py-3 text-sm text-white transition hover:bg-white/5">Your Account</a>
               <a href="my-library.html" class="block rounded-xl px-3 py-3 text-sm text-white transition hover:bg-white/5">My Library</a>
-              <a href="vip-exclusives.html" class="block rounded-xl px-3 py-3 text-sm text-white transition hover:bg-white/5">VIP Exclusives</a>
+              <a href="vip-checkout.html" class="block rounded-xl px-3 py-3 text-sm text-white transition hover:bg-white/5">VIP Checkout</a>
+              <a id="admin-link" href="admin.html" class="hidden block rounded-xl px-3 py-3 text-sm text-amber-200 transition hover:bg-white/5">Admin Portal</a>
               <button id="logout-button" class="block w-full rounded-xl px-3 py-3 text-left text-sm text-rose-300 transition hover:bg-white/5">Log Out</button>
             </div>
           </div>
@@ -360,8 +361,11 @@
   </footer>
 
   <script>
-    const SUPABASE_URL = 'https://netolzyxnifogojwwesq.supabase.co';
-    const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_UP52ijiwCiMghxs8OOEmIQ_V0GJR8Hi';
+    const APP_CONFIG = window.GEMS_HIDDEN_CONFIG || {};
+    const AUTH_CONFIG = APP_CONFIG.auth || {};
+    const ADMIN_EMAILS = (APP_CONFIG.adminEmails || []).map((email) => String(email).trim().toLowerCase()).filter(Boolean);
+    const SUPABASE_URL = AUTH_CONFIG.supabaseUrl || 'https://netolzyxnifogojwwesq.supabase.co';
+    const SUPABASE_PUBLISHABLE_KEY = AUTH_CONFIG.supabaseAnonKey || 'sb_publishable_UP52ijiwCiMghxs8OOEmIQ_V0GJR8Hi';
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
     const loggedOutActions = document.getElementById('logged-out-actions');
@@ -369,6 +373,7 @@
     const accountMenuButton = document.getElementById('account-menu-button');
     const accountDropdown = document.getElementById('account-dropdown');
     const logoutButton = document.getElementById('logout-button');
+    const adminLink = document.getElementById('admin-link');
     const accountEmailShort = document.getElementById('account-email-short');
     const accountEmailFull = document.getElementById('account-email-full');
     const accountAvatar = document.getElementById('account-avatar');
@@ -412,11 +417,21 @@
       }
     }
 
+    function deriveRole(profile, fallbackEmail = '') {
+      const email = String(profile?.email || fallbackEmail || '').trim().toLowerCase();
+      if (ADMIN_EMAILS.includes(email)) return 'admin';
+      const rawRole = String(profile?.access_role || profile?.role || '').trim().toLowerCase();
+      if (rawRole === 'admin' || rawRole === 'vip' || rawRole === 'guest') return rawRole;
+      if (profile?.is_vip) return 'vip';
+      return 'guest';
+    }
+
     function setLoggedOutView() {
       loggedOutActions.classList.remove('hidden');
       loggedInActions.classList.add('hidden');
+      if (adminLink) adminLink.classList.add('hidden');
       heroVipStatus.textContent = 'Guest';
-      heroAccessText.textContent = 'View / VIP';
+      heroAccessText.textContent = 'Guest';
       heroPointsBalance.textContent = '0';
       dashboardVipStatus.textContent = 'Guest';
       dashboardDownloadAccess.textContent = 'VIP only';
@@ -433,15 +448,17 @@
       accountEmailFull.textContent = email;
       accountAvatar.textContent = initialsFromEmail(email);
 
-      const vipText = profile.is_vip ? 'VIP' : 'Standard';
-      heroVipStatus.textContent = vipText;
-      heroAccessText.textContent = profile.is_vip ? 'VIP / Download' : 'View / VIP';
+      const role = deriveRole(profile, email);
+      const isVip = role === 'vip' || role === 'admin' || !!profile.is_vip;
+      heroVipStatus.textContent = role === 'admin' ? 'Admin' : (isVip ? 'VIP' : 'Guest');
+      heroAccessText.textContent = role === 'admin' ? 'Admin / Full Access' : (isVip ? 'VIP / Download' : 'Guest');
       heroPointsBalance.textContent = String(profile.points_balance ?? 0);
-      dashboardVipStatus.textContent = vipText;
-      dashboardDownloadAccess.textContent = profile.is_vip ? 'Enabled' : 'VIP only';
+      dashboardVipStatus.textContent = role === 'admin' ? 'Admin' : (isVip ? 'VIP' : 'Guest');
+      dashboardDownloadAccess.textContent = role === 'admin' ? 'Full access' : (isVip ? 'Enabled' : 'VIP only');
       dashboardPointsBalance.textContent = String(profile.points_balance ?? 0);
+      if (adminLink) adminLink.classList.toggle('hidden', role !== 'admin');
 
-      applyVipLocks(!!profile.is_vip);
+      applyVipLocks(isVip);
     }
 
     if (accountMenuButton) {
@@ -473,7 +490,7 @@
       const user = data.session.user;
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('email, is_vip, points_balance')
+.select('email, is_vip, points_balance, role, access_role')
         .eq('id', user.id)
         .maybeSingle();
 
@@ -481,7 +498,9 @@
         setLoggedInView({
           email: user.email || '',
           is_vip: false,
-          points_balance: 0
+          points_balance: 0,
+          role: 'guest',
+          access_role: 'guest'
         });
         return;
       }
@@ -489,7 +508,9 @@
       setLoggedInView({
         email: profile.email || user.email || '',
         is_vip: !!profile.is_vip,
-        points_balance: Number(profile.points_balance || 0)
+        points_balance: Number(profile.points_balance || 0),
+        role: profile.role || 'guest',
+        access_role: profile.access_role || profile.role || 'guest'
       });
     }
 
@@ -501,7 +522,7 @@
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select('email, is_vip, points_balance')
+.select('email, is_vip, points_balance, role, access_role')
         .eq('id', session.user.id)
         .maybeSingle();
 
@@ -509,7 +530,9 @@
         setLoggedInView({
           email: session.user.email || '',
           is_vip: false,
-          points_balance: 0
+          points_balance: 0,
+          role: 'guest',
+          access_role: 'guest'
         });
         return;
       }
@@ -517,7 +540,9 @@
       setLoggedInView({
         email: profile.email || session.user.email || '',
         is_vip: !!profile.is_vip,
-        points_balance: Number(profile.points_balance || 0)
+        points_balance: Number(profile.points_balance || 0),
+        role: profile.role || 'guest',
+        access_role: profile.access_role || profile.role || 'guest'
       });
     });
 
