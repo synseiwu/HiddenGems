@@ -128,7 +128,7 @@ window.HiddenGemsApp = (() => {
     const supabase = getSupabaseClient();
     if (!supabase) return profile;
     try {
-      const result = await supabase.from('profiles').select('email, is_vip, points_balance').eq('id', user.id).maybeSingle();
+      const result = await supabase.from('profiles').select('email, is_vip, points_balance, role, access_role').eq('id', user.id).maybeSingle();
       if (result?.data) {
         const merged = { ...profile, ...result.data, email: result.data.email || email };
         storage.cacheProfile(email, merged);
@@ -146,6 +146,8 @@ window.HiddenGemsApp = (() => {
     if (override === 'admin') return 'admin';
     if (override === 'vip') return 'vip';
     if (override === 'guest') return 'guest';
+    const directRole = String(profile?.access_role || profile?.role || '').trim().toLowerCase();
+    if (['admin','vip','guest'].includes(directRole)) return directRole;
     if (profile?.is_vip) return 'vip';
     return 'guest';
   }
@@ -166,7 +168,7 @@ window.HiddenGemsApp = (() => {
     storage.cacheProfile(email, { ...cached, email, is_vip: !!isVip });
     const supabase = getSupabaseClient();
     if (supabase) {
-      try { await supabase.from('profiles').upsert({ id: user.id, email, is_vip: !!isVip, points_balance: Number(cached.points_balance || 0) }); } catch (error) {}
+      try { await supabase.from('profiles').upsert({ id: user.id, email, is_vip: !!isVip, points_balance: Number(cached.points_balance || 0), role: isVip ? 'vip' : 'guest', access_role: isVip ? 'vip' : 'guest' }); } catch (error) {}
     }
     window.dispatchEvent(new CustomEvent('hg:state-changed'));
     return true;
@@ -501,5 +503,5 @@ window.HiddenGemsApp = (() => {
   }
 
   document.addEventListener('DOMContentLoaded', initPage);
-  return { storage, getState, getVideo, getCategory, allVideos, renderCategoryPage, renderVideoPage, renderPointsStore, renderLibraryPage, renderSimplePage, shellHeader, shellFooter, bindCommonUi, addPoints, initialsFromEmail, mountSharedHeader, refreshHeaderUi, signOutUser, syncVipForCurrentUser, canAccessVideo, initVipCheckoutPage };
+  return { storage, getState, getVideo, getCategory, allVideos, renderCategoryPage, renderVideoPage, renderPointsStore, renderLibraryPage, renderSimplePage, renderHomePage, shellHeader, shellFooter, bindCommonUi, addPoints, initialsFromEmail, mountSharedHeader, refreshHeaderUi, signOutUser, syncVipForCurrentUser, canAccessVideo, initVipCheckoutPage };
 })();
