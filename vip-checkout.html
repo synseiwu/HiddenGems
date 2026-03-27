@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>VIP Checkout | Hidden Gems</title>
   <link rel="icon" href="./assets/hidden-gems-logo.png"/>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="./config.js"></script>
   <script defer src="./assets/site.js"></script>
@@ -26,19 +27,21 @@
               <p class="text-neutral-400">$20 deal — was $40</p>
             </div>
           </div>
-          <p class="mt-6 text-neutral-300">This page is ready for your live Stripe VIP checkout link and keeps the rest of your working flow intact.</p>
+          <p class="mt-6 text-neutral-300">This page is ready for your live Stripe VIP checkout link and keeps the rest of your working flow intact. In demo mode, the button below can activate VIP on the currently signed-in account.</p>
           <div class="mt-8 rounded-2xl border border-white/10 bg-black/30 p-5">
             <p class="text-sm uppercase tracking-[0.25em] text-pink-300">${isPlaceholder ? 'Add your Stripe link in config.js' : 'Secure checkout'}</p>
-            <a href="${vipLink}" ${isPlaceholder ? "onclick="event.preventDefault();alert('Add your real VIP Stripe link in config.js first.')"" : ''} class="mt-4 inline-block rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white transition hover:bg-pink-400">Continue to Secure Checkout</a>
+            <a href="${vipLink}" ${isPlaceholder ? `onclick="event.preventDefault();alert('Add your real VIP Stripe link in config.js first.')"` : ""} class="mt-4 inline-block rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white transition hover:bg-pink-400">Continue to Secure Checkout</a>
           </div>
           <div class="mt-8 grid gap-4 md:grid-cols-2">
             <div class="rounded-2xl bg-white/5 p-4"><p class="font-semibold">VIP-only vault</p><p class="mt-1 text-sm text-neutral-400">Special titles reserved for VIP members.</p></div>
             <div class="rounded-2xl bg-white/5 p-4"><p class="font-semibold">Download rights</p><p class="mt-1 text-sm text-neutral-400">VIP remains the only tier with downloads.</p></div>
           </div>
-          <a href="index.html" class="mt-6 inline-block text-sm text-neutral-400 hover:text-white">← Back to ${brand}</a>
+          <button id="demo-activate-vip" class="mt-6 inline-flex rounded-2xl border border-pink-400/30 bg-pink-500/10 px-6 py-3 font-semibold text-pink-100 transition hover:bg-pink-500/20">Activate VIP On This Account</button>
+          <a href="index.html" class="mt-6 ml-4 inline-block text-sm text-neutral-400 hover:text-white">← Back to ${brand}</a>
         </div>
       </main>` + HiddenGemsApp.shellFooter();
     HiddenGemsApp.bindCommonUi();
+    HiddenGemsApp.initVipCheckoutPage && HiddenGemsApp.initVipCheckoutPage();
   })
 </script>
 </body>

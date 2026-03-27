@@ -53,8 +53,8 @@
           </div>
 
           <div class="rounded-2xl bg-neutral-900/80 px-4 py-4">
-            <p class="text-xs uppercase tracking-[0.2em] text-neutral-500">VIP Status</p>
-            <p id="vip-status" class="mt-2 text-lg font-semibold text-white">Loading...</p>
+            <p class="text-xs uppercase tracking-[0.2em] text-neutral-500">Access Role</p>
+            <p id="vip-status" class="mt-2 text-lg font-semibold text-white">Loading...</p><div id="admin-link-wrap" class="mt-4 hidden"><a href="admin.html" class="inline-flex rounded-xl bg-amber-500/20 px-4 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/30">Open Admin Portal</a></div>
           </div>
 
           <div class="rounded-2xl bg-neutral-900/80 px-4 py-4">
@@ -172,12 +172,14 @@
       setStatus('You are currently signed out.', 'error');
     }
 
-    function showLoggedIn(profile) {
+    async function showLoggedIn(profile) {
       authRequired.classList.add('hidden');
       accountShell.classList.remove('hidden');
       userEmail.textContent = profile.email || '';
       avatar.textContent = initialsFromEmail(profile.email || '');
-      vipStatus.textContent = profile.is_vip ? 'VIP Active' : 'Standard Member';
+      const role = window.HiddenGemsApp?.getState ? (await window.HiddenGemsApp.getState()).role : (profile.is_vip ? 'vip' : 'guest');
+      vipStatus.textContent = role.charAt(0).toUpperCase() + role.slice(1);
+      if (role === 'admin') document.getElementById('admin-link-wrap')?.classList.remove('hidden');
       pointsBalance.textContent = String(profile.points_balance ?? 0);
       renderLocalStats();
       setStatus(`Signed in as ${profile.email}`, 'success');

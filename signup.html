@@ -158,7 +158,8 @@
         try {
           const { data, error } = await supabase.auth.signUp({
             email,
-            password
+            password,
+            options: { data: { role: 'guest' } }
           });
 
           console.log('SIGNUP RESULT:', { data, error, email });
