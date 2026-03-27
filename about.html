@@ -124,11 +124,11 @@ window.HiddenGemsApp = (() => {
     if (!user) return { email: '', is_vip: false, points_balance: 0 };
     const email = user.email || '';
     const cached = storage.getCachedProfile(email) || {};
-    const profile = { email, is_vip: false, points_balance: 0, ...cached };
+    const profile = { email, is_vip: false, points_balance: 0, role: 'guest', access_role: 'guest', ...cached };
     const supabase = getSupabaseClient();
     if (!supabase) return profile;
     try {
-      const result = await supabase.from('profiles').select('email, is_vip, points_balance, role, access_role').eq('id', user.id).maybeSingle();
+      const result = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
       if (result?.data) {
         const merged = { ...profile, ...result.data, email: result.data.email || email };
         storage.cacheProfile(email, merged);
@@ -146,8 +146,10 @@ window.HiddenGemsApp = (() => {
     if (override === 'admin') return 'admin';
     if (override === 'vip') return 'vip';
     if (override === 'guest') return 'guest';
-    const directRole = String(profile?.access_role || profile?.role || '').trim().toLowerCase();
-    if (['admin','vip','guest'].includes(directRole)) return directRole;
+    const profileRole = String(profile?.access_role || profile?.role || '').trim().toLowerCase();
+    if (profileRole === 'admin') return 'admin';
+    if (profileRole === 'vip') return 'vip';
+    if (profileRole === 'guest') return 'guest';
     if (profile?.is_vip) return 'vip';
     return 'guest';
   }
@@ -160,6 +162,28 @@ window.HiddenGemsApp = (() => {
     return { user, profile: { ...profile, email }, email, role, localPoints: storage.getPoints(), unlocked: storage.getUnlocked(), totalPoints: storage.getPoints() + Number(profile.points_balance || 0) };
   }
 
+  
+
+async function ensureProfileRow(user, defaults = {}) {
+  if (!user?.id) return null;
+  const supabase = getSupabaseClient();
+  const email = user.email || defaults.email || '';
+  const base = {
+    id: user.id,
+    email,
+    is_vip: !!defaults.is_vip,
+    points_balance: Number(defaults.points_balance || 0),
+    role: defaults.role || 'guest',
+    access_role: defaults.access_role || defaults.role || 'guest'
+  };
+  storage.cacheProfile(email, { ...(storage.getCachedProfile(email) || {}), ...base });
+  if (!supabase) return base;
+  try {
+    await supabase.from('profiles').upsert(base);
+  } catch (error) {}
+  return base;
+}
+
   async function syncVipForCurrentUser(isVip) {
     const user = await getSessionUser();
     if (!user?.email) return false;
@@ -168,7 +192,7 @@ window.HiddenGemsApp = (() => {
     storage.cacheProfile(email, { ...cached, email, is_vip: !!isVip });
     const supabase = getSupabaseClient();
     if (supabase) {
-      try { await supabase.from('profiles').upsert({ id: user.id, email, is_vip: !!isVip, points_balance: Number(cached.points_balance || 0), role: isVip ? 'vip' : 'guest', access_role: isVip ? 'vip' : 'guest' }); } catch (error) {}
+      try { await supabase.from('profiles').upsert({ id: user.id, email, is_vip: !!isVip, role: isVip ? 'vip' : 'guest', access_role: isVip ? 'vip' : 'guest', points_balance: Number(cached.points_balance || 0) }); } catch (error) {}
     }
     window.dispatchEvent(new CustomEvent('hg:state-changed'));
     return true;
@@ -483,6 +507,88 @@ window.HiddenGemsApp = (() => {
   }
 
   function renderSimplePage(title, eyebrow, copy) { applyBg(); document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-5xl px-6 py-14"><div class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">${eyebrow}</p><h1 class="mt-3 text-4xl font-black">${title}</h1><div class="mt-6 max-w-none space-y-4 text-neutral-300">${copy}</div></div></main>` + shellFooter(); bindCommonUi(); }
+
+function renderLoginPage() {
+  applyBg();
+  document.body.innerHTML = shellHeader() + `<main class="mx-auto grid max-w-7xl gap-8 px-6 py-14 lg:grid-cols-[1fr_0.95fr]"><section class="rounded-[2rem] border border-white/10 bg-white/5 p-8 shadow-xl shadow-black/20 backdrop-blur"><span class="inline-flex rounded-full border border-pink-400/30 bg-pink-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] text-pink-300">Log In</span><h2 class="mt-6 text-5xl font-black leading-tight">Welcome back to <span class="text-pink-400">Hidden Gems</span></h2><p class="mt-5 max-w-xl text-lg text-neutral-300">Log in and land back on the homepage so the account menu is visible in the top right.</p><div class="mt-10 grid gap-4"><div class="rounded-[1.5rem] border border-white/10 bg-black/20 p-5"><p class="text-xl font-bold text-white">Guest, VIP, and admin</p><p class="mt-2 text-neutral-400">New accounts start as guest. VIP opens VIP content. Admin can access the full portal.</p></div><div class="rounded-[1.5rem] border border-white/10 bg-black/20 p-5"><p class="text-xl font-bold text-white">Homepage redirect</p><p class="mt-2 text-neutral-400">After login, users return to the homepage instead of being forced into the account page.</p></div></div></section><section class="rounded-[2rem] border border-white/10 bg-white/5 p-7 shadow-xl shadow-black/20 backdrop-blur"><h3 class="text-4xl font-black">Log in to your account</h3><p class="mt-3 text-neutral-300">Use the email and password you created when signing up.</p><form id="login-form" class="mt-8 space-y-5"><div><label for="email" class="mb-2 block text-sm font-medium text-neutral-200">Email address</label><input id="email" type="email" required class="w-full rounded-2xl border border-pink-400/20 bg-black/50 px-4 py-4 text-white outline-none transition focus:border-pink-400" placeholder="you@example.com" /></div><div><label for="password" class="mb-2 block text-sm font-medium text-neutral-200">Password</label><input id="password" type="password" required minlength="6" class="w-full rounded-2xl border border-pink-400/20 bg-black/50 px-4 py-4 text-white outline-none transition focus:border-pink-400" placeholder="Enter your password" /></div><div id="form-message" class="hidden rounded-2xl border px-4 py-3 text-sm"></div><button id="login-submit" type="submit" class="w-full rounded-2xl bg-pink-500 px-6 py-4 font-semibold text-white shadow-xl shadow-pink-500/20 transition hover:bg-pink-400">Log in</button><a href="signup.html" class="block w-full rounded-2xl border border-white/15 px-6 py-4 text-center font-semibold text-white transition hover:bg-white/5">Create account</a></form></section></main>` + shellFooter();
+  bindCommonUi();
+  const show = (text, type = 'info') => {
+    const message = document.getElementById('form-message');
+    const classes = { info: 'border-white/15 bg-white/5 text-white', success: 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200', error: 'border-rose-400/30 bg-rose-500/10 text-rose-200' };
+    message.textContent = text;
+    message.className = `block rounded-2xl border px-4 py-3 text-sm ${classes[type] || classes.info}`;
+  };
+  document.getElementById('login-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const submit = document.getElementById('login-submit');
+    const supabase = getSupabaseClient();
+    if (!supabase) return show('Supabase is not configured correctly in config.js.', 'error');
+    submit.disabled = true; submit.textContent = 'Logging in...'; show('Logging in...', 'info');
+    try {
+      const { error, data } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      if (data?.user) await ensureProfileRow(data.user, { email, role: 'guest', access_role: 'guest', is_vip: false, points_balance: 0 });
+      show('Success. Redirecting to homepage...', 'success');
+      setTimeout(() => { window.location.href = AUTH_CONFIG.redirectAfterLogin || 'index.html'; }, 500);
+    } catch (error) {
+      show(error?.message || 'Login failed.', 'error');
+      submit.disabled = false; submit.textContent = 'Log in';
+    }
+  });
+}
+
+function renderSignupPage() {
+  applyBg();
+  document.body.innerHTML = shellHeader() + `<main class="mx-auto grid max-w-7xl gap-8 px-6 py-14 lg:grid-cols-[1fr_0.95fr]"><section class="rounded-[2rem] border border-white/10 bg-white/5 p-8 shadow-xl shadow-black/20 backdrop-blur"><span class="inline-flex rounded-full border border-pink-400/30 bg-pink-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] text-pink-300">Sign Up</span><h2 class="mt-6 text-5xl font-black leading-tight">Create your <span class="text-pink-400">Hidden Gems</span> account</h2><p class="mt-5 max-w-xl text-lg text-neutral-300">Every new account starts as guest, then can be upgraded to VIP later.</p></section><section class="rounded-[2rem] border border-white/10 bg-white/5 p-7 shadow-xl shadow-black/20 backdrop-blur"><h3 class="text-4xl font-black">Get started</h3><p class="mt-3 text-neutral-300">Create your account, then log in from the homepage flow.</p><form id="signup-form" class="mt-8 space-y-5"><div><label for="signup-email" class="mb-2 block text-sm font-medium text-neutral-200">Email address</label><input id="signup-email" type="email" required class="w-full rounded-2xl border border-pink-400/20 bg-black/50 px-4 py-4 text-white outline-none transition focus:border-pink-400" placeholder="you@example.com" /></div><div><label for="signup-password" class="mb-2 block text-sm font-medium text-neutral-200">Password</label><input id="signup-password" type="password" required minlength="6" class="w-full rounded-2xl border border-pink-400/20 bg-black/50 px-4 py-4 text-white outline-none transition focus:border-pink-400" placeholder="Create a password" /></div><div id="form-message" class="hidden rounded-2xl border px-4 py-3 text-sm"></div><button id="signup-submit" type="submit" class="w-full rounded-2xl bg-pink-500 px-6 py-4 font-semibold text-white shadow-xl shadow-pink-500/20 transition hover:bg-pink-400">Create account</button><a href="login.html" class="block w-full rounded-2xl border border-white/15 px-6 py-4 text-center font-semibold text-white transition hover:bg-white/5">Already have an account?</a></form></section></main>` + shellFooter();
+  bindCommonUi();
+  const show = (text, type = 'info') => {
+    const message = document.getElementById('form-message');
+    const classes = { info: 'border-white/15 bg-white/5 text-white', success: 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200', error: 'border-rose-400/30 bg-rose-500/10 text-rose-200' };
+    message.textContent = text;
+    message.className = `block rounded-2xl border px-4 py-3 text-sm ${classes[type] || classes.info}`;
+  };
+  document.getElementById('signup-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const email = document.getElementById('signup-email').value.trim();
+    const password = document.getElementById('signup-password').value;
+    const submit = document.getElementById('signup-submit');
+    const supabase = getSupabaseClient();
+    if (!supabase) return show('Supabase is not configured correctly in config.js.', 'error');
+    submit.disabled = true; submit.textContent = 'Creating account...'; show('Creating account...', 'info');
+    try {
+      const { error, data } = await supabase.auth.signUp({ email, password });
+      if (error) throw error;
+      if (data?.user) await ensureProfileRow(data.user, { email, role: 'guest', access_role: 'guest', is_vip: false, points_balance: 0 });
+      show('Account created. You can log in now.', 'success');
+      setTimeout(() => { window.location.href = AUTH_CONFIG.redirectAfterSignup || 'login.html'; }, 700);
+    } catch (error) {
+      show(error?.message || 'Signup failed.', 'error');
+      submit.disabled = false; submit.textContent = 'Create account';
+    }
+  });
+}
+
+function renderAccountPage() {
+  applyBg();
+  document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-6xl px-6 py-14"><div class="flex items-center justify-between gap-4"><a href="index.html" class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-300 transition hover:bg-white/10">← Back to Home</a></div><section class="mt-8 grid gap-8 lg:grid-cols-[1.1fr_0.9fr]"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8 shadow-xl shadow-black/20"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Your account</p><h1 class="mt-3 text-4xl font-black">Profile and access</h1><div id="account-panel" class="mt-6 rounded-[1.5rem] border border-white/10 bg-black/20 p-6 text-neutral-300">Loading account...</div></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8 shadow-xl shadow-black/20"><h2 class="text-2xl font-bold">Quick links</h2><div id="account-links" class="mt-6 grid gap-3"></div></div></section></main>` + shellFooter();
+  bindCommonUi();
+  const mount = async () => {
+    const state = await getState();
+    const panel = document.getElementById('account-panel');
+    const links = document.getElementById('account-links');
+    if (!state.email) {
+      panel.innerHTML = '<p class="text-lg text-white">You are not logged in.</p><p class="mt-2">Log in to see your account details.</p><a href="login.html" class="mt-4 inline-flex rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white">Log in</a>';
+      links.innerHTML = '<a href="signup.html" class="rounded-2xl border border-white/15 px-5 py-3 text-white transition hover:bg-white/5">Create account</a>';
+      return;
+    }
+    panel.innerHTML = `<div class="grid gap-4 sm:grid-cols-2"><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Email</p><p class="mt-1 break-all text-lg font-semibold text-white">${escapeHtml(state.email)}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Role</p><p class="mt-1 text-lg font-semibold text-white">${escapeHtml(state.role)}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Points</p><p class="mt-1 text-lg font-semibold text-white">${state.totalPoints}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">VIP</p><p class="mt-1 text-lg font-semibold text-white">${state.role === 'vip' || state.role === 'admin' ? 'Active' : 'Not active'}</p></div></div>`;
+    links.innerHTML = `<a href="my-library.html" class="rounded-2xl border border-white/15 px-5 py-3 text-white transition hover:bg-white/5">My Library</a><a href="points-store.html" class="rounded-2xl border border-white/15 px-5 py-3 text-white transition hover:bg-white/5">Points Store</a><a href="vip-checkout.html" class="rounded-2xl border border-white/15 px-5 py-3 text-white transition hover:bg-white/5">VIP Checkout</a>${state.role === 'admin' ? '<a href="admin.html" class="rounded-2xl border border-amber-400/20 bg-amber-500/10 px-5 py-3 text-amber-200 transition hover:bg-amber-500/20">Admin Portal</a>' : ''}`;
+  };
+  mount();
+  window.addEventListener('hg:state-changed', mount);
+}
   function initHomePage() { getState().then(updateHomeStateUi); window.addEventListener('hg:state-changed', async () => updateHomeStateUi(await getState())); }
   function initVipCheckoutPage() { const activateButton = document.getElementById('demo-activate-vip'); if (!activateButton) return; activateButton.addEventListener('click', async () => { const state = await getState(); if (!state.email) { toast('Log in first so VIP can be attached to your account.', 'error'); window.location.href = 'login.html'; return; } await syncVipForCurrentUser(true); storage.setRoleOverride(state.email, 'vip'); toast('VIP activated for this account.', 'success'); setTimeout(() => window.location.href = 'index.html', 700); }); }
 
@@ -491,6 +597,9 @@ window.HiddenGemsApp = (() => {
     if (key === 'home') { bindCommonUi(); initHomePage(); return; }
     if (['new-releases', 'most-popular', 'behind-the-scenes', 'live-sessions', 'short-films', 'creator-picks', 'vip-exclusives'].includes(key)) { renderCategoryPage(key); return; }
     if (key === 'video') { renderVideoPage(); return; }
+    if (key === 'login') { renderLoginPage(); return; }
+    if (key === 'signup') { renderSignupPage(); return; }
+    if (key === 'account') { renderAccountPage(); return; }
     if (key === 'points-store') { renderPointsStore(); return; }
     if (key === 'my-library') { renderLibraryPage(); return; }
     if (key === 'admin') { renderAdminPage(); return; }
@@ -503,5 +612,5 @@ window.HiddenGemsApp = (() => {
   }
 
   document.addEventListener('DOMContentLoaded', initPage);
-  return { storage, getState, getVideo, getCategory, allVideos, renderCategoryPage, renderVideoPage, renderPointsStore, renderLibraryPage, renderSimplePage, renderHomePage, shellHeader, shellFooter, bindCommonUi, addPoints, initialsFromEmail, mountSharedHeader, refreshHeaderUi, signOutUser, syncVipForCurrentUser, canAccessVideo, initVipCheckoutPage };
+  return { storage, getState, getVideo, getCategory, allVideos, renderCategoryPage, renderVideoPage, renderPointsStore, renderLibraryPage, renderSimplePage, renderLoginPage, renderSignupPage, renderAccountPage, shellHeader, shellFooter, bindCommonUi, addPoints, initialsFromEmail, mountSharedHeader, refreshHeaderUi, signOutUser, syncVipForCurrentUser, canAccessVideo, initVipCheckoutPage };
 })();
