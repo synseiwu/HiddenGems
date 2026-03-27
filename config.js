@@ -16,6 +16,6 @@ window.GEMS_HIDDEN_CONFIG = {
     supabaseUrl: 'https://netolzyxnifogojwwesq.supabase.co',
     supabaseAnonKey: 'sb_publishable_UP52ijiwCiMghxs8OOEmIQ_V0GJR8Hi',
     redirectAfterLogin: 'index.html',
-    redirectAfterSignup: 'login.html'
+    redirectAfterSignup: 'index.html'
   }
 };

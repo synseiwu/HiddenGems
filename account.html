@@ -177,7 +177,7 @@
       accountShell.classList.remove('hidden');
       userEmail.textContent = profile.email || '';
       avatar.textContent = initialsFromEmail(profile.email || '');
-      const role = window.HiddenGemsApp?.getState ? (await window.HiddenGemsApp.getState()).role : (profile.is_vip ? 'vip' : 'guest');
+      const role = window.HiddenGemsApp?.getState ? (await window.HiddenGemsApp.getState()).role : ((profile.role || profile.access_role || '').toLowerCase() || (profile.is_vip ? 'vip' : 'guest'));
       vipStatus.textContent = role.charAt(0).toUpperCase() + role.slice(1);
       if (role === 'admin') document.getElementById('admin-link-wrap')?.classList.remove('hidden');
       pointsBalance.textContent = String(profile.points_balance ?? 0);
@@ -227,7 +227,7 @@
         const profileResult = await withTimeout(
           supabase
             .from('profiles')
-            .select('email, is_vip, points_balance')
+            .select('*')
             .eq('id', user.id)
             .maybeSingle(),
           'Loading your profile'
