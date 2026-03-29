@@ -473,7 +473,7 @@
       const user = data.session.user;
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('email, is_vip, points_balance')
+        .select('email, is_vip, points_balance, role')
         .eq('id', user.id)
         .maybeSingle();
 
@@ -481,7 +481,8 @@
         setLoggedInView({
           email: user.email || '',
           is_vip: false,
-          points_balance: 0
+          points_balance: 0,
+          role: 'guest'
         });
         return;
       }
@@ -489,7 +490,8 @@
       setLoggedInView({
         email: profile.email || user.email || '',
         is_vip: !!profile.is_vip,
-        points_balance: Number(profile.points_balance || 0)
+        points_balance: Number(profile.points_balance || 0),
+        role: profile.role || (profile.is_vip ? 'vip' : 'guest')
       });
     }
 
@@ -501,7 +503,7 @@
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select('email, is_vip, points_balance')
+        .select('email, is_vip, points_balance, role')
         .eq('id', session.user.id)
         .maybeSingle();
 
@@ -509,7 +511,8 @@
         setLoggedInView({
           email: session.user.email || '',
           is_vip: false,
-          points_balance: 0
+          points_balance: 0,
+          role: 'guest'
         });
         return;
       }
@@ -517,7 +520,8 @@
       setLoggedInView({
         email: profile.email || session.user.email || '',
         is_vip: !!profile.is_vip,
-        points_balance: Number(profile.points_balance || 0)
+        points_balance: Number(profile.points_balance || 0),
+        role: profile.role || (profile.is_vip ? 'vip' : 'guest')
       });
     });
 

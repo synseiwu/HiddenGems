@@ -1,21 +1,256 @@
-window.GEMS_HIDDEN_CONFIG = {
-  brandName: 'Hidden Gems',
-  brandShort: 'GH',
-  siteUrl: 'https://YOUR-DOMAIN.com',
-  supportEmail: 'support@YOUR-DOMAIN.com',
-  stripePaymentLinks: {
-    vip: 'https://buy.stripe.com/REPLACE_WITH_YOUR_REAL_VIP_LINK',
-    starter: '',
-    silver: '',
-    gold: '',
-    reserve: ''
-  },
-  adminEmails: ['you@example.com', 'coadmin@example.com'],
-  auth: {
-    provider: 'supabase',
-    supabaseUrl: 'https://netolzyxnifogojwwesq.supabase.co',
-    supabaseAnonKey: 'sb_publishable_UP52ijiwCiMghxs8OOEmIQ_V0GJR8Hi',
-    redirectAfterLogin: 'index.html',
-    redirectAfterSignup: 'login.html'
-  }
-};
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hidden Gems | Account</title>
+  <link rel="icon" href="./assets/hidden-gems-logo.png" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="./config.js"></script>
+  <script defer src="./assets/site.js"></script>
+</head>
+<body class="min-h-screen bg-black text-white" style="background:
+  radial-gradient(circle at top right, rgba(236,72,153,0.22), transparent 30%),
+  radial-gradient(circle at left, rgba(217,70,239,0.14), transparent 24%),
+  #000;">
+  <div id="app-header"></div>
+
+  <main class="mx-auto max-w-6xl px-6 py-14">
+    <a href="index.html" class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-300 transition hover:bg-white/10 hover:text-white">← Back to Home</a>
+
+    <div class="mb-8 mt-8">
+      <p class="text-sm uppercase tracking-[0.25em] text-pink-300">My Account</p>
+      <h2 class="mt-2 text-4xl font-black">Profile and access overview</h2>
+      <p class="mt-3 max-w-2xl text-neutral-300">This page combines your Supabase profile with the local wallet and library flow used across the rest of the site.</p>
+    </div>
+
+    <div id="status-box" class="rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300">Loading your account...</div>
+
+    <div id="auth-required" class="mt-6 hidden rounded-[2rem] border border-rose-400/30 bg-rose-500/10 p-8">
+      <h3 class="text-2xl font-bold text-white">You are not signed in</h3>
+      <p class="mt-3 text-neutral-300">Log in first to access your account page.</p>
+      <div class="mt-6 flex gap-4">
+        <a href="login.html" class="rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white transition hover:bg-pink-400">Log In</a>
+        <a href="signup.html" class="rounded-2xl border border-white/15 px-6 py-3 font-semibold text-white transition hover:bg-white/5">Create Account</a>
+      </div>
+    </div>
+
+    <div id="account-shell" class="mt-6 hidden grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+      <section class="rounded-[2rem] border border-white/10 bg-white/5 p-7 shadow-xl shadow-black/20 backdrop-blur">
+        <div class="flex items-center gap-4">
+          <div id="avatar" class="flex h-16 w-16 items-center justify-center rounded-full bg-pink-500/20 text-xl font-bold text-pink-300">HG</div>
+          <div>
+            <h3 class="text-2xl font-bold">Account Overview</h3>
+            <p class="text-sm text-neutral-400">Signed-in user details</p>
+          </div>
+        </div>
+
+        <div class="mt-8 space-y-4">
+          <div class="rounded-2xl bg-neutral-900/80 px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.2em] text-neutral-500">Email</p>
+            <p id="user-email" class="mt-2 break-all text-lg font-semibold text-white"></p>
+          </div>
+
+          <div class="rounded-2xl bg-neutral-900/80 px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.2em] text-neutral-500">Access Role</p>
+            <p id="vip-status" class="mt-2 text-lg font-semibold text-white">Loading...</p><div id="admin-link-wrap" class="mt-4 hidden"><a href="admin.html" class="inline-flex rounded-xl bg-amber-500/20 px-4 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/30">Open Admin Portal</a></div>
+          </div>
+
+          <div class="rounded-2xl bg-neutral-900/80 px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.2em] text-neutral-500">Profile Points Balance</p>
+            <p id="points-balance" class="mt-2 text-lg font-semibold text-white">Loading...</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="rounded-[2rem] border border-white/10 bg-white/5 p-7 shadow-xl shadow-black/20 backdrop-blur">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <h3 class="text-2xl font-bold">Library Snapshot</h3>
+            <p class="text-sm text-neutral-400">Local unlocks and wallet activity</p>
+          </div>
+          <a href="my-library.html" class="rounded-xl border border-white/15 px-4 py-2 text-sm text-white transition hover:bg-white/5">Open Library</a>
+        </div>
+
+        <div class="mt-8 grid gap-4 md:grid-cols-2">
+          <div class="rounded-2xl bg-neutral-900/80 px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.2em] text-neutral-500">Unlocked Titles</p>
+            <p id="local-unlocked-count" class="mt-2 text-lg font-semibold text-white">0</p>
+          </div>
+          <div class="rounded-2xl bg-neutral-900/80 px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.2em] text-neutral-500">Demo Wallet</p>
+            <p id="local-points-balance" class="mt-2 text-lg font-semibold text-white">0</p>
+          </div>
+        </div>
+
+        <div class="mt-6">
+          <p class="text-xs uppercase tracking-[0.2em] text-neutral-500">Recent Activity</p>
+          <div id="recent-activity" class="mt-3 space-y-3"></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const APP_CONFIG = window.GEMS_HIDDEN_CONFIG || {};
+    const AUTH_CONFIG = APP_CONFIG.auth || {};
+    const SUPABASE_URL = AUTH_CONFIG.supabaseUrl || 'https://netolzyxnifogojwwesq.supabase.co';
+    const SUPABASE_PUBLISHABLE_KEY = AUTH_CONFIG.supabaseAnonKey || 'sb_publishable_UP52ijiwCiMghxs8OOEmIQ_V0GJR8Hi';
+    const REQUEST_TIMEOUT_MS = 10000;
+
+    const statusBox = document.getElementById('status-box');
+    const authRequired = document.getElementById('auth-required');
+    const accountShell = document.getElementById('account-shell');
+    const userEmail = document.getElementById('user-email');
+    const avatar = document.getElementById('avatar');
+    const vipStatus = document.getElementById('vip-status');
+    const pointsBalance = document.getElementById('points-balance');
+    const localUnlockedCount = document.getElementById('local-unlocked-count');
+    const localPointsBalance = document.getElementById('local-points-balance');
+    const recentActivity = document.getElementById('recent-activity');
+
+    function app() {
+      return window.HiddenGemsApp || null;
+    }
+
+    function initialsFromEmail(email) {
+      const helper = app();
+      if (helper && typeof helper.initialsFromEmail === 'function') {
+        return helper.initialsFromEmail(email || '');
+      }
+      const parts = String(email || '').split('@')[0].split(/[._-]+/).filter(Boolean);
+      if (!parts.length) return 'HG';
+      return parts.slice(0, 2).map(part => part[0].toUpperCase()).join('');
+    }
+
+    function withTimeout(promise, label) {
+      return Promise.race([
+        promise,
+        new Promise((_, reject) => {
+          setTimeout(() => reject(new Error(label + ' took too long. Please refresh and try again.')), REQUEST_TIMEOUT_MS);
+        })
+      ]);
+    }
+
+    function setStatus(message, kind = 'default') {
+      statusBox.className = 'rounded-[1.5rem] border px-5 py-4 text-sm';
+      const variants = {
+        default: 'border-white/10 bg-white/5 text-neutral-300',
+        success: 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200',
+        error: 'border-rose-400/30 bg-rose-500/10 text-rose-100'
+      };
+      statusBox.className += ' ' + (variants[kind] || variants.default);
+      statusBox.textContent = message;
+    }
+
+    function renderLocalStats() {
+      const helper = app();
+      const unlocked = helper?.storage?.getUnlocked?.() || [];
+      const localPts = helper?.storage?.getPoints?.() || 0;
+      const tx = helper?.storage?.getTransactions?.() || [];
+
+      localUnlockedCount.textContent = String(unlocked.length);
+      localPointsBalance.textContent = String(localPts);
+      recentActivity.innerHTML = tx.length
+        ? tx.slice(0, 5).map(item => `
+            <div class="flex items-center justify-between rounded-2xl bg-neutral-900/80 px-4 py-4">
+              <div>
+                <p class="font-medium text-white">${item.label}</p>
+                <p class="text-sm text-neutral-400">${new Date(item.at).toLocaleString()}</p>
+              </div>
+              <p class="font-semibold ${item.amount > 0 ? 'text-emerald-300' : 'text-pink-300'}">${item.amount > 0 ? '+' : ''}${item.amount} pts</p>
+            </div>
+          `).join('')
+        : '<p class="text-sm text-neutral-400">No recent local activity yet.</p>';
+    }
+
+    function showLoggedOut() {
+      authRequired.classList.remove('hidden');
+      accountShell.classList.add('hidden');
+      renderLocalStats();
+      setStatus('You are currently signed out.', 'error');
+    }
+
+    async function showLoggedIn(profile) {
+      authRequired.classList.add('hidden');
+      accountShell.classList.remove('hidden');
+      userEmail.textContent = profile.email || '';
+      avatar.textContent = initialsFromEmail(profile.email || '');
+      const role = window.HiddenGemsApp?.getState ? (await window.HiddenGemsApp.getState()).role : (profile.is_vip ? 'vip' : 'guest');
+      vipStatus.textContent = role.charAt(0).toUpperCase() + role.slice(1);
+      if (role === 'admin') document.getElementById('admin-link-wrap')?.classList.remove('hidden');
+      pointsBalance.textContent = String(profile.points_balance ?? 0);
+      renderLocalStats();
+      setStatus(`Signed in as ${profile.email}`, 'success');
+    }
+
+    function showProfileFallback(user, message) {
+      authRequired.classList.add('hidden');
+      accountShell.classList.remove('hidden');
+      userEmail.textContent = user?.email || '';
+      avatar.textContent = initialsFromEmail(user?.email || '');
+      vipStatus.textContent = 'Profile row not found';
+      pointsBalance.textContent = '0';
+      renderLocalStats();
+      setStatus(message, 'error');
+    }
+
+    async function initAccountPage() {
+      try {
+        const helper = app();
+        try {
+          helper?.mountSharedHeader?.();
+        } catch (headerErr) {
+          console.warn('Header failed to mount on account page:', headerErr);
+        }
+
+        renderLocalStats();
+        window.addEventListener('hg:state-changed', renderLocalStats);
+
+        if (!window.supabase || typeof window.supabase.createClient !== 'function') {
+          setStatus('Supabase failed to load. Disable shields/extensions for this page and refresh.', 'error');
+          return;
+        }
+
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+        const sessionResult = await withTimeout(supabase.auth.getSession(), 'Checking your session');
+        const sessionData = sessionResult?.data;
+        const sessionError = sessionResult?.error;
+
+        if (sessionError || !sessionData?.session?.user) {
+          showLoggedOut();
+          return;
+        }
+
+        const user = sessionData.session.user;
+        const profileResult = await withTimeout(
+          supabase
+            .from('profiles')
+            .select('email, is_vip, points_balance, role')
+            .eq('id', user.id)
+            .maybeSingle(),
+          'Loading your profile'
+        );
+
+        const profile = profileResult?.data;
+        const profileError = profileResult?.error;
+
+        if (profileError || !profile) {
+          showProfileFallback(user, profileError?.message || 'Your account is signed in, but no profile row exists yet.');
+          return;
+        }
+
+        showLoggedIn(profile);
+      } catch (err) {
+        console.error('ACCOUNT PAGE ERROR:', err);
+        const message = err?.message || 'Unexpected account loading error.';
+        setStatus(message, 'error');
+        renderLocalStats();
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', initAccountPage);
+  </script>
+</body>
+</html>
