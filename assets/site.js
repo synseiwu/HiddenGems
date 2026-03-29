@@ -121,14 +121,14 @@ window.HiddenGemsApp = (() => {
 
   async function getProfile() {
     const user = await getSessionUser();
-    if (!user) return { email: '', is_vip: false, points_balance: 0 };
+    if (!user) return { email: '', is_vip: false, points_balance: 0, role: 'guest' };
     const email = user.email || '';
     const cached = storage.getCachedProfile(email) || {};
-    const profile = { email, is_vip: false, points_balance: 0, ...cached };
+    const profile = { email, is_vip: false, points_balance: 0, role: 'guest', ...cached };
     const supabase = getSupabaseClient();
     if (!supabase) return profile;
     try {
-      const result = await supabase.from('profiles').select('email, is_vip, points_balance').eq('id', user.id).maybeSingle();
+      const result = await supabase.from('profiles').select('email, is_vip, points_balance, role').eq('id', user.id).maybeSingle();
       if (result?.data) {
         const merged = { ...profile, ...result.data, email: result.data.email || email };
         storage.cacheProfile(email, merged);
@@ -146,6 +146,7 @@ window.HiddenGemsApp = (() => {
     if (override === 'admin') return 'admin';
     if (override === 'vip') return 'vip';
     if (override === 'guest') return 'guest';
+    if (profile?.role && ['guest','vip','admin'].includes(String(profile.role).toLowerCase())) return String(profile.role).toLowerCase();
     if (profile?.is_vip) return 'vip';
     return 'guest';
   }
@@ -166,7 +167,7 @@ window.HiddenGemsApp = (() => {
     storage.cacheProfile(email, { ...cached, email, is_vip: !!isVip });
     const supabase = getSupabaseClient();
     if (supabase) {
-      try { await supabase.from('profiles').upsert({ id: user.id, email, is_vip: !!isVip, points_balance: Number(cached.points_balance || 0) }); } catch (error) {}
+      try { await supabase.from('profiles').upsert({ id: user.id, email, is_vip: !!isVip, points_balance: Number(cached.points_balance || 0), role: isVip ? 'vip' : (cached.role || 'guest') }); } catch (error) {}
     }
     window.dispatchEvent(new CustomEvent('hg:state-changed'));
     return true;
@@ -445,7 +446,7 @@ window.HiddenGemsApp = (() => {
     const mount = async () => {
       const state = await getState();
       const gate = document.getElementById('admin-gate');
-      if (state.role !== 'admin') { gate.innerHTML = `<div class="rounded-[2rem] border border-amber-400/30 bg-amber-500/10 p-8"><p class="text-sm uppercase tracking-[0.25em] text-amber-200">Admin only</p><h1 class="mt-3 text-4xl font-black">Access denied</h1><p class="mt-4 max-w-2xl text-neutral-200">Only emails listed as admins in config.js can open this page.</p><a href="index.html" class="mt-6 inline-flex rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Back to Home</a></div>`; return; }
+      if (state.role !== 'admin') { gate.innerHTML = `<div class="rounded-[2rem] border border-amber-400/30 bg-amber-500/10 p-8"><p class="text-sm uppercase tracking-[0.25em] text-amber-200">Admin only</p><h1 class="mt-3 text-4xl font-black">Access denied</h1><p class="mt-4 max-w-2xl text-neutral-200">Only accounts marked admin in your profile or listed in config.js can open this page.</p><a href="index.html" class="mt-6 inline-flex rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Back to Home</a></div>`; return; }
       const categories = Object.entries(allCategories()).map(([slug, category]) => `<option value="${slug}">${escapeHtml(category.title)}</option>`).join('');
       gate.innerHTML = `<section class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Admin Portal</p><h1 class="mt-3 text-4xl font-black">Manage videos, pricing, links, and user roles</h1><p class="mt-4 max-w-3xl text-neutral-300">This panel is front-end managed. It is good for a static/demo site, but true security and payments still need backend enforcement later.</p></section><section class="mt-8 grid gap-8 xl:grid-cols-[1.1fr_0.9fr]"><div class="space-y-8"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">Add video</h2><form id="admin-add-video-form" class="mt-6 grid gap-4 md:grid-cols-2"><input required name="title" placeholder="Video title" class="rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><input required name="image" placeholder="Image URL" class="rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><input required name="videoUrl" placeholder="Video link / destination URL" class="rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white md:col-span-2" /><textarea required name="description" placeholder="Description" class="rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white md:col-span-2"></textarea><select name="categorySlug" class="rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white">${categories}</select><select name="access" class="rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"><option value="guest">Guest / Standard</option><option value="vip">VIP</option></select><input required type="number" min="0" name="points" placeholder="Points price" class="rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><input name="categoryTitle" placeholder="Optional custom category title" class="rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><button class="rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white md:col-span-2">Add video</button></form></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><div class="flex items-center justify-between gap-4"><h2 class="text-2xl font-bold">Manage catalog</h2><a href="index.html" class="rounded-xl border border-white/15 px-4 py-2 text-sm text-white">Back to site</a></div><div id="admin-video-list" class="mt-6 space-y-4"></div></div></div><div class="space-y-8"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">Role manager</h2><p class="mt-2 text-sm text-neutral-400">Use this to mark a user as guest, VIP, or admin on this site.</p><form id="admin-role-form" class="mt-6 space-y-4"><input required type="email" name="email" placeholder="user@example.com" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><select name="role" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"><option value="guest">Guest</option><option value="vip">VIP</option><option value="admin">Admin</option></select><button class="w-full rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Save role</button></form><div id="admin-role-list" class="mt-6 space-y-3"></div></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">VIP quick actions</h2><p class="mt-2 text-sm text-neutral-400">If your Stripe flow is still placeholder-based, you can activate VIP on the current signed-in account from the VIP page.</p><a href="vip-checkout.html" class="mt-4 inline-flex rounded-2xl border border-white/15 px-5 py-3 text-white">Open VIP Checkout Page</a></div></div></section>`;
       const renderRoleList = () => {
@@ -472,7 +473,7 @@ window.HiddenGemsApp = (() => {
         const role = String(form.get('role') || 'guest').trim();
         storage.setRoleOverride(email, role);
         const cached = storage.getCachedProfile(email) || { email, points_balance: 0, is_vip: false };
-        storage.cacheProfile(email, { ...cached, email, is_vip: role === 'vip' || role === 'admin' });
+        storage.cacheProfile(email, { ...cached, email, is_vip: role === 'vip' || role === 'admin', role });
         toast('Role saved.', 'success'); event.currentTarget.reset(); renderRoleList(); window.dispatchEvent(new CustomEvent('hg:state-changed'));
       });
       renderRoleList(); renderVideoList();
