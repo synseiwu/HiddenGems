@@ -1,1 +1,21 @@
-<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'/><meta name='viewport' content='width=device-width, initial-scale=1.0'/><title>Privacy Policy</title><link rel='icon' href='./assets/hidden-gems-logo.png'/><script src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2'></script><script src='https://cdn.tailwindcss.com'></script><script src='./config.js?v=20260327-clean'></script><script defer src='./assets/site.js?v=20260327-clean'></script></head><body><script>window.addEventListener('DOMContentLoaded',()=>HiddenGemsApp.renderSimplePage("Privacy Policy","Privacy","<p>Hidden Gems collects account information needed to authenticate users, track access, and manage purchases. Replace this placeholder with your final policy before launch.</p><p>You should include what data you collect, how payments are processed, and how users can request deletion.</p>"))</script></body></html>
+Hidden Gems launch handoff
+
+This package keeps the working session/UI fix version and adds the final live-ready pieces.
+
+1) Open config.js
+2) Replace siteUrl with your real domain
+3) Replace supportEmail with your real business email
+4) Paste your real Stripe VIP link into stripePaymentLinks.vip
+5) Optional: paste point-pack Stripe links into starter / silver / gold / reserve
+6) Keep the current Supabase values if they are already your real project
+7) In Supabase Auth, set your site URL and redirect URL to your live domain/account.html
+8) In Stripe, set success URL to your-domain/success.html
+9) In Stripe, set cancel URL to your-domain/cancel.html
+10) Replace the legal placeholder wording in privacy.html, terms.html, and refund-policy.html
+11) Upload every file in this folder to your host
+
+Notes:
+- If point-pack Stripe links are left blank, the Points Store keeps its current demo wallet behavior.
+- VIP checkout is centralized in config.js.
+- Branding is now Hidden Gems.
+- This package keeps the working sign-in / session UI behavior from your uploaded version.
