@@ -37,6 +37,55 @@ window.HiddenGemsApp = (() => {
     localStorage.setItem(key, JSON.stringify(value));
   }
 
+  const MEDIA_DB_NAME = 'hidden_gems_media';
+  const MEDIA_STORE_NAME = 'video_files';
+
+  function openMediaDb() {
+    return new Promise((resolve, reject) => {
+      if (!window.indexedDB) return reject(new Error('IndexedDB is not available.'));
+      const request = window.indexedDB.open(MEDIA_DB_NAME, 1);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(MEDIA_STORE_NAME)) db.createObjectStore(MEDIA_STORE_NAME);
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error('Unable to open media storage.'));
+    });
+  }
+
+  async function saveVideoBlob(ref, file) {
+    if (!ref || !file) return '';
+    const db = await openMediaDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(MEDIA_STORE_NAME, 'readwrite');
+      tx.objectStore(MEDIA_STORE_NAME).put(file, ref);
+      tx.oncomplete = () => resolve(ref);
+      tx.onerror = () => reject(tx.error || new Error('Unable to save uploaded video file.'));
+    });
+  }
+
+  async function getVideoBlob(ref) {
+    if (!ref) return null;
+    const db = await openMediaDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(MEDIA_STORE_NAME, 'readonly');
+      const request = tx.objectStore(MEDIA_STORE_NAME).get(ref);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error || new Error('Unable to load uploaded video file.'));
+    });
+  }
+
+  async function removeVideoBlob(ref) {
+    if (!ref) return;
+    const db = await openMediaDb();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(MEDIA_STORE_NAME, 'readwrite');
+      tx.objectStore(MEDIA_STORE_NAME).delete(ref);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error('Unable to remove uploaded video file.'));
+    });
+  }
+
   const storage = {
     getPoints() { return Number(localStorage.getItem(KEYS.points) || '0'); },
     setPoints(value) { localStorage.setItem(KEYS.points, String(Math.max(0, Number(value) || 0))); },
@@ -107,7 +156,8 @@ window.HiddenGemsApp = (() => {
           categoryTitle: item[8],
           videoFile: item[9] || '',
           videoFileName: item[10] || '',
-          videoMimeType: item[11] || ''
+          videoMimeType: item[11] || '',
+          videoFileRef: item[12] || ''
         }
       : item;
     const base = { ...fallback, ...sourceItem };
@@ -120,7 +170,8 @@ window.HiddenGemsApp = (() => {
       videoFile: String(base.videoFile || '').trim(),
       videoFileName: String(base.videoFileName || '').trim(),
       videoMimeType: String(base.videoMimeType || '').trim(),
-      sourceType: String(base.sourceType || (base.videoFile ? 'file' : 'link')).trim() === 'file' ? 'file' : 'link',
+      videoFileRef: String(base.videoFileRef || '').trim(),
+      sourceType: String(base.sourceType || (base.videoFile || base.videoFileRef ? 'file' : 'link')).trim() === 'file' ? 'file' : 'link',
       categorySlug: String(base.categorySlug || 'creator-picks').trim(),
       categoryTitle: String(base.categoryTitle || '').trim(),
       category: String(base.category || base.categoryTitle || '').trim(),
@@ -131,7 +182,8 @@ window.HiddenGemsApp = (() => {
   }
 
   function getVideoSource(video) {
-    if (video?.videoFile) return { type: 'file', value: video.videoFile, mimeType: video.videoMimeType || '', fileName: video.videoFileName || '' };
+    if (video?.videoFile) return { type: 'file', value: video.videoFile, mimeType: video.videoMimeType || '', fileName: video.videoFileName || '', ref: video.videoFileRef || '' };
+    if (video?.videoFileRef) return { type: 'file', value: '', mimeType: video.videoMimeType || '', fileName: video.videoFileName || '', ref: video.videoFileRef };
     if (video?.videoUrl) return { type: 'link', value: video.videoUrl };
     return { type: 'none', value: '' };
   }
@@ -261,7 +313,8 @@ window.HiddenGemsApp = (() => {
             videoFile: override.videoFile || '',
             videoFileName: override.videoFileName || '',
             videoMimeType: override.videoMimeType || '',
-            sourceType: override.videoFile ? 'file' : (override.sourceType || 'link'),
+            videoFileRef: override.videoFileRef || '',
+            sourceType: (override.videoFile || override.videoFileRef) ? 'file' : (override.sourceType || 'link'),
             categorySlug: override.categorySlug || slug,
             categoryTitle: override.categoryTitle || category.title,
             category: override.categoryTitle || category.title,
@@ -438,22 +491,13 @@ window.HiddenGemsApp = (() => {
 
     const categorySection = document.getElementById('categories');
     if (categorySection) {
-      const homeCards = Array.from(categorySection.querySelectorAll('#category-grid-home > div'));
-      homeCards.forEach((card) => {
-        const link = card.querySelector('a[href$=".html"]');
-        const href = link?.getAttribute('href') || '';
+      categorySection.querySelectorAll('a[href$=".html"]').forEach((link) => {
+        const href = link.getAttribute('href') || '';
         const slug = href.replace(/\.html$/i, '').trim();
-        const heading = card.querySelector('h4');
-        const badge = card.querySelector('div.inline-flex.rounded-2xl');
-        const fallbackSlug = String(heading?.textContent || '')
-          .trim()
-          .toLowerCase()
-          .replace(/&/g, 'and')
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/^-+|-+$/g, '');
-        const resolvedSlug = categories[slug] ? slug : fallbackSlug;
-        if (!badge || !categories[resolvedSlug]) return;
-        badge.textContent = `${categories[resolvedSlug].videos.length} videos`;
+        if (!categories[slug]) return;
+        const card = link.closest('div.rounded-\[1\.75rem\], #vip-category-card') || link.closest('div');
+        const badge = card?.querySelector('div.inline-flex.rounded-2xl');
+        if (badge) badge.textContent = `${categories[slug].videos.length} videos`;
       });
     }
 
@@ -536,7 +580,20 @@ window.HiddenGemsApp = (() => {
         const source = getVideoSource(video);
         banner.innerHTML = `<p class="text-sm uppercase tracking-[0.2em] text-emerald-300">Access granted</p><h3 class="mt-2 text-2xl font-bold text-white">You can open this video</h3><p class="mt-3 text-neutral-300">${source.type === 'file' ? 'Your uploaded video file is ready below.' : source.type === 'link' ? 'Your custom video link is attached below.' : 'Add a custom video source from the admin portal whenever you are ready.'}</p>`;
         if (source.type === 'file') {
-          player.innerHTML = `<div class="space-y-4"><p class="text-neutral-300">Uploaded video file:</p><video controls playsinline preload="metadata" class="w-full rounded-2xl border border-white/10 bg-black"><source src="${escapeHtml(source.value)}" type="${escapeHtml(source.mimeType || 'video/mp4')}" />Your browser does not support embedded video playback for this file.</video>${source.fileName ? `<p class="text-sm text-neutral-500 break-all">${escapeHtml(source.fileName)}</p>` : ''}</div>`;
+          let playableSrc = source.value;
+          if (!playableSrc && source.ref) {
+            try {
+              const blob = await getVideoBlob(source.ref);
+              if (blob) playableSrc = URL.createObjectURL(blob);
+            } catch (error) {
+              console.error(error);
+            }
+          }
+          if (playableSrc) {
+            player.innerHTML = `<div class="space-y-4"><p class="text-neutral-300">Uploaded video file:</p><video controls playsinline preload="metadata" class="w-full rounded-2xl border border-white/10 bg-black"><source src="${escapeHtml(playableSrc)}" type="${escapeHtml(source.mimeType || 'video/mp4')}" />Your browser does not support embedded video playback for this file.</video>${source.fileName ? `<p class="text-sm text-neutral-500 break-all">${escapeHtml(source.fileName)}</p>` : ''}</div>`;
+          } else {
+            player.innerHTML = '<p class="text-neutral-400">This uploaded video file was not found in browser storage anymore. Re-save the file from the admin page.</p>';
+          }
           actionButton.textContent = 'Watch Video'; actionButton.href = '#video-player-shell'; actionButton.target = '_self'; actionButton.rel = ''; actionButton.onclick = null;
         } else if (source.type === 'link') {
           player.innerHTML = `<div class="space-y-4"><p class="text-neutral-300">Video destination:</p><a href="${escapeHtml(source.value)}" target="_blank" rel="noopener noreferrer" class="inline-flex rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Open Video Link</a><p class="text-sm text-neutral-500 break-all">${escapeHtml(source.value)}</p></div>`;
@@ -678,9 +735,13 @@ window.HiddenGemsApp = (() => {
           if (video) populateVideoForm(video);
         }));
 
-        document.querySelectorAll('[data-delete-video]').forEach((button) => button.addEventListener('click', () => {
+        document.querySelectorAll('[data-delete-video]').forEach((button) => button.addEventListener('click', async () => {
           const id = button.dataset.deleteVideo;
           const custom = storage.getCustomVideos();
+          const targetCustom = custom.find((item) => item.id === id);
+          const targetOverride = storage.getVideoOverrides()[id] || null;
+          if (targetCustom?.videoFileRef) { try { await removeVideoBlob(targetCustom.videoFileRef); } catch (error) {} }
+          if (targetOverride?.videoFileRef) { try { await removeVideoBlob(targetOverride.videoFileRef); } catch (error) {} }
           if (custom.some((item) => item.id === id)) {
             storage.setCustomVideos(custom.filter((item) => item.id !== id));
           } else {
@@ -706,12 +767,13 @@ window.HiddenGemsApp = (() => {
       form.elements.videoUrl.addEventListener('input', updateSourceNote);
       form.elements.videoFile?.addEventListener('change', async (event) => {
         const file = event.target.files?.[0];
-        if (!file) { videoData = ''; videoMimeType = ''; videoFileName = ''; updateSourceNote(); return; }
+        if (!file) { videoData = ''; videoMimeType = ''; videoFileName = ''; videoFileRef = ''; updateSourceNote(); return; }
         if (!/video\/(mp4|webm|quicktime)/i.test(file.type) && !/\.(mp4|webm|mov)$/i.test(file.name || '')) { toast('Video file must be MP4, WEBM, or MOV.', 'error'); event.target.value = ''; return; }
         try {
           videoData = await readFileAsDataUrl(file);
           videoMimeType = file.type || '';
           videoFileName = file.name || '';
+          videoFileRef = '';
           updateSourceNote();
         } catch (error) { toast('Video upload failed.', 'error'); }
       });
@@ -732,7 +794,8 @@ window.HiddenGemsApp = (() => {
           videoFile: videoData,
           videoFileName,
           videoMimeType,
-          sourceType: videoData ? 'file' : 'link',
+          videoFileRef,
+          sourceType: (videoData || videoFileRef) ? 'file' : 'link',
           categorySlug: String(data.get('categorySlug') || 'creator-picks').trim(),
           categoryTitle: String(data.get('categoryTitle') || '').trim(),
           access: String(data.get('access') || 'guest').trim(),
@@ -742,35 +805,49 @@ window.HiddenGemsApp = (() => {
 
         if (!item.title || !item.description) { toast('Title and description are required.', 'error'); return; }
         if (!item.image) { toast('Add a thumbnail upload or image URL.', 'error'); return; }
-        if (!item.videoFile && !item.videoUrl) { toast('Add a video file or a video link.', 'error'); return; }
+        if (!item.videoFile && !item.videoFileRef && !item.videoUrl) { toast('Add a video file or a video link.', 'error'); return; }
 
-        if (isCustom) {
-          const items = storage.getCustomVideos().filter((video) => video.id !== id);
-          items.push(item);
-          storage.setCustomVideos(items);
-        } else {
-          storage.setVideoOverride(id, {
-            title: item.title,
-            description: item.description,
-            image: item.image,
-            videoUrl: item.videoUrl,
-            videoFile: item.videoFile,
-            videoFileName: item.videoFileName,
-            videoMimeType: item.videoMimeType,
-            sourceType: item.sourceType,
-            categorySlug: item.categorySlug,
-            categoryTitle: item.categoryTitle,
-            access: item.access,
-            points: item.points
-          });
-          storage.setVideoPoints(id, item.points);
-          storage.setVideoLink(id, item.videoUrl);
+        try {
+          if (form.elements.videoFile?.files?.[0]) {
+            const blobRef = `hg-video-${id}`;
+            await saveVideoBlob(blobRef, form.elements.videoFile.files[0]);
+            item.videoFileRef = blobRef;
+            item.videoFile = '';
+            item.sourceType = 'file';
+          }
+
+          if (isCustom) {
+            const items = storage.getCustomVideos().filter((video) => video.id !== id);
+            items.push(item);
+            storage.setCustomVideos(items);
+          } else {
+            storage.setVideoOverride(id, {
+              title: item.title,
+              description: item.description,
+              image: item.image,
+              videoUrl: item.videoUrl,
+              videoFile: item.videoFile,
+              videoFileRef: item.videoFileRef,
+              videoFileName: item.videoFileName,
+              videoMimeType: item.videoMimeType,
+              sourceType: item.sourceType,
+              categorySlug: item.categorySlug,
+              categoryTitle: item.categoryTitle,
+              access: item.access,
+              points: item.points
+            });
+            storage.setVideoPoints(id, item.points);
+            storage.setVideoLink(id, item.videoUrl);
+          }
+
+          resetVideoForm();
+          renderVideoList();
+          toast(`Video saved as ${item.access.toUpperCase()}.`, 'success');
+          window.dispatchEvent(new CustomEvent('hg:state-changed'));
+        } catch (error) {
+          console.error(error);
+          toast('Video file could not be saved. Try a smaller file or save a direct video link instead.', 'error');
         }
-
-        resetVideoForm();
-        renderVideoList();
-        toast(`Video saved as ${item.access.toUpperCase()}.`, 'success');
-        window.dispatchEvent(new CustomEvent('hg:state-changed'));
       });
 
       resetButton.addEventListener('click', resetVideoForm);
