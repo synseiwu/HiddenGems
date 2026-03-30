@@ -20,7 +20,8 @@ window.HiddenGemsApp = (() => {
     roleOverrides: 'hg_role_overrides',
     profileCache: 'hg_profile_cache',
     pointsOverrides: 'hg_points_overrides',
-    linkOverrides: 'hg_link_overrides'
+    linkOverrides: 'hg_link_overrides',
+    videoOverrides: 'hg_video_overrides'
   };
 
   function readJson(key, fallback) {
@@ -62,6 +63,9 @@ window.HiddenGemsApp = (() => {
     setVideoPoints(id, points) { const map = this.getPointsOverrides(); map[id] = Number(points) || 0; writeJson(KEYS.pointsOverrides, map); },
     getLinkOverrides() { return readJson(KEYS.linkOverrides, {}); },
     setVideoLink(id, url) { const map = this.getLinkOverrides(); map[id] = String(url || '').trim(); writeJson(KEYS.linkOverrides, map); },
+    getVideoOverrides() { return readJson(KEYS.videoOverrides, {}); },
+    setVideoOverride(id, data) { const map = this.getVideoOverrides(); map[id] = { ...(map[id] || {}), ...data }; writeJson(KEYS.videoOverrides, map); },
+    removeVideoOverride(id) { const map = this.getVideoOverrides(); delete map[id]; writeJson(KEYS.videoOverrides, map); },
     cacheProfile(email, data) { if (!email) return; const map = readJson(KEYS.profileCache, {}); map[String(email).toLowerCase()] = data; writeJson(KEYS.profileCache, map); },
     getCachedProfile(email) { const map = readJson(KEYS.profileCache, {}); return map[String(email || '').toLowerCase()] || null; }
   };
@@ -77,6 +81,65 @@ window.HiddenGemsApp = (() => {
   function qs(name) { return new URLSearchParams(window.location.search).get(name); }
   function currentPageKey() { const page = (location.pathname.split('/').pop() || 'index.html').toLowerCase(); return !page || page === 'index.html' ? 'home' : page.replace(/\.html$/, ''); }
   function escapeHtml(value) { return String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]); }
+
+
+  function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      if (!file) return resolve('');
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('Unable to read file.'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function normalizeVideoItem(item = {}, fallback = {}) {
+    const sourceItem = Array.isArray(item)
+      ? {
+          id: item[0],
+          title: item[1],
+          description: item[2],
+          points: item[3],
+          image: item[4],
+          videoUrl: item[5] || '',
+          access: item[6],
+          categorySlug: item[7],
+          categoryTitle: item[8],
+          videoFile: item[9] || '',
+          videoFileName: item[10] || '',
+          videoMimeType: item[11] || ''
+        }
+      : item;
+    const base = { ...fallback, ...sourceItem };
+    return {
+      id: String(base.id || fallback.id || ('custom-' + Date.now())).trim(),
+      title: String(base.title || '').trim(),
+      description: String(base.description || '').trim(),
+      image: String(base.image || '').trim(),
+      videoUrl: String(base.videoUrl || '').trim(),
+      videoFile: String(base.videoFile || '').trim(),
+      videoFileName: String(base.videoFileName || '').trim(),
+      videoMimeType: String(base.videoMimeType || '').trim(),
+      sourceType: String(base.sourceType || (base.videoFile ? 'file' : 'link')).trim() === 'file' ? 'file' : 'link',
+      categorySlug: String(base.categorySlug || 'creator-picks').trim(),
+      categoryTitle: String(base.categoryTitle || '').trim(),
+      category: String(base.category || base.categoryTitle || '').trim(),
+      access: String(base.access || 'guest').trim().toLowerCase() === 'vip' ? 'vip' : 'guest',
+      points: Math.max(0, Number(base.points) || 0),
+      isCustom: !!base.isCustom
+    };
+  }
+
+  function getVideoSource(video) {
+    if (video?.videoFile) return { type: 'file', value: video.videoFile, mimeType: video.videoMimeType || '', fileName: video.videoFileName || '' };
+    if (video?.videoUrl) return { type: 'link', value: video.videoUrl };
+    return { type: 'none', value: '' };
+  }
+
+  function isPlayableVideoFile(video) {
+    return getVideoSource(video).type === 'file';
+  }
+
 
   function toast(message, type = 'info') {
     const colors = {
@@ -178,30 +241,61 @@ window.HiddenGemsApp = (() => {
     const hidden = new Set(storage.getHiddenVideos());
     const pointOverrides = storage.getPointsOverrides();
     const linkOverrides = storage.getLinkOverrides();
+    const videoOverrides = storage.getVideoOverrides();
+
     Object.entries(catalog).forEach(([slug, category]) => {
       category.slug = slug;
       category.access = category.vip ? 'vip' : 'guest';
-      category.videos = (category.videos || []).filter((video) => !hidden.has(video[0])).map((video) => {
-        const id = video[0];
-        return [id, video[1], video[2], Object.prototype.hasOwnProperty.call(pointOverrides, id) ? Number(pointOverrides[id]) : Number(video[3] || 0), video[4], linkOverrides[id] || ''];
-      });
+      category.videos = (category.videos || [])
+        .filter((video) => !hidden.has(video[0]))
+        .map((video) => {
+          const id = video[0];
+          const override = videoOverrides[id] || {};
+          return normalizeVideoItem({
+            id,
+            title: override.title ?? video[1],
+            description: override.description ?? video[2],
+            points: Object.prototype.hasOwnProperty.call(pointOverrides, id) ? Number(pointOverrides[id]) : Number((override.points ?? video[3]) || 0),
+            image: override.image ?? video[4],
+            videoUrl: override.videoUrl ?? (linkOverrides[id] || ''),
+            videoFile: override.videoFile || '',
+            videoFileName: override.videoFileName || '',
+            videoMimeType: override.videoMimeType || '',
+            sourceType: override.videoFile ? 'file' : (override.sourceType || 'link'),
+            categorySlug: override.categorySlug || slug,
+            categoryTitle: override.categoryTitle || category.title,
+            category: override.categoryTitle || category.title,
+            access: override.access || (category.vip ? 'vip' : 'guest'),
+            isCustom: false
+          });
+        });
     });
-    for (const video of storage.getCustomVideos()) {
+
+    for (const rawVideo of storage.getCustomVideos()) {
+      const video = normalizeVideoItem({ ...normalizeVideoItem(rawVideo), ...rawVideo, isCustom: true });
       const slug = video.categorySlug || 'creator-picks';
       if (!catalog[slug]) {
-        catalog[slug] = { title: video.categoryTitle || slug.replace(/-/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase()), subtitle: 'Custom admin-managed category.', count: 'Custom', slug, access: video.access === 'vip' ? 'vip' : 'guest', videos: [] };
+        catalog[slug] = { title: video.categoryTitle || slug.replace(/-/g, ' ').replace(/\w/g, (m) => m.toUpperCase()), subtitle: 'Custom admin-managed category.', count: 'Custom', slug, access: video.access, videos: [] };
       }
-      catalog[slug].videos.push([video.id, video.title, video.description, Number(video.points || 0), video.image, video.videoUrl || '']);
-      if (video.access === 'vip') catalog[slug].vip = true;
+      catalog[slug].videos.push({ ...video, category: catalog[slug].title, categoryTitle: catalog[slug].title });
     }
+
+    Object.values(catalog).forEach((category) => {
+      category.vip = (category.videos || []).some((video) => String(video.access || '').toLowerCase() === 'vip');
+      category.access = category.vip ? 'vip' : 'guest';
+      category.videos = (category.videos || []).map((video) => ({ ...video, category: video.category || category.title, categoryTitle: video.categoryTitle || category.title }));
+    });
     return catalog;
   }
 
   function allVideos() {
     const catalog = allCategories();
-    const customIds = new Set(storage.getCustomVideos().map((item) => item.id));
     return Object.entries(catalog).flatMap(([slug, category]) => (category.videos || []).map((video) => ({
-      id: video[0], title: video[1], description: video[2], points: Number(video[3] || 0), image: video[4], videoUrl: video[5] || '', category: category.title, categorySlug: slug, access: category.vip || category.access === 'vip' ? 'vip' : 'guest', vip: category.vip || category.access === 'vip', isCustom: customIds.has(video[0])
+      ...normalizeVideoItem(video),
+      category: category.title,
+      categorySlug: video.categorySlug || slug,
+      access: video.access === 'vip' ? 'vip' : 'guest',
+      vip: video.access === 'vip'
     })));
   }
 
@@ -403,9 +497,18 @@ window.HiddenGemsApp = (() => {
         player.innerHTML = '<p class="text-neutral-400">Unlock this title to open the video destination.</p>';
         actionButton.textContent = `Unlock for ${video.points} pts`; actionButton.href = '#'; actionButton.onclick = (event) => { event.preventDefault(); buyVideo(video); setTimeout(mount, 300); };
       } else {
-        banner.innerHTML = `<p class="text-sm uppercase tracking-[0.2em] text-emerald-300">Access granted</p><h3 class="mt-2 text-2xl font-bold text-white">You can open this video</h3><p class="mt-3 text-neutral-300">${video.videoUrl ? 'Your custom video link is attached below.' : 'Add a custom video URL from the admin portal whenever you are ready.'}</p>`;
-        player.innerHTML = video.videoUrl ? `<div class="space-y-4"><p class="text-neutral-300">Video destination:</p><a href="${escapeHtml(video.videoUrl)}" target="_blank" rel="noopener noreferrer" class="inline-flex rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Open Video Link</a><p class="text-sm text-neutral-500 break-all">${escapeHtml(video.videoUrl)}</p></div>` : '<p class="text-neutral-400">No video URL has been added yet. Add one from the admin portal.</p>';
-        actionButton.textContent = video.videoUrl ? 'Open Video Link' : 'Back to Library'; actionButton.href = video.videoUrl || 'my-library.html'; actionButton.target = video.videoUrl ? '_blank' : '_self'; actionButton.rel = video.videoUrl ? 'noopener noreferrer' : ''; actionButton.onclick = null;
+        const source = getVideoSource(video);
+        banner.innerHTML = `<p class="text-sm uppercase tracking-[0.2em] text-emerald-300">Access granted</p><h3 class="mt-2 text-2xl font-bold text-white">You can open this video</h3><p class="mt-3 text-neutral-300">${source.type === 'file' ? 'Your uploaded video file is ready below.' : source.type === 'link' ? 'Your custom video link is attached below.' : 'Add a custom video source from the admin portal whenever you are ready.'}</p>`;
+        if (source.type === 'file') {
+          player.innerHTML = `<div class="space-y-4"><p class="text-neutral-300">Uploaded video file:</p><video controls playsinline preload="metadata" class="w-full rounded-2xl border border-white/10 bg-black"><source src="${escapeHtml(source.value)}" type="${escapeHtml(source.mimeType || 'video/mp4')}" />Your browser does not support embedded video playback for this file.</video>${source.fileName ? `<p class="text-sm text-neutral-500 break-all">${escapeHtml(source.fileName)}</p>` : ''}</div>`;
+          actionButton.textContent = 'Watch Video'; actionButton.href = '#video-player-shell'; actionButton.target = '_self'; actionButton.rel = ''; actionButton.onclick = null;
+        } else if (source.type === 'link') {
+          player.innerHTML = `<div class="space-y-4"><p class="text-neutral-300">Video destination:</p><a href="${escapeHtml(source.value)}" target="_blank" rel="noopener noreferrer" class="inline-flex rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Open Video Link</a><p class="text-sm text-neutral-500 break-all">${escapeHtml(source.value)}</p></div>`;
+          actionButton.textContent = 'Open Video Link'; actionButton.href = source.value; actionButton.target = '_blank'; actionButton.rel = 'noopener noreferrer'; actionButton.onclick = null;
+        } else {
+          player.innerHTML = '<p class="text-neutral-400">No video source has been added yet. Add one from the admin portal.</p>';
+          actionButton.textContent = 'Back to Library'; actionButton.href = 'my-library.html'; actionButton.target = '_self'; actionButton.rel = ''; actionButton.onclick = null;
+        }
       }
     };
     mount(); window.addEventListener('hg:state-changed', mount);
@@ -448,35 +551,207 @@ window.HiddenGemsApp = (() => {
       const gate = document.getElementById('admin-gate');
       if (state.role !== 'admin') { gate.innerHTML = `<div class="rounded-[2rem] border border-amber-400/30 bg-amber-500/10 p-8"><p class="text-sm uppercase tracking-[0.25em] text-amber-200">Admin only</p><h1 class="mt-3 text-4xl font-black">Access denied</h1><p class="mt-4 max-w-2xl text-neutral-200">Only accounts marked admin in your profile or listed in config.js can open this page.</p><a href="index.html" class="mt-6 inline-flex rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Back to Home</a></div>`; return; }
       const categories = Object.entries(allCategories()).map(([slug, category]) => `<option value="${slug}">${escapeHtml(category.title)}</option>`).join('');
-      gate.innerHTML = `<section class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Admin Portal</p><h1 class="mt-3 text-4xl font-black">Manage videos, pricing, links, and user roles</h1><p class="mt-4 max-w-3xl text-neutral-300">This panel is front-end managed. It is good for a static/demo site, but true security and payments still need backend enforcement later.</p></section><section class="mt-8 grid gap-8 xl:grid-cols-[1.1fr_0.9fr]"><div class="space-y-8"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">Add video</h2><form id="admin-add-video-form" class="mt-6 grid gap-4 md:grid-cols-2"><input required name="title" placeholder="Video title" class="rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><input required name="image" placeholder="Image URL" class="rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><input required name="videoUrl" placeholder="Video link / destination URL" class="rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white md:col-span-2" /><textarea required name="description" placeholder="Description" class="rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white md:col-span-2"></textarea><select name="categorySlug" class="rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white">${categories}</select><select name="access" class="rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"><option value="guest">Guest / Standard</option><option value="vip">VIP</option></select><input required type="number" min="0" name="points" placeholder="Points price" class="rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><input name="categoryTitle" placeholder="Optional custom category title" class="rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><button class="rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white md:col-span-2">Add video</button></form></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><div class="flex items-center justify-between gap-4"><h2 class="text-2xl font-bold">Manage catalog</h2><a href="index.html" class="rounded-xl border border-white/15 px-4 py-2 text-sm text-white">Back to site</a></div><div id="admin-video-list" class="mt-6 space-y-4"></div></div></div><div class="space-y-8"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">Role manager</h2><p class="mt-2 text-sm text-neutral-400">Use this to mark a user as guest, VIP, or admin on this site.</p><form id="admin-role-form" class="mt-6 space-y-4"><input required type="email" name="email" placeholder="user@example.com" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><select name="role" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"><option value="guest">Guest</option><option value="vip">VIP</option><option value="admin">Admin</option></select><button class="w-full rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Save role</button></form><div id="admin-role-list" class="mt-6 space-y-3"></div></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">VIP quick actions</h2><p class="mt-2 text-sm text-neutral-400">If your Stripe flow is still placeholder-based, you can activate VIP on the current signed-in account from the VIP page.</p><a href="vip-checkout.html" class="mt-4 inline-flex rounded-2xl border border-white/15 px-5 py-3 text-white">Open VIP Checkout Page</a></div></div></section>`;
+      gate.innerHTML = `<section class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Admin Portal</p><h1 class="mt-3 text-4xl font-black">Manage videos, pricing, files, and user roles</h1><p class="mt-4 max-w-3xl text-neutral-300">Guest and VIP access types are saved directly per video. Uploaded video files take priority over links, and uploaded thumbnail images are stored with each saved record in this browser.</p><p class="mt-3 text-sm text-amber-200">Note: large local uploads may hit browser storage limits because this build is still front-end managed.</p></section><section class="mt-8 grid gap-8 xl:grid-cols-[1.05fr_0.95fr]"><div class="space-y-8"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><div class="flex flex-wrap items-center justify-between gap-3"><div><h2 class="text-2xl font-bold">Add or edit video</h2><p class="mt-2 text-sm text-neutral-400">Use either a direct video file upload or a video link. If a file is uploaded, it becomes the main source.</p></div><span id="admin-form-mode" class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.25em] text-neutral-300">Add mode</span></div><form id="admin-video-form" class="mt-6 grid gap-4 md:grid-cols-2"><input type="hidden" name="videoId" /><input type="hidden" name="isCustom" value="true" /><div class="md:col-span-2"><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Title</label><input required name="title" placeholder="Video title" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div class="md:col-span-2"><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Description</label><textarea required name="description" placeholder="Description" class="min-h-[120px] w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"></textarea></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Access type</label><select name="access" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"><option value="guest">Guest video</option><option value="vip">VIP video</option></select></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Points price</label><input required type="number" min="0" name="points" placeholder="Points price" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Category</label><select name="categorySlug" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white">${categories}</select></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Custom category title</label><input name="categoryTitle" placeholder="Optional custom category title" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div class="md:col-span-2 rounded-[1.5rem] border border-white/10 bg-black/20 p-4"><div class="grid gap-4 md:grid-cols-2"><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Thumbnail upload</label><input type="file" name="thumbnailFile" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Thumbnail URL fallback</label><input name="image" placeholder="Optional image URL" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div></div><div id="admin-thumbnail-preview" class="mt-4 hidden overflow-hidden rounded-2xl border border-white/10 bg-black/30"><img src="" alt="Thumbnail preview" class="h-48 w-full object-cover" /></div></div><div class="md:col-span-2 rounded-[1.5rem] border border-white/10 bg-black/20 p-4"><div class="grid gap-4 md:grid-cols-2"><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Video link</label><input name="videoUrl" placeholder="https://..." class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Video file upload</label><input type="file" name="videoFile" accept=".mp4,.webm,.mov,video/mp4,video/webm,video/quicktime" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div></div><p class="mt-3 text-sm text-neutral-400">Source priority: uploaded video file first, then video link.</p><div id="admin-video-source-note" class="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-neutral-300">No source selected yet.</div></div><div class="md:col-span-2 flex flex-wrap gap-3"><button class="rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Save video</button><button type="button" id="admin-form-reset" class="rounded-2xl border border-white/15 px-6 py-3 font-semibold text-white">Clear form</button></div></form></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><div class="flex items-center justify-between gap-4"><div><h2 class="text-2xl font-bold">Manage saved videos</h2><p class="mt-2 text-sm text-neutral-400">Every saved video shows its access label, thumbnail preview, and edit/delete actions.</p></div><a href="index.html" class="rounded-xl border border-white/15 px-4 py-2 text-sm text-white">Back to site</a></div><div id="admin-video-list" class="mt-6 space-y-4"></div></div></div><div class="space-y-8"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">Role manager</h2><p class="mt-2 text-sm text-neutral-400">Use this to mark a user as guest, VIP, or admin on this site.</p><form id="admin-role-form" class="mt-6 space-y-4"><input required type="email" name="email" placeholder="user@example.com" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><select name="role" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"><option value="guest">Guest</option><option value="vip">VIP</option><option value="admin">Admin</option></select><button class="w-full rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Save role</button></form><div id="admin-role-list" class="mt-6 space-y-3"></div></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">VIP quick actions</h2><p class="mt-2 text-sm text-neutral-400">If your Stripe flow is still placeholder-based, you can activate VIP on the current signed-in account from the VIP page.</p><a href="vip-checkout.html" class="mt-4 inline-flex rounded-2xl border border-white/15 px-5 py-3 text-white">Open VIP Checkout Page</a></div></div></section>`;
+
+      const form = document.getElementById('admin-video-form');
+      const modeBadge = document.getElementById('admin-form-mode');
+      const resetButton = document.getElementById('admin-form-reset');
+      const thumbnailPreviewWrap = document.getElementById('admin-thumbnail-preview');
+      const thumbnailPreviewImage = thumbnailPreviewWrap.querySelector('img');
+      const sourceNote = document.getElementById('admin-video-source-note');
+
+      let thumbnailData = '';
+      let videoData = '';
+      let videoMimeType = '';
+      let videoFileName = '';
+
+      const setThumbnailPreview = (value) => {
+        thumbnailData = value || '';
+        const fallbackValue = String(form.elements.image.value || '').trim();
+        const preview = thumbnailData || fallbackValue;
+        if (preview) {
+          thumbnailPreviewWrap.classList.remove('hidden');
+          thumbnailPreviewImage.src = preview;
+        } else {
+          thumbnailPreviewWrap.classList.add('hidden');
+          thumbnailPreviewImage.src = '';
+        }
+      };
+
+      const updateSourceNote = () => {
+        const link = String(form.elements.videoUrl.value || '').trim();
+        if (videoData) sourceNote.innerHTML = `<span class="font-semibold text-emerald-300">Using uploaded file</span>${videoFileName ? ` · ${escapeHtml(videoFileName)}` : ''}`;
+        else if (link) sourceNote.innerHTML = `<span class="font-semibold text-pink-300">Using video link</span> · ${escapeHtml(link)}`;
+        else sourceNote.textContent = 'No source selected yet.';
+      };
+
+      const populateVideoForm = (video) => {
+        form.elements.videoId.value = video.id || '';
+        form.elements.isCustom.value = video.isCustom ? 'true' : 'false';
+        form.elements.title.value = video.title || '';
+        form.elements.description.value = video.description || '';
+        form.elements.access.value = video.access === 'vip' ? 'vip' : 'guest';
+        form.elements.points.value = Number(video.points || 0);
+        form.elements.categorySlug.value = video.categorySlug || 'creator-picks';
+        form.elements.categoryTitle.value = video.categoryTitle || '';
+        form.elements.image.value = video.image || '';
+        form.elements.videoUrl.value = video.videoUrl || '';
+        thumbnailData = video.image && video.image.startsWith('data:image/') ? video.image : '';
+        videoData = video.videoFile || '';
+        videoMimeType = video.videoMimeType || '';
+        videoFileName = video.videoFileName || '';
+        if (form.elements.thumbnailFile) form.elements.thumbnailFile.value = '';
+        if (form.elements.videoFile) form.elements.videoFile.value = '';
+        setThumbnailPreview(video.image || '');
+        updateSourceNote();
+        modeBadge.textContent = `Edit mode · ${video.access === 'vip' ? 'VIP' : 'Guest'}`;
+        form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      };
+
+      const resetVideoForm = () => {
+        form.reset();
+        form.elements.videoId.value = '';
+        form.elements.isCustom.value = 'true';
+        form.elements.access.value = 'guest';
+        form.elements.points.value = '0';
+        thumbnailData = '';
+        videoData = '';
+        videoMimeType = '';
+        videoFileName = '';
+        setThumbnailPreview('');
+        updateSourceNote();
+        modeBadge.textContent = 'Add mode';
+      };
+
       const renderRoleList = () => {
         const map = storage.getRoleOverrides(); const entries = Object.entries(map);
         document.getElementById('admin-role-list').innerHTML = entries.length ? entries.map(([email, role]) => `<div class="flex items-center justify-between rounded-2xl bg-neutral-900/80 px-4 py-4"><div><p class="font-medium text-white">${escapeHtml(email)}</p><p class="text-sm text-neutral-400 uppercase">${escapeHtml(role)}</p></div><button data-remove-role="${escapeHtml(email)}" class="rounded-xl border border-white/10 px-3 py-2 text-sm text-white">Remove</button></div>`).join('') : '<p class="text-sm text-neutral-400">No local role overrides yet.</p>';
         document.querySelectorAll('[data-remove-role]').forEach((button) => button.addEventListener('click', () => { storage.setRoleOverride(button.dataset.removeRole, null); renderRoleList(); window.dispatchEvent(new CustomEvent('hg:state-changed')); }));
       };
+
       const renderVideoList = () => {
-        const customIds = new Set(storage.getCustomVideos().map((item) => item.id));
-        document.getElementById('admin-video-list').innerHTML = allVideos().map((video) => `<div class="rounded-2xl bg-neutral-900/80 p-4"><div class="flex flex-wrap items-start justify-between gap-4"><div><p class="text-lg font-semibold text-white">${escapeHtml(video.title)}</p><p class="mt-1 text-sm text-neutral-400">${escapeHtml(video.category)} · ${video.access.toUpperCase()}</p></div><div class="text-right text-sm text-neutral-400">${video.points} pts</div></div><div class="mt-4 grid gap-3 md:grid-cols-2"><input data-points-id="${video.id}" type="number" min="0" value="${video.points}" class="rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><input data-link-id="${video.id}" value="${escapeHtml(video.videoUrl || '')}" placeholder="Video URL" class="rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div class="mt-4 flex flex-wrap gap-3"><button data-save-video="${video.id}" class="rounded-xl bg-pink-500 px-4 py-2 text-sm font-semibold text-white">Save changes</button><button data-delete-video="${video.id}" class="rounded-xl border border-rose-400/20 bg-rose-500/10 px-4 py-2 text-sm text-rose-200">${customIds.has(video.id) ? 'Delete video' : 'Hide video'}</button></div></div>`).join('');
-        document.querySelectorAll('[data-save-video]').forEach((button) => button.addEventListener('click', () => { const id = button.dataset.saveVideo; const pointsInput = document.querySelector(`[data-points-id="${id}"]`); const linkInput = document.querySelector(`[data-link-id="${id}"]`); storage.setVideoPoints(id, Number(pointsInput?.value || 0)); storage.setVideoLink(id, linkInput?.value || ''); toast('Video updated.', 'success'); renderVideoList(); window.dispatchEvent(new CustomEvent('hg:state-changed')); }));
-        document.querySelectorAll('[data-delete-video]').forEach((button) => button.addEventListener('click', () => { const id = button.dataset.deleteVideo; const custom = storage.getCustomVideos(); if (custom.some((item) => item.id === id)) storage.setCustomVideos(custom.filter((item) => item.id !== id)); else { const hidden = new Set(storage.getHiddenVideos()); hidden.add(id); storage.setHiddenVideos([...hidden]); } toast('Video removed from the site view.', 'success'); renderVideoList(); window.dispatchEvent(new CustomEvent('hg:state-changed')); }));
+        const videos = allVideos();
+        document.getElementById('admin-video-list').innerHTML = videos.length ? videos.map((video) => {
+          const source = getVideoSource(video);
+          const accessClass = video.access === 'vip' ? 'border-pink-400/30 bg-pink-500/10 text-pink-200' : 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200';
+          return `<div class="rounded-[1.75rem] border border-white/10 bg-neutral-900/80 p-4"><div class="grid gap-4 md:grid-cols-[180px_1fr]"><div class="overflow-hidden rounded-2xl border border-white/10 bg-black/30">${video.image ? `<img src="${escapeHtml(video.image)}" alt="${escapeHtml(video.title)}" class="h-40 w-full object-cover" />` : '<div class="flex h-40 items-center justify-center text-sm text-neutral-500">No thumbnail</div>'}</div><div><div class="flex flex-wrap items-start justify-between gap-3"><div><div class="flex flex-wrap items-center gap-2"><p class="text-lg font-semibold text-white">${escapeHtml(video.title)}</p><span class="rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${accessClass}">${video.access}</span>${video.isCustom ? '<span class="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-300">Custom</span>' : '<span class="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400">Catalog</span>'}</div><p class="mt-2 text-sm text-neutral-400">${escapeHtml(video.category)} · ${video.points} pts</p></div><div class="text-sm text-neutral-400">${source.type === 'file' ? 'Uploaded file' : source.type === 'link' ? 'Video link' : 'No source'}</div></div><p class="mt-3 text-sm text-neutral-300">${escapeHtml(video.description || 'No description added yet.')}</p><div class="mt-4 flex flex-wrap gap-3"><button data-edit-video="${video.id}" class="rounded-xl bg-pink-500 px-4 py-2 text-sm font-semibold text-white">Edit</button><button data-delete-video="${video.id}" class="rounded-xl border border-rose-400/20 bg-rose-500/10 px-4 py-2 text-sm text-rose-200">${video.isCustom ? 'Delete' : 'Hide'}</button></div></div></div></div>`;
+        }).join('') : '<div class="rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-6 text-neutral-300">No videos found.</div>';
+
+        document.querySelectorAll('[data-edit-video]').forEach((button) => button.addEventListener('click', () => {
+          const video = getVideo(button.dataset.editVideo);
+          if (video) populateVideoForm(video);
+        }));
+
+        document.querySelectorAll('[data-delete-video]').forEach((button) => button.addEventListener('click', () => {
+          const id = button.dataset.deleteVideo;
+          const custom = storage.getCustomVideos();
+          if (custom.some((item) => item.id === id)) {
+            storage.setCustomVideos(custom.filter((item) => item.id !== id));
+          } else {
+            const hidden = new Set(storage.getHiddenVideos());
+            hidden.add(id);
+            storage.setHiddenVideos([...hidden]);
+            storage.removeVideoOverride(id);
+          }
+          if (form.elements.videoId.value === id) resetVideoForm();
+          toast('Video removed from the site view.', 'success');
+          renderVideoList();
+          window.dispatchEvent(new CustomEvent('hg:state-changed'));
+        }));
       };
-      document.getElementById('admin-add-video-form').addEventListener('submit', (event) => {
-        event.preventDefault();
-        const form = new FormData(event.currentTarget);
-        const item = { id: 'custom-' + Date.now(), title: String(form.get('title') || '').trim(), description: String(form.get('description') || '').trim(), image: String(form.get('image') || '').trim(), videoUrl: String(form.get('videoUrl') || '').trim(), categorySlug: String(form.get('categorySlug') || 'creator-picks').trim(), categoryTitle: String(form.get('categoryTitle') || '').trim(), access: String(form.get('access') || 'guest').trim(), points: Number(form.get('points') || 0) };
-        const items = storage.getCustomVideos(); items.push(item); storage.setCustomVideos(items); event.currentTarget.reset(); toast('Video added.', 'success'); renderVideoList(); window.dispatchEvent(new CustomEvent('hg:state-changed'));
+
+      form.elements.thumbnailFile?.addEventListener('change', async (event) => {
+        const file = event.target.files?.[0];
+        if (!file) { setThumbnailPreview(''); return; }
+        if (!/image\/(jpeg|png|webp)/i.test(file.type) && !/\.(jpe?g|png|webp)$/i.test(file.name || '')) { toast('Thumbnail must be JPG, JPEG, PNG, or WEBP.', 'error'); event.target.value = ''; return; }
+        try { setThumbnailPreview(await readFileAsDataUrl(file)); } catch (error) { toast('Thumbnail upload failed.', 'error'); }
       });
+      form.elements.image.addEventListener('input', () => setThumbnailPreview(thumbnailData || String(form.elements.image.value || '').trim()));
+      form.elements.videoUrl.addEventListener('input', updateSourceNote);
+      form.elements.videoFile?.addEventListener('change', async (event) => {
+        const file = event.target.files?.[0];
+        if (!file) { videoData = ''; videoMimeType = ''; videoFileName = ''; updateSourceNote(); return; }
+        if (!/video\/(mp4|webm|quicktime)/i.test(file.type) && !/\.(mp4|webm|mov)$/i.test(file.name || '')) { toast('Video file must be MP4, WEBM, or MOV.', 'error'); event.target.value = ''; return; }
+        try {
+          videoData = await readFileAsDataUrl(file);
+          videoMimeType = file.type || '';
+          videoFileName = file.name || '';
+          updateSourceNote();
+        } catch (error) { toast('Video upload failed.', 'error'); }
+      });
+
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const data = new FormData(form);
+        const id = String(data.get('videoId') || '').trim() || ('custom-' + Date.now());
+        const isCustom = String(data.get('isCustom') || 'true') === 'true';
+        const imageValue = thumbnailData || String(data.get('image') || '').trim();
+        const videoUrl = String(data.get('videoUrl') || '').trim();
+        const item = normalizeVideoItem({
+          id,
+          title: String(data.get('title') || '').trim(),
+          description: String(data.get('description') || '').trim(),
+          image: imageValue,
+          videoUrl,
+          videoFile: videoData,
+          videoFileName,
+          videoMimeType,
+          sourceType: videoData ? 'file' : 'link',
+          categorySlug: String(data.get('categorySlug') || 'creator-picks').trim(),
+          categoryTitle: String(data.get('categoryTitle') || '').trim(),
+          access: String(data.get('access') || 'guest').trim(),
+          points: Number(data.get('points') || 0),
+          isCustom
+        });
+
+        if (!item.title || !item.description) { toast('Title and description are required.', 'error'); return; }
+        if (!item.image) { toast('Add a thumbnail upload or image URL.', 'error'); return; }
+        if (!item.videoFile && !item.videoUrl) { toast('Add a video file or a video link.', 'error'); return; }
+
+        if (isCustom) {
+          const items = storage.getCustomVideos().filter((video) => video.id !== id);
+          items.push(item);
+          storage.setCustomVideos(items);
+        } else {
+          storage.setVideoOverride(id, {
+            title: item.title,
+            description: item.description,
+            image: item.image,
+            videoUrl: item.videoUrl,
+            videoFile: item.videoFile,
+            videoFileName: item.videoFileName,
+            videoMimeType: item.videoMimeType,
+            sourceType: item.sourceType,
+            categorySlug: item.categorySlug,
+            categoryTitle: item.categoryTitle,
+            access: item.access,
+            points: item.points
+          });
+          storage.setVideoPoints(id, item.points);
+          storage.setVideoLink(id, item.videoUrl);
+        }
+
+        resetVideoForm();
+        renderVideoList();
+        toast(`Video saved as ${item.access.toUpperCase()}.`, 'success');
+        window.dispatchEvent(new CustomEvent('hg:state-changed'));
+      });
+
+      resetButton.addEventListener('click', resetVideoForm);
       document.getElementById('admin-role-form').addEventListener('submit', (event) => {
         event.preventDefault();
-        const form = new FormData(event.currentTarget);
-        const email = String(form.get('email') || '').trim().toLowerCase();
-        const role = String(form.get('role') || 'guest').trim();
+        const formData = new FormData(event.currentTarget);
+        const email = String(formData.get('email') || '').trim().toLowerCase();
+        const role = String(formData.get('role') || 'guest').trim();
         storage.setRoleOverride(email, role);
         const cached = storage.getCachedProfile(email) || { email, points_balance: 0, is_vip: false };
         storage.cacheProfile(email, { ...cached, email, is_vip: role === 'vip' || role === 'admin', role });
         toast('Role saved.', 'success'); event.currentTarget.reset(); renderRoleList(); window.dispatchEvent(new CustomEvent('hg:state-changed'));
       });
-      renderRoleList(); renderVideoList();
+
+      resetVideoForm();
+      renderRoleList();
+      renderVideoList();
     };
     mount();
   }
