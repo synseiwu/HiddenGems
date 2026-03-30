@@ -67,180 +67,10 @@ window.HiddenGemsApp = (() => {
     setVideoOverride(id, data) { const map = this.getVideoOverrides(); map[id] = { ...(map[id] || {}), ...data }; writeJson(KEYS.videoOverrides, map); },
     removeVideoOverride(id) { const map = this.getVideoOverrides(); delete map[id]; writeJson(KEYS.videoOverrides, map); },
     cacheProfile(email, data) { if (!email) return; const map = readJson(KEYS.profileCache, {}); map[String(email).toLowerCase()] = data; writeJson(KEYS.profileCache, map); },
-    getCachedProfile(email) { const map = readJson(KEYS.profileCache, {}); return map[String(email || '').toLowerCase()] || null; }
+    getCachedProfile(email) { const map = readJson(KEYS.profileCache, {}); return map[String(email || '').toLowerCase()] || null; },
+    getRemoteVideosCache() { return readJson(KEYS.remoteVideosCache, []); },
+    setRemoteVideosCache(items) { writeJson(KEYS.remoteVideosCache, Array.isArray(items) ? items : []); }
   };
-
-  const remoteVideoStore = {
-    videos: [],
-    loaded: false,
-    loading: null,
-    error: null
-  };
-
-  function mapHgVideoRow(row = {}) {
-    return normalizeVideoItem({
-      id: row.id,
-      title: row.title,
-      description: row.description,
-      image: row.image,
-      videoUrl: row.video_url,
-      videoFile: row.video_file,
-      videoFileName: row.video_file_name,
-      videoMimeType: row.video_mime_type,
-      sourceType: row.source_type,
-      categorySlug: row.category_slug,
-      categoryTitle: row.category_title,
-      access: row.access_type,
-      points: row.points,
-      isCustom: true
-    });
-  }
-
-  async function refreshRemoteVideos(force = false) {
-    if (remoteVideoStore.loading && !force) return remoteVideoStore.loading;
-    remoteVideoStore.loading = (async () => {
-      const supabase = getSupabaseClient();
-      if (!supabase) {
-        remoteVideoStore.loaded = true;
-        remoteVideoStore.error = null;
-        remoteVideoStore.videos = storage.getCustomVideos().map((video) => normalizeVideoItem({ ...video, isCustom: true }));
-        return remoteVideoStore.videos;
-      }
-      try {
-        const result = await supabase
-          .from('hg_videos')
-          .select('id,title,description,image,video_url,video_file,video_file_name,video_mime_type,source_type,category_slug,category_title,access_type,points,deleted_at,created_at,updated_at')
-          .is('deleted_at', null)
-          .order('created_at', { ascending: false });
-        if (result?.error) throw result.error;
-        remoteVideoStore.videos = (result?.data || []).map(mapHgVideoRow);
-        remoteVideoStore.error = null;
-      } catch (error) {
-        remoteVideoStore.error = error;
-        remoteVideoStore.videos = storage.getCustomVideos().map((video) => normalizeVideoItem({ ...video, isCustom: true }));
-      }
-      remoteVideoStore.loaded = true;
-      return remoteVideoStore.videos;
-    })();
-    try {
-      return await remoteVideoStore.loading;
-    } finally {
-      remoteVideoStore.loading = null;
-    }
-  }
-
-  function getRemoteVideosSync() {
-    return remoteVideoStore.loaded
-      ? remoteVideoStore.videos.slice()
-      : storage.getCustomVideos().map((video) => normalizeVideoItem({ ...video, isCustom: true }));
-  }
-
-  function scheduleVideoRefresh(force = true) {
-    refreshRemoteVideos(force)
-      .catch(() => null)
-      .finally(() => window.dispatchEvent(new CustomEvent('hg:state-changed')));
-  }
-
-  function getCategoryTitleFromSlug(slug) {
-    return String(slug || '').replace(/-/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
-  }
-
-  function mergeRemoteVideosIntoCatalog(catalog) {
-    for (const rawVideo of getRemoteVideosSync()) {
-      const video = normalizeVideoItem({ ...rawVideo, isCustom: true });
-      const slug = video.categorySlug || 'creator-picks';
-      if (!catalog[slug]) {
-        catalog[slug] = {
-          title: video.categoryTitle || getCategoryTitleFromSlug(slug),
-          subtitle: 'Custom admin-managed category.',
-          count: 'Custom',
-          slug,
-          access: video.access,
-          videos: []
-        };
-      }
-      catalog[slug].videos.push({ ...video, category: catalog[slug].title, categoryTitle: video.categoryTitle || catalog[slug].title });
-    }
-  }
-
-  async function saveVideoRecord(item, isCustom) {
-    if (!isCustom) {
-      storage.setVideoOverride(item.id, {
-        title: item.title,
-        description: item.description,
-        image: item.image,
-        videoUrl: item.videoUrl,
-        videoFile: item.videoFile,
-        videoFileName: item.videoFileName,
-        videoMimeType: item.videoMimeType,
-        sourceType: item.sourceType,
-        categorySlug: item.categorySlug,
-        categoryTitle: item.categoryTitle,
-        access: item.access,
-        points: item.points
-      });
-      storage.setVideoPoints(item.id, item.points);
-      storage.setVideoLink(item.id, item.videoUrl);
-      scheduleVideoRefresh(false);
-      return;
-    }
-
-    const supabase = getSupabaseClient();
-    if (!supabase) {
-      const items = storage.getCustomVideos().filter((video) => video.id !== item.id);
-      items.push(item);
-      storage.setCustomVideos(items);
-      scheduleVideoRefresh(true);
-      return;
-    }
-
-    const result = await supabase.from('hg_videos').upsert({
-      id: item.id,
-      title: item.title,
-      description: item.description,
-      image: item.image,
-      video_url: item.videoUrl,
-      video_file: item.videoFile,
-      video_file_name: item.videoFileName,
-      video_mime_type: item.videoMimeType,
-      source_type: item.sourceType,
-      category_slug: item.categorySlug,
-      category_title: item.categoryTitle,
-      access_type: item.access,
-      points: item.points,
-      deleted_at: null
-    });
-    if (result?.error) throw result.error;
-
-    storage.setCustomVideos(storage.getCustomVideos().filter((video) => video.id !== item.id));
-    await refreshRemoteVideos(true);
-    window.dispatchEvent(new CustomEvent('hg:state-changed'));
-  }
-
-  async function deleteVideoRecord(id, isCustom) {
-    if (!isCustom) {
-      const hidden = new Set(storage.getHiddenVideos());
-      hidden.add(id);
-      storage.setHiddenVideos([...hidden]);
-      storage.removeVideoOverride(id);
-      scheduleVideoRefresh(false);
-      return;
-    }
-
-    const supabase = getSupabaseClient();
-    if (!supabase) {
-      storage.setCustomVideos(storage.getCustomVideos().filter((video) => video.id !== id));
-      scheduleVideoRefresh(true);
-      return;
-    }
-
-    const result = await supabase.from('hg_videos').delete().eq('id', id);
-    if (result?.error) throw result.error;
-
-    storage.setCustomVideos(storage.getCustomVideos().filter((video) => video.id !== id));
-    await refreshRemoteVideos(true);
-    window.dispatchEvent(new CustomEvent('hg:state-changed'));
-  }
 
   function initialsFromEmail(email) {
     const source = String(email || '').split('@')[0] || BRAND_SHORT;
@@ -408,6 +238,99 @@ window.HiddenGemsApp = (() => {
     return true;
   }
 
+
+  let remoteVideosRequest = null;
+
+  function mapRemoteVideoRow(row = {}) {
+    return normalizeVideoItem({
+      id: row.id,
+      title: row.title,
+      description: row.description,
+      image: row.image,
+      videoUrl: row.video_url,
+      videoFile: row.video_file,
+      videoFileName: row.video_file_name,
+      videoMimeType: row.video_mime_type,
+      sourceType: row.source_type,
+      categorySlug: row.category_slug,
+      categoryTitle: row.category_title,
+      access: row.access_type,
+      points: row.points,
+      isCustom: true
+    });
+  }
+
+  async function fetchRemoteVideos(force = false) {
+    if (remoteVideosRequest && !force) return remoteVideosRequest;
+    const supabase = getSupabaseClient();
+    if (!supabase) return storage.getRemoteVideosCache();
+    remoteVideosRequest = (async () => {
+      try {
+        const result = await supabase
+          .from('hg_videos')
+          .select('id,title,description,image,video_url,video_file,video_file_name,video_mime_type,source_type,category_slug,category_title,access_type,points,deleted_at,created_at,updated_at')
+          .is('deleted_at', null)
+          .order('updated_at', { ascending: false });
+        if (result?.error) throw result.error;
+        const rows = Array.isArray(result?.data) ? result.data : [];
+        const items = rows.map(mapRemoteVideoRow);
+        storage.setRemoteVideosCache(items);
+        storage.setCustomVideos(items);
+        return items;
+      } catch (error) {
+        return storage.getRemoteVideosCache();
+      } finally {
+        remoteVideosRequest = null;
+      }
+    })();
+    return remoteVideosRequest;
+  }
+
+  async function refreshLiveVideos(force = false) {
+    return fetchRemoteVideos(!!force);
+  }
+
+  async function saveRemoteVideo(video) {
+    const supabase = getSupabaseClient();
+    if (!supabase) return false;
+    const payload = {
+      id: video.id,
+      title: video.title,
+      description: video.description,
+      image: video.image,
+      video_url: video.videoUrl || '',
+      video_file: video.videoFile || '',
+      video_file_name: video.videoFileName || '',
+      video_mime_type: video.videoMimeType || '',
+      source_type: video.videoFile ? 'file' : (video.sourceType || (video.videoUrl ? 'link' : 'link')),
+      category_slug: video.categorySlug || 'creator-picks',
+      category_title: video.categoryTitle || '',
+      access_type: video.access === 'vip' ? 'vip' : 'guest',
+      points: Math.max(0, Number(video.points) || 0),
+      deleted_at: null
+    };
+    const result = await supabase.from('hg_videos').upsert(payload);
+    if (result?.error) throw result.error;
+    const items = storage.getCustomVideos().filter((item) => item.id !== video.id);
+    items.unshift(video);
+    storage.setCustomVideos(items);
+    storage.setRemoteVideosCache(items);
+    await refreshLiveVideos(true);
+    return true;
+  }
+
+  async function deleteRemoteVideo(id) {
+    const supabase = getSupabaseClient();
+    if (!supabase) return false;
+    const result = await supabase.from('hg_videos').delete().eq('id', id);
+    if (result?.error) throw result.error;
+    const items = storage.getCustomVideos().filter((item) => item.id !== id);
+    storage.setCustomVideos(items);
+    storage.setRemoteVideosCache(items);
+    await refreshLiveVideos(true);
+    return true;
+  }
+
   function allCategories() {
     const catalog = JSON.parse(JSON.stringify(window.HIDDEN_GEMS_CATALOG || {}));
     const hidden = new Set(storage.getHiddenVideos());
@@ -443,7 +366,14 @@ window.HiddenGemsApp = (() => {
         });
     });
 
-    mergeRemoteVideosIntoCatalog(catalog);
+    for (const rawVideo of storage.getCustomVideos()) {
+      const video = normalizeVideoItem({ ...normalizeVideoItem(rawVideo), ...rawVideo, isCustom: true });
+      const slug = video.categorySlug || 'creator-picks';
+      if (!catalog[slug]) {
+        catalog[slug] = { title: video.categoryTitle || slug.replace(/-/g, ' ').replace(/\w/g, (m) => m.toUpperCase()), subtitle: 'Custom admin-managed category.', count: 'Custom', slug, access: video.access, videos: [] };
+      }
+      catalog[slug].videos.push({ ...video, category: catalog[slug].title, categoryTitle: catalog[slug].title });
+    }
 
     Object.values(catalog).forEach((category) => {
       category.vip = (category.videos || []).some((video) => String(video.access || '').toLowerCase() === 'vip');
@@ -583,7 +513,8 @@ window.HiddenGemsApp = (() => {
     document.getElementById('logout-button')?.addEventListener('click', signOutUser);
   }
 
-  function updateHomeStateUi(state) {
+  async function updateHomeStateUi(state) {
+    await refreshLiveVideos(true);
     syncLegacyHomeHeader(state);
     const access = document.getElementById('hero-access-text');
     const points = document.getElementById('hero-points-balance');
@@ -654,12 +585,12 @@ window.HiddenGemsApp = (() => {
     }));
   }
 
-  function renderCategoryPage(slug) {
+  async function renderCategoryPage(slug) {
+    await refreshLiveVideos(true);
     applyBg();
     document.body.innerHTML = shellHeader() + `<main><section class="mx-auto max-w-7xl px-6 py-16"><a href="index.html" class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-300 transition hover:bg-white/10">← Back to Home</a><div id="category-hero" class="mt-8 rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"></div></section><section class="mx-auto max-w-7xl px-6 pb-20"><div id="wallet-summary" class="mb-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300">Loading wallet...</div><div id="category-grid" class="grid gap-6 md:grid-cols-2 xl:grid-cols-3"></div></section></main>` + shellFooter();
     bindCommonUi();
     const mount = async () => {
-      await refreshRemoteVideos(true);
       const category = getCategory(slug); if (!category) return;
       document.getElementById('category-hero').innerHTML = `<div class="flex flex-wrap items-start justify-between gap-6"><div><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Category</p><h2 class="mt-3 text-4xl font-black">${escapeHtml(category.title)}</h2><p class="mt-4 max-w-2xl text-neutral-300">${escapeHtml(category.subtitle || 'Premium titles ready to unlock.')}</p></div><div class="rounded-2xl border border-white/10 bg-black/20 px-5 py-4 text-right"><p class="text-xs uppercase tracking-[0.25em] text-neutral-400">Access tier</p><p class="mt-2 text-2xl font-bold text-white">${category.vip ? 'VIP' : 'Guest'}</p><p class="mt-3 text-xs uppercase tracking-[0.25em] text-neutral-400">Videos in category</p><p class="mt-2 text-2xl font-bold text-white">${category.videos.length}</p><p class="text-sm text-neutral-400">Admin can access everything</p></div></div>`;
       const state = await getState();
@@ -670,53 +601,41 @@ window.HiddenGemsApp = (() => {
   }
 
   function renderVideoPage() {
+    const video = getVideo(qs('id')); if (!video) return;
     applyBg();
-    const mountPage = async () => {
-      await refreshRemoteVideos(true);
-      const video = getVideo(qs('id'));
-      if (!video) {
-        document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-4xl px-6 py-16"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Video</p><h1 class="mt-3 text-3xl font-black">Video not found</h1><p class="mt-4 text-neutral-300">This video record could not be loaded from the live catalog.</p><a href="index.html" class="mt-6 inline-flex rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Back to home</a></div></main>` + shellFooter();
-        bindCommonUi();
-        return;
-      }
-      document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-6xl px-6 py-14"><a href="${video.categorySlug}.html" class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-300 transition hover:bg-white/10">← Back</a><div class="mt-8 grid gap-8 lg:grid-cols-[1.15fr_0.85fr]"><section class="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 shadow-xl shadow-black/20"><div class="relative"><img src="${escapeHtml(video.image)}" class="h-[420px] w-full object-cover" alt="${escapeHtml(video.title)}"><div class="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent"></div><div class="absolute bottom-6 left-6"><p class="text-xs uppercase tracking-[0.25em] text-pink-300">${escapeHtml(video.category)}</p><h1 class="mt-2 text-4xl font-black">${escapeHtml(video.title)}</h1></div></div><div class="p-6"><div id="video-access-banner" class="rounded-[1.5rem] border border-white/10 bg-neutral-950/70 p-5 text-neutral-300">Checking access...</div><div id="video-player-shell" class="mt-6 rounded-[1.5rem] border border-white/10 bg-black/20 p-5"></div></div></section><aside class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><p class="text-xs uppercase tracking-[0.25em] text-pink-300">Access details</p><div class="mt-5 space-y-4"><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Category</p><p class="mt-1 text-lg font-semibold text-white">${escapeHtml(video.category)}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Unlock tier</p><p class="mt-1 text-lg font-semibold text-white">${video.access === 'vip' ? 'VIP / Admin' : `${video.points} pts or above`}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Role access</p><p class="mt-1 text-lg font-semibold text-white">Guest: standard · VIP: VIP + standard · Admin: all</p></div></div><div class="mt-6 flex flex-col gap-3"><a id="video-action-button" href="#" class="rounded-2xl bg-pink-500 px-6 py-3 text-center font-semibold text-white transition hover:bg-pink-400">Loading...</a><a href="points-store.html" class="rounded-2xl border border-white/15 px-6 py-3 text-center font-semibold text-white transition hover:bg-white/5">Get more points</a></div></aside></div></main>` + shellFooter();
-      bindCommonUi();
-
-      const mount = async () => {
-        await refreshRemoteVideos(true);
-        const currentVideo = getVideo(qs('id')) || video;
-        const state = await getState();
-        const actionButton = document.getElementById('video-action-button');
-        const banner = document.getElementById('video-access-banner');
-        const player = document.getElementById('video-player-shell');
-        const accessible = canAccessVideo(state.role, currentVideo);
-        const unlocked = state.role === 'admin' || state.role === 'vip' || storage.isUnlocked(currentVideo.id);
-        if (!accessible) {
-          banner.innerHTML = '<p class="text-sm uppercase tracking-[0.2em] text-pink-300">VIP Required</p><h3 class="mt-2 text-2xl font-bold text-white">This title is locked behind VIP access</h3><p class="mt-3 text-neutral-300">Guest accounts cannot open this video.</p>';
-          player.innerHTML = '<p class="text-neutral-400">Upgrade to VIP to access this title.</p>';
-          actionButton.textContent = 'Join VIP'; actionButton.href = 'vip-checkout.html'; actionButton.onclick = null;
-        } else if (!unlocked && currentVideo.access === 'guest') {
-          banner.innerHTML = `<p class="text-sm uppercase tracking-[0.2em] text-pink-300">Unlock Needed</p><h3 class="mt-2 text-2xl font-bold text-white">Unlock this title for ${currentVideo.points} points</h3><p class="mt-3 text-neutral-300">Your wallet currently has <span class="font-semibold text-white">${state.localPoints}</span> points.</p>`;
-          player.innerHTML = '<p class="text-neutral-400">Unlock this title to open the video destination.</p>';
-          actionButton.textContent = `Unlock for ${currentVideo.points} pts`; actionButton.href = '#'; actionButton.onclick = (event) => { event.preventDefault(); buyVideo(currentVideo); setTimeout(mount, 300); };
+    document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-6xl px-6 py-14"><a href="${video.categorySlug}.html" class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-300 transition hover:bg-white/10">← Back</a><div class="mt-8 grid gap-8 lg:grid-cols-[1.15fr_0.85fr]"><section class="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 shadow-xl shadow-black/20"><div class="relative"><img src="${escapeHtml(video.image)}" class="h-[420px] w-full object-cover" alt="${escapeHtml(video.title)}"><div class="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent"></div><div class="absolute bottom-6 left-6"><p class="text-xs uppercase tracking-[0.25em] text-pink-300">${escapeHtml(video.category)}</p><h1 class="mt-2 text-4xl font-black">${escapeHtml(video.title)}</h1></div></div><div class="p-6"><div id="video-access-banner" class="rounded-[1.5rem] border border-white/10 bg-neutral-950/70 p-5 text-neutral-300">Checking access...</div><div id="video-player-shell" class="mt-6 rounded-[1.5rem] border border-white/10 bg-black/20 p-5"></div></div></section><aside class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><p class="text-xs uppercase tracking-[0.25em] text-pink-300">Access details</p><div class="mt-5 space-y-4"><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Category</p><p class="mt-1 text-lg font-semibold text-white">${escapeHtml(video.category)}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Unlock tier</p><p class="mt-1 text-lg font-semibold text-white">${video.access === 'vip' ? 'VIP / Admin' : `${video.points} pts or above`}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Role access</p><p class="mt-1 text-lg font-semibold text-white">Guest: standard · VIP: VIP + standard · Admin: all</p></div></div><div class="mt-6 flex flex-col gap-3"><a id="video-action-button" href="#" class="rounded-2xl bg-pink-500 px-6 py-3 text-center font-semibold text-white transition hover:bg-pink-400">Loading...</a><a href="points-store.html" class="rounded-2xl border border-white/15 px-6 py-3 text-center font-semibold text-white transition hover:bg-white/5">Get more points</a></div></aside></div></main>` + shellFooter();
+    bindCommonUi();
+    const mount = async () => {
+      const state = await getState();
+      const actionButton = document.getElementById('video-action-button');
+      const banner = document.getElementById('video-access-banner');
+      const player = document.getElementById('video-player-shell');
+      const accessible = canAccessVideo(state.role, video);
+      const unlocked = state.role === 'admin' || state.role === 'vip' || storage.isUnlocked(video.id);
+      if (!accessible) {
+        banner.innerHTML = '<p class="text-sm uppercase tracking-[0.2em] text-pink-300">VIP Required</p><h3 class="mt-2 text-2xl font-bold text-white">This title is locked behind VIP access</h3><p class="mt-3 text-neutral-300">Guest accounts cannot open this video.</p>';
+        player.innerHTML = '<p class="text-neutral-400">Upgrade to VIP to access this title.</p>';
+        actionButton.textContent = 'Join VIP'; actionButton.href = 'vip-checkout.html'; actionButton.onclick = null;
+      } else if (!unlocked && video.access === 'guest') {
+        banner.innerHTML = `<p class="text-sm uppercase tracking-[0.2em] text-pink-300">Unlock Needed</p><h3 class="mt-2 text-2xl font-bold text-white">Unlock this title for ${video.points} points</h3><p class="mt-3 text-neutral-300">Your wallet currently has <span class="font-semibold text-white">${state.localPoints}</span> points.</p>`;
+        player.innerHTML = '<p class="text-neutral-400">Unlock this title to open the video destination.</p>';
+        actionButton.textContent = `Unlock for ${video.points} pts`; actionButton.href = '#'; actionButton.onclick = (event) => { event.preventDefault(); buyVideo(video); setTimeout(mount, 300); };
+      } else {
+        const source = getVideoSource(video);
+        banner.innerHTML = `<p class="text-sm uppercase tracking-[0.2em] text-emerald-300">Access granted</p><h3 class="mt-2 text-2xl font-bold text-white">You can open this video</h3><p class="mt-3 text-neutral-300">${source.type === 'file' ? 'Your uploaded video file is ready below.' : source.type === 'link' ? 'Your custom video link is attached below.' : 'Add a custom video source from the admin portal whenever you are ready.'}</p>`;
+        if (source.type === 'file') {
+          player.innerHTML = `<div class="space-y-4"><p class="text-neutral-300">Uploaded video file:</p><video controls playsinline preload="metadata" class="w-full rounded-2xl border border-white/10 bg-black"><source src="${escapeHtml(source.value)}" type="${escapeHtml(source.mimeType || 'video/mp4')}" />Your browser does not support embedded video playback for this file.</video>${source.fileName ? `<p class="text-sm text-neutral-500 break-all">${escapeHtml(source.fileName)}</p>` : ''}</div>`;
+          actionButton.textContent = 'Watch Video'; actionButton.href = '#video-player-shell'; actionButton.target = '_self'; actionButton.rel = ''; actionButton.onclick = null;
+        } else if (source.type === 'link') {
+          player.innerHTML = `<div class="space-y-4"><p class="text-neutral-300">Video destination:</p><a href="${escapeHtml(source.value)}" target="_blank" rel="noopener noreferrer" class="inline-flex rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Open Video Link</a><p class="text-sm text-neutral-500 break-all">${escapeHtml(source.value)}</p></div>`;
+          actionButton.textContent = 'Open Video Link'; actionButton.href = source.value; actionButton.target = '_blank'; actionButton.rel = 'noopener noreferrer'; actionButton.onclick = null;
         } else {
-          const source = getVideoSource(currentVideo);
-          banner.innerHTML = `<p class="text-sm uppercase tracking-[0.2em] text-emerald-300">Access granted</p><h3 class="mt-2 text-2xl font-bold text-white">You can open this video</h3><p class="mt-3 text-neutral-300">${source.type === 'file' ? 'Your uploaded video file is ready below.' : source.type === 'link' ? 'Your custom video link is attached below.' : 'Add a custom video source from the admin portal whenever you are ready.'}</p>`;
-          if (source.type === 'file') {
-            player.innerHTML = `<div class="space-y-4"><p class="text-neutral-300">Uploaded video file:</p><video controls playsinline preload="metadata" class="w-full rounded-2xl border border-white/10 bg-black"><source src="${escapeHtml(source.value)}" type="${escapeHtml(source.mimeType || 'video/mp4')}" />Your browser does not support embedded video playback for this file.</video>${source.fileName ? `<p class="text-sm text-neutral-500 break-all">${escapeHtml(source.fileName)}</p>` : ''}</div>`;
-            actionButton.textContent = 'Watch Video'; actionButton.href = '#video-player-shell'; actionButton.target = '_self'; actionButton.rel = ''; actionButton.onclick = null;
-          } else if (source.type === 'link') {
-            player.innerHTML = `<div class="space-y-4"><p class="text-neutral-300">Video destination:</p><a href="${escapeHtml(source.value)}" target="_blank" rel="noopener noreferrer" class="inline-flex rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Open Video Link</a><p class="text-sm text-neutral-500 break-all">${escapeHtml(source.value)}</p></div>`;
-            actionButton.textContent = 'Open Video Link'; actionButton.href = source.value; actionButton.target = '_blank'; actionButton.rel = 'noopener noreferrer'; actionButton.onclick = null;
-          } else {
-            player.innerHTML = '<p class="text-neutral-400">No video source has been added yet. Add one from the admin portal.</p>';
-            actionButton.textContent = 'Back to Library'; actionButton.href = 'my-library.html'; actionButton.target = '_self'; actionButton.rel = ''; actionButton.onclick = null;
-          }
+          player.innerHTML = '<p class="text-neutral-400">No video source has been added yet. Add one from the admin portal.</p>';
+          actionButton.textContent = 'Back to Library'; actionButton.href = 'my-library.html'; actionButton.target = '_self'; actionButton.rel = ''; actionButton.onclick = null;
         }
-      };
-      mount(); window.addEventListener('hg:state-changed', mount);
+      }
     };
-    mountPage();
+    mount(); window.addEventListener('hg:state-changed', mount);
   }
 
   function renderPointsStore() {
@@ -729,16 +648,16 @@ window.HiddenGemsApp = (() => {
     applyBg();
     document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-7xl px-6 py-14"><div class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Points Store</p><h1 class="mt-3 text-4xl font-black">Stock your wallet</h1><p class="mt-4 max-w-2xl text-neutral-300">Guest users can spend points on standard videos. VIP and admin can already open everything in their access tier.</p></div><div id="points-wallet-banner" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300">Loading wallet...</div><div class="mt-10 grid gap-6 md:grid-cols-2 xl:grid-cols-4">${packs.map((pack) => `<div class="rounded-[2rem] border border-white/10 bg-white/5 p-8 text-center shadow-xl shadow-black/20"><p class="text-sm uppercase tracking-[0.25em] text-neutral-400">${pack.label}</p><p class="mt-4 text-5xl font-black">${pack.points}</p><p class="mt-2 text-neutral-400">Points included</p><p class="mt-6 text-3xl font-bold text-pink-300">${pack.price}</p><p class="mt-2 text-sm text-neutral-500">${pack.copy}</p><button data-pack="${pack.points}" data-pack-label="${pack.label}" class="mt-8 block w-full rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Add to Wallet</button></div>`).join('')}</div></main>` + shellFooter();
     bindCommonUi();
-    const mount = async () => { await refreshRemoteVideos(true); const state = await getState(); document.getElementById('points-wallet-banner').innerHTML = `Signed in: <span class="font-bold text-white">${state.email || 'No'}</span> · Role: <span class="font-bold text-pink-300">${state.role}</span> · Wallet balance: <span class="font-bold text-white">${state.localPoints} points</span>`; };
+    const mount = async () => { const state = await getState(); document.getElementById('points-wallet-banner').innerHTML = `Signed in: <span class="font-bold text-white">${state.email || 'No'}</span> · Role: <span class="font-bold text-pink-300">${state.role}</span> · Wallet balance: <span class="font-bold text-white">${state.localPoints} points</span>`; };
     mount(); document.querySelectorAll('[data-pack]').forEach((button) => button.addEventListener('click', () => addPoints(Number(button.dataset.pack), button.dataset.packLabel))); window.addEventListener('hg:state-changed', mount);
   }
 
-  function renderLibraryPage() {
+  async function renderLibraryPage() {
+    await refreshLiveVideos(true);
     applyBg();
     document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-7xl px-6 py-14"><div class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">My Library</p><h1 class="mt-3 text-4xl font-black">Accessible videos for your account</h1><p class="mt-4 max-w-2xl text-neutral-300">Guest accounts see unlocked standard titles, VIP sees VIP and standard, admin sees all titles.</p></div><div id="library-summary" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300">Loading library...</div><div id="library-grid" class="mt-8 grid gap-6 md:grid-cols-2 xl:grid-cols-3"></div></main>` + shellFooter();
     bindCommonUi();
     const mount = async () => {
-      await refreshRemoteVideos(true);
       const state = await getState();
       const videos = allVideos().filter((video) => { if (!canAccessVideo(state.role, video)) return false; if (state.role === 'admin' || state.role === 'vip') return true; return storage.isUnlocked(video.id); });
       document.getElementById('library-summary').innerHTML = `Role: <span class="font-bold text-pink-300">${state.role}</span> · Accessible titles: <span class="font-bold text-white">${videos.length}</span> · Demo wallet: <span class="font-bold text-white">${state.localPoints} points</span>`;
@@ -748,7 +667,8 @@ window.HiddenGemsApp = (() => {
     mount(); window.addEventListener('hg:state-changed', mount);
   }
 
-  function renderAdminPage() {
+  async function renderAdminPage() {
+    await refreshLiveVideos(true);
     applyBg();
     document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-7xl px-6 py-14"><div id="admin-gate"></div></main>` + shellFooter();
     bindCommonUi();
@@ -757,7 +677,7 @@ window.HiddenGemsApp = (() => {
       const gate = document.getElementById('admin-gate');
       if (state.role !== 'admin') { gate.innerHTML = `<div class="rounded-[2rem] border border-amber-400/30 bg-amber-500/10 p-8"><p class="text-sm uppercase tracking-[0.25em] text-amber-200">Admin only</p><h1 class="mt-3 text-4xl font-black">Access denied</h1><p class="mt-4 max-w-2xl text-neutral-200">Only accounts marked admin in your profile or listed in config.js can open this page.</p><a href="index.html" class="mt-6 inline-flex rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Back to Home</a></div>`; return; }
       const categories = Object.entries(allCategories()).map(([slug, category]) => `<option value="${slug}">${escapeHtml(category.title)}</option>`).join('');
-      gate.innerHTML = `<section class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Admin Portal</p><h1 class="mt-3 text-4xl font-black">Manage videos, pricing, files, and user roles</h1><p class="mt-4 max-w-3xl text-neutral-300">Guest and VIP access types are saved directly per video. Uploaded video files take priority over links, and uploaded thumbnail images are stored with each saved record in this browser.</p><p class="mt-3 text-sm text-amber-200">Note: large local uploads may hit browser storage limits because this build is still front-end managed.</p></section><section class="mt-8 grid gap-8 xl:grid-cols-[1.05fr_0.95fr]"><div class="space-y-8"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><div class="flex flex-wrap items-center justify-between gap-3"><div><h2 class="text-2xl font-bold">Add or edit video</h2><p class="mt-2 text-sm text-neutral-400">Use either a direct video file upload or a video link. If a file is uploaded, it becomes the main source.</p></div><span id="admin-form-mode" class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.25em] text-neutral-300">Add mode</span></div><form id="admin-video-form" class="mt-6 grid gap-4 md:grid-cols-2"><input type="hidden" name="videoId" /><input type="hidden" name="isCustom" value="true" /><div class="md:col-span-2"><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Title</label><input required name="title" placeholder="Video title" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div class="md:col-span-2"><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Description</label><textarea required name="description" placeholder="Description" class="min-h-[120px] w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"></textarea></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Access type</label><select name="access" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"><option value="guest">Guest video</option><option value="vip">VIP video</option></select></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Points price</label><input required type="number" min="0" name="points" placeholder="Points price" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Category</label><select name="categorySlug" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white">${categories}</select></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Custom category title</label><input name="categoryTitle" placeholder="Optional custom category title" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div class="md:col-span-2 rounded-[1.5rem] border border-white/10 bg-black/20 p-4"><div class="grid gap-4 md:grid-cols-2"><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Thumbnail upload</label><input type="file" name="thumbnailFile" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Thumbnail URL fallback</label><input name="image" placeholder="Optional image URL" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div></div><div id="admin-thumbnail-preview" class="mt-4 hidden overflow-hidden rounded-2xl border border-white/10 bg-black/30"><img src="" alt="Thumbnail preview" class="h-48 w-full object-cover" /></div></div><div class="md:col-span-2 rounded-[1.5rem] border border-white/10 bg-black/20 p-4"><div class="grid gap-4 md:grid-cols-2"><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Video link</label><input name="videoUrl" placeholder="https://..." class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Video file upload</label><input type="file" name="videoFile" accept=".mp4,.webm,.mov,video/mp4,video/webm,video/quicktime" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div></div><p class="mt-3 text-sm text-neutral-400">Source priority: uploaded video file first, then video link.</p><div id="admin-video-source-note" class="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-neutral-300">No source selected yet.</div></div><div class="md:col-span-2 flex flex-wrap gap-3"><button class="rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Save video</button><button type="button" id="admin-form-reset" class="rounded-2xl border border-white/15 px-6 py-3 font-semibold text-white">Clear form</button></div></form></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><div class="flex items-center justify-between gap-4"><div><h2 class="text-2xl font-bold">Manage saved videos</h2><p class="mt-2 text-sm text-neutral-400">Every saved video shows its access label, thumbnail preview, and edit/delete actions.</p></div><a href="index.html" class="rounded-xl border border-white/15 px-4 py-2 text-sm text-white">Back to site</a></div><div id="admin-video-list" class="mt-6 space-y-4"></div></div></div><div class="space-y-8"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">Role manager</h2><p class="mt-2 text-sm text-neutral-400">Use this to mark a user as guest, VIP, or admin on this site.</p><form id="admin-role-form" class="mt-6 space-y-4"><input required type="email" name="email" placeholder="user@example.com" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><select name="role" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"><option value="guest">Guest</option><option value="vip">VIP</option><option value="admin">Admin</option></select><button class="w-full rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Save role</button></form><div id="admin-role-list" class="mt-6 space-y-3"></div></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">VIP quick actions</h2><p class="mt-2 text-sm text-neutral-400">If your Stripe flow is still placeholder-based, you can activate VIP on the current signed-in account from the VIP page.</p><a href="vip-checkout.html" class="mt-4 inline-flex rounded-2xl border border-white/15 px-5 py-3 text-white">Open VIP Checkout Page</a></div></div></section>`;
+      gate.innerHTML = `<section class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Admin Portal</p><h1 class="mt-3 text-4xl font-black">Manage videos, pricing, files, and user roles</h1><p class="mt-4 max-w-3xl text-neutral-300">Guest and VIP access types are saved directly per video. Uploaded video files take priority over links, and uploaded thumbnail images are saved into the live video source when Supabase is configured, with browser storage only used as a fallback.</p><p class="mt-3 text-sm text-amber-200">Tip: after replacing this file, hard refresh the page so the new sync logic loads.</p></section><section class="mt-8 grid gap-8 xl:grid-cols-[1.05fr_0.95fr]"><div class="space-y-8"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><div class="flex flex-wrap items-center justify-between gap-3"><div><h2 class="text-2xl font-bold">Add or edit video</h2><p class="mt-2 text-sm text-neutral-400">Use either a direct video file upload or a video link. If a file is uploaded, it becomes the main source.</p></div><span id="admin-form-mode" class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.25em] text-neutral-300">Add mode</span></div><form id="admin-video-form" class="mt-6 grid gap-4 md:grid-cols-2"><input type="hidden" name="videoId" /><input type="hidden" name="isCustom" value="true" /><div class="md:col-span-2"><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Title</label><input required name="title" placeholder="Video title" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div class="md:col-span-2"><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Description</label><textarea required name="description" placeholder="Description" class="min-h-[120px] w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"></textarea></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Access type</label><select name="access" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"><option value="guest">Guest video</option><option value="vip">VIP video</option></select></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Points price</label><input required type="number" min="0" name="points" placeholder="Points price" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Category</label><select name="categorySlug" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white">${categories}</select></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Custom category title</label><input name="categoryTitle" placeholder="Optional custom category title" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div class="md:col-span-2 rounded-[1.5rem] border border-white/10 bg-black/20 p-4"><div class="grid gap-4 md:grid-cols-2"><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Thumbnail upload</label><input type="file" name="thumbnailFile" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Thumbnail URL fallback</label><input name="image" placeholder="Optional image URL" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div></div><div id="admin-thumbnail-preview" class="mt-4 hidden overflow-hidden rounded-2xl border border-white/10 bg-black/30"><img src="" alt="Thumbnail preview" class="h-48 w-full object-cover" /></div></div><div class="md:col-span-2 rounded-[1.5rem] border border-white/10 bg-black/20 p-4"><div class="grid gap-4 md:grid-cols-2"><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Video link</label><input name="videoUrl" placeholder="https://..." class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Video file upload</label><input type="file" name="videoFile" accept=".mp4,.webm,.mov,video/mp4,video/webm,video/quicktime" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div></div><p class="mt-3 text-sm text-neutral-400">Source priority: uploaded video file first, then video link.</p><div id="admin-video-source-note" class="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-neutral-300">No source selected yet.</div></div><div class="md:col-span-2 flex flex-wrap gap-3"><button class="rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Save video</button><button type="button" id="admin-form-reset" class="rounded-2xl border border-white/15 px-6 py-3 font-semibold text-white">Clear form</button></div></form></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><div class="flex items-center justify-between gap-4"><div><h2 class="text-2xl font-bold">Manage saved videos</h2><p class="mt-2 text-sm text-neutral-400">Every saved video shows its access label, thumbnail preview, and edit/delete actions.</p></div><a href="index.html" class="rounded-xl border border-white/15 px-4 py-2 text-sm text-white">Back to site</a></div><div id="admin-video-list" class="mt-6 space-y-4"></div></div></div><div class="space-y-8"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">Role manager</h2><p class="mt-2 text-sm text-neutral-400">Use this to mark a user as guest, VIP, or admin on this site.</p><form id="admin-role-form" class="mt-6 space-y-4"><input required type="email" name="email" placeholder="user@example.com" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><select name="role" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"><option value="guest">Guest</option><option value="vip">VIP</option><option value="admin">Admin</option></select><button class="w-full rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Save role</button></form><div id="admin-role-list" class="mt-6 space-y-3"></div></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">VIP quick actions</h2><p class="mt-2 text-sm text-neutral-400">If your Stripe flow is still placeholder-based, you can activate VIP on the current signed-in account from the VIP page.</p><a href="vip-checkout.html" class="mt-4 inline-flex rounded-2xl border border-white/15 px-5 py-3 text-white">Open VIP Checkout Page</a></div></div></section>`;
 
       const form = document.getElementById('admin-video-form');
       const modeBadge = document.getElementById('admin-form-mode');
@@ -850,12 +770,25 @@ window.HiddenGemsApp = (() => {
 
         document.querySelectorAll('[data-delete-video]').forEach((button) => button.addEventListener('click', async () => {
           const id = button.dataset.deleteVideo;
-          const video = getVideo(id);
+          const custom = storage.getCustomVideos();
           try {
-            await deleteVideoRecord(id, !!video?.isCustom);
+            if (custom.some((item) => item.id === id)) {
+              const removedRemote = await deleteRemoteVideo(id).catch(() => false);
+              if (!removedRemote) {
+                storage.setCustomVideos(custom.filter((item) => item.id !== id));
+                storage.setRemoteVideosCache(storage.getCustomVideos());
+              }
+            } else {
+              const hidden = new Set(storage.getHiddenVideos());
+              hidden.add(id);
+              storage.setHiddenVideos([...hidden]);
+              storage.removeVideoOverride(id);
+            }
             if (form.elements.videoId.value === id) resetVideoForm();
             toast('Video removed from the site view.', 'success');
+            await refreshLiveVideos(true);
             renderVideoList();
+            window.dispatchEvent(new CustomEvent('hg:state-changed'));
           } catch (error) {
             toast('Failed to remove video.', 'error');
           }
@@ -911,12 +844,40 @@ window.HiddenGemsApp = (() => {
         if (!item.videoFile && !item.videoUrl) { toast('Add a video file or a video link.', 'error'); return; }
 
         try {
-          await saveVideoRecord(item, isCustom);
+          if (isCustom) {
+            const savedRemote = await saveRemoteVideo(item).catch(() => false);
+            if (!savedRemote) {
+              const items = storage.getCustomVideos().filter((video) => video.id !== id);
+              items.push(item);
+              storage.setCustomVideos(items);
+              storage.setRemoteVideosCache(items);
+            }
+          } else {
+            storage.setVideoOverride(id, {
+              title: item.title,
+              description: item.description,
+              image: item.image,
+              videoUrl: item.videoUrl,
+              videoFile: item.videoFile,
+              videoFileName: item.videoFileName,
+              videoMimeType: item.videoMimeType,
+              sourceType: item.sourceType,
+              categorySlug: item.categorySlug,
+              categoryTitle: item.categoryTitle,
+              access: item.access,
+              points: item.points
+            });
+            storage.setVideoPoints(id, item.points);
+            storage.setVideoLink(id, item.videoUrl);
+          }
+
+          await refreshLiveVideos(true);
           resetVideoForm();
           renderVideoList();
           toast(`Video saved as ${item.access.toUpperCase()}.`, 'success');
+          window.dispatchEvent(new CustomEvent('hg:state-changed'));
         } catch (error) {
-          toast('Failed to save video record.', 'error');
+          toast('Failed to save video.', 'error');
         }
       });
 
@@ -940,7 +901,7 @@ window.HiddenGemsApp = (() => {
   }
 
   function renderSimplePage(title, eyebrow, copy) { applyBg(); document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-5xl px-6 py-14"><div class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">${eyebrow}</p><h1 class="mt-3 text-4xl font-black">${title}</h1><div class="mt-6 max-w-none space-y-4 text-neutral-300">${copy}</div></div></main>` + shellFooter(); bindCommonUi(); }
-  function initHomePage() { refreshRemoteVideos(true).finally(() => getState().then(updateHomeStateUi)); window.addEventListener('hg:state-changed', async () => updateHomeStateUi(await getState())); }
+  function initHomePage() { getState().then((state) => updateHomeStateUi(state)); window.addEventListener('hg:state-changed', async () => updateHomeStateUi(await getState())); }
   function initVipCheckoutPage() { const activateButton = document.getElementById('demo-activate-vip'); if (!activateButton) return; activateButton.addEventListener('click', async () => { const state = await getState(); if (!state.email) { toast('Log in first so VIP can be attached to your account.', 'error'); window.location.href = 'login.html'; return; } await syncVipForCurrentUser(true); storage.setRoleOverride(state.email, 'vip'); toast('VIP activated for this account.', 'success'); setTimeout(() => window.location.href = 'index.html', 700); }); }
 
   function initPage() {
@@ -959,6 +920,6 @@ window.HiddenGemsApp = (() => {
     bindCommonUi();
   }
 
-  document.addEventListener('DOMContentLoaded', () => { refreshRemoteVideos(true).catch(() => null); initPage(); });
-  return { storage, getState, getVideo, getCategory, allVideos, renderCategoryPage, renderVideoPage, renderPointsStore, renderLibraryPage, renderSimplePage, shellHeader, shellFooter, bindCommonUi, addPoints, initialsFromEmail, mountSharedHeader, refreshHeaderUi, signOutUser, syncVipForCurrentUser, canAccessVideo, initVipCheckoutPage, refreshRemoteVideos };
+  document.addEventListener('DOMContentLoaded', initPage);
+  return { storage, getState, getVideo, getCategory, allVideos, renderCategoryPage, renderVideoPage, renderPointsStore, renderLibraryPage, renderSimplePage, shellHeader, shellFooter, bindCommonUi, addPoints, initialsFromEmail, mountSharedHeader, refreshHeaderUi, signOutUser, syncVipForCurrentUser, canAccessVideo, initVipCheckoutPage };
 })();
