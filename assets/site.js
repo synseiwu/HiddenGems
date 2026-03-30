@@ -21,7 +21,8 @@ window.HiddenGemsApp = (() => {
     profileCache: 'hg_profile_cache',
     pointsOverrides: 'hg_points_overrides',
     linkOverrides: 'hg_link_overrides',
-    videoOverrides: 'hg_video_overrides'
+    videoOverrides: 'hg_video_overrides',
+    sharedVideos: 'hg_shared_videos_cache'
   };
 
   function readJson(key, fallback) {
@@ -67,8 +68,92 @@ window.HiddenGemsApp = (() => {
     setVideoOverride(id, data) { const map = this.getVideoOverrides(); map[id] = { ...(map[id] || {}), ...data }; writeJson(KEYS.videoOverrides, map); },
     removeVideoOverride(id) { const map = this.getVideoOverrides(); delete map[id]; writeJson(KEYS.videoOverrides, map); },
     cacheProfile(email, data) { if (!email) return; const map = readJson(KEYS.profileCache, {}); map[String(email).toLowerCase()] = data; writeJson(KEYS.profileCache, map); },
-    getCachedProfile(email) { const map = readJson(KEYS.profileCache, {}); return map[String(email || '').toLowerCase()] || null; }
+    getCachedProfile(email) { const map = readJson(KEYS.profileCache, {}); return map[String(email || '').toLowerCase()] || null; },
+    getSharedVideos() { return readJson(KEYS.sharedVideos, []); },
+    setSharedVideos(items) { writeJson(KEYS.sharedVideos, items); }
   };
+
+
+  const VIDEO_TABLE = 'hg_videos';
+
+  async function fetchSharedVideosFromSupabase() {
+    const supabase = getSupabaseClient();
+    if (!supabase) return storage.getSharedVideos();
+    try {
+      const result = await supabase.from(VIDEO_TABLE).select('*').order('created_at', { ascending: false });
+      if (result?.error) throw result.error;
+      const rows = Array.isArray(result?.data) ? result.data : [];
+      const items = rows.filter((row) => !row.deleted_at).map((row) => normalizeVideoItem({
+        id: row.id,
+        title: row.title,
+        description: row.description,
+        image: row.image,
+        videoUrl: row.video_url,
+        videoFile: row.video_file,
+        videoFileName: row.video_file_name,
+        videoMimeType: row.video_mime_type,
+        sourceType: row.source_type,
+        categorySlug: row.category_slug,
+        categoryTitle: row.category_title,
+        access: row.access_type,
+        points: row.points,
+        isCustom: true
+      }));
+      storage.setSharedVideos(items);
+      return items;
+    } catch (error) {
+      return storage.getSharedVideos();
+    }
+  }
+
+  async function saveSharedVideoToSupabase(video) {
+    const supabase = getSupabaseClient();
+    if (!supabase) return false;
+    try {
+      const payload = {
+        id: video.id,
+        title: video.title,
+        description: video.description,
+        image: video.image,
+        video_url: video.videoUrl || '',
+        video_file: video.videoFile || '',
+        video_file_name: video.videoFileName || '',
+        video_mime_type: video.videoMimeType || '',
+        source_type: video.sourceType || (video.videoFile ? 'file' : 'link'),
+        category_slug: video.categorySlug,
+        category_title: video.categoryTitle || '',
+        access_type: video.access,
+        points: Number(video.points || 0),
+        deleted_at: null
+      };
+      const result = await supabase.from(VIDEO_TABLE).upsert(payload);
+      if (result?.error) throw result.error;
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  async function deleteSharedVideoFromSupabase(id) {
+    const supabase = getSupabaseClient();
+    if (!supabase) return false;
+    try {
+      const result = await supabase.from(VIDEO_TABLE).delete().eq('id', id);
+      if (result?.error) throw result.error;
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function mergedCustomVideos() {
+    const merged = new Map();
+    [...storage.getSharedVideos(), ...storage.getCustomVideos()].forEach((item) => {
+      const video = normalizeVideoItem({ ...item, isCustom: true });
+      if (video.id) merged.set(video.id, video);
+    });
+    return [...merged.values()];
+  }
 
   function initialsFromEmail(email) {
     const source = String(email || '').split('@')[0] || BRAND_SHORT;
@@ -271,7 +356,7 @@ window.HiddenGemsApp = (() => {
         });
     });
 
-    for (const rawVideo of storage.getCustomVideos()) {
+    for (const rawVideo of mergedCustomVideos()) {
       const video = normalizeVideoItem({ ...normalizeVideoItem(rawVideo), ...rawVideo, isCustom: true });
       const slug = video.categorySlug || 'creator-picks';
       if (!catalog[slug]) {
@@ -418,6 +503,65 @@ window.HiddenGemsApp = (() => {
     document.getElementById('logout-button')?.addEventListener('click', signOutUser);
   }
 
+  function homeCardAction(video, state) {
+    const action = videoPrimaryAction(state, video);
+    if (action.kind === 'buy') return `<a href="#" data-video-primary="${video.id}" class="flex-1 rounded-xl bg-pink-500 px-4 py-3 text-center font-medium text-white transition hover:bg-pink-400">${action.text}</a>`;
+    return `<a href="${action.href}" data-video-primary="${video.id}" class="flex-1 rounded-xl bg-pink-500 px-4 py-3 text-center font-medium text-white transition hover:bg-pink-400">${action.text}</a>`;
+  }
+
+  function renderDynamicHomeContent(state) {
+    const stats = document.getElementById('home-stats');
+    const featuredGrid = document.getElementById('featured-grid');
+    const categoryGrid = document.getElementById('category-grid-home');
+    const categories = Object.entries(allCategories());
+    const videos = allVideos();
+    const guestVisible = videos.filter((video) => canAccessVideo('guest', video));
+    if (stats) {
+      stats.innerHTML = `<div><p class="text-2xl font-bold text-white">${guestVisible.length}</p><p>Videos available</p></div><div><p class="text-2xl font-bold text-white">${categories.length}</p><p>Categories</p></div><div><p class="text-2xl font-bold text-white">$3 / $5 / $7</p><p>Pricing tiers</p></div>`;
+    }
+    if (featuredGrid) {
+      const picks = videos.filter((video) => canAccessVideo(state.role, video) || video.access === 'guest').slice(0, 3);
+      featuredGrid.innerHTML = picks.map((video) => `
+        <div class="group overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/5 shadow-xl shadow-black/20 transition hover:-translate-y-1 hover:border-pink-400/30">
+          <div class="relative">
+            <img src="${escapeHtml(video.image)}" alt="${escapeHtml(video.title)}" class="h-64 w-full object-cover transition duration-500 group-hover:scale-105" />
+            <div class="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent"></div>
+            <span class="absolute left-4 top-4 rounded-full bg-black/60 px-3 py-1 text-xs text-white backdrop-blur">${escapeHtml(video.category)}</span>
+          </div>
+          <div class="p-5">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <h4 class="text-xl font-semibold">${escapeHtml(video.title)}</h4>
+                <p class="mt-1 text-sm text-neutral-400">${escapeHtml(video.description)}</p>
+              </div>
+              <div class="rounded-xl bg-pink-500/10 px-3 py-2 text-right text-sm font-semibold text-pink-300">${video.access === 'vip' ? '<div>VIP</div><div class="text-[11px] text-neutral-400">VIP only</div>' : `<div>${video.points} pts</div><div class="text-[11px] text-neutral-400">${moneyFromPoints(video.points)} unlock</div>`}</div>
+            </div>
+            <div class="mt-5 flex gap-3">
+              ${homeCardAction(video, state)}
+              <a href="${video.categorySlug}.html" class="rounded-xl border border-white/15 px-4 py-3 text-sm text-neutral-300 transition hover:bg-white/5">Category</a>
+            </div>
+          </div>
+        </div>`).join('');
+      featuredGrid.querySelectorAll('[data-video-primary]').forEach((button) => button.addEventListener('click', (event) => {
+        const video = getVideo(button.dataset.videoPrimary);
+        const action = videoPrimaryAction(state, video);
+        if (action.kind === 'buy') { event.preventDefault(); buyVideo(video); }
+      }));
+    }
+    if (categoryGrid) {
+      categoryGrid.innerHTML = categories.map(([slug, category]) => {
+        const visibleCount = (category.videos || []).filter((video) => canAccessVideo('guest', video)).length;
+        const countLabel = category.vip && !visibleCount ? 'Members only' : `${visibleCount || category.videos.length} videos`;
+        return `<div class="${slug === 'vip-exclusives' ? 'relative ' : ''}rounded-[1.75rem] border border-white/10 bg-neutral-900/70 p-6 transition hover:border-pink-400/30 hover:bg-neutral-900"><div class="mb-8 inline-flex rounded-2xl bg-pink-500/10 px-4 py-2 text-sm font-medium text-pink-300">${escapeHtml(countLabel)}</div><h4 class="text-2xl font-bold">${escapeHtml(category.title)}</h4><p class="mt-3 text-sm text-neutral-400">${escapeHtml(category.subtitle || 'Premium titles ready to unlock.')}</p><a href="${slug}.html" class="mt-6 inline-block text-sm font-semibold text-pink-300 transition hover:text-pink-200">View category →</a></div>`;
+      }).join('');
+    }
+  }
+
+  async function syncSharedCatalog() {
+    await fetchSharedVideosFromSupabase();
+    window.dispatchEvent(new CustomEvent('hg:catalog-changed'));
+  }
+
   function updateHomeStateUi(state) {
     syncLegacyHomeHeader(state);
     const access = document.getElementById('hero-access-text');
@@ -473,7 +617,7 @@ window.HiddenGemsApp = (() => {
     document.body.innerHTML = shellHeader() + `<main><section class="mx-auto max-w-7xl px-6 py-16"><a href="index.html" class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-300 transition hover:bg-white/10">← Back to Home</a><div class="mt-8 rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><div class="flex flex-wrap items-start justify-between gap-6"><div><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Category</p><h2 class="mt-3 text-4xl font-black">${escapeHtml(category.title)}</h2><p class="mt-4 max-w-2xl text-neutral-300">${escapeHtml(category.subtitle || 'Premium titles ready to unlock.')}</p></div><div class="rounded-2xl border border-white/10 bg-black/20 px-5 py-4 text-right"><p class="text-xs uppercase tracking-[0.25em] text-neutral-400">Access tier</p><p class="mt-2 text-2xl font-bold text-white">${category.vip ? 'VIP' : 'Guest'}</p><p class="text-sm text-neutral-400">Admin can access everything</p></div></div></div></section><section class="mx-auto max-w-7xl px-6 pb-20"><div id="wallet-summary" class="mb-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300">Loading wallet...</div><div id="category-grid" class="grid gap-6 md:grid-cols-2 xl:grid-cols-3"></div></section></main>` + shellFooter();
     bindCommonUi();
     const mount = async () => { const state = await getState(); document.getElementById('wallet-summary').innerHTML = `Role: <span class="font-bold text-pink-300">${state.role}</span> · Wallet: <span class="font-bold text-white">${state.localPoints} points</span> · Signed in: <span class="font-bold text-white">${state.email || 'No'}</span>`; renderVideoCards(document.getElementById('category-grid'), category.videos, state); };
-    mount(); window.addEventListener('hg:state-changed', mount);
+    mount(); window.addEventListener('hg:state-changed', mount); window.addEventListener('hg:catalog-changed', mount); syncSharedCatalog(); window.addEventListener('hg:catalog-changed', mount); syncSharedCatalog();
   }
 
   function renderVideoPage() {
@@ -511,7 +655,7 @@ window.HiddenGemsApp = (() => {
         }
       }
     };
-    mount(); window.addEventListener('hg:state-changed', mount);
+    mount(); window.addEventListener('hg:state-changed', mount); window.addEventListener('hg:catalog-changed', mount); syncSharedCatalog();
   }
 
   function renderPointsStore() {
@@ -539,7 +683,7 @@ window.HiddenGemsApp = (() => {
       if (!videos.length) document.getElementById('library-grid').innerHTML = '<div class="rounded-[2rem] border border-dashed border-white/15 bg-white/[0.03] p-8 text-neutral-300 md:col-span-2 xl:col-span-3">No videos in your current library yet. Guests need to unlock standard titles with points. VIP and admin access appears here automatically.</div>';
       else renderVideoCards(document.getElementById('library-grid'), videos, state);
     };
-    mount(); window.addEventListener('hg:state-changed', mount);
+    mount(); window.addEventListener('hg:state-changed', mount); window.addEventListener('hg:catalog-changed', mount); syncSharedCatalog();
   }
 
   function renderAdminPage() {
@@ -647,7 +791,13 @@ window.HiddenGemsApp = (() => {
           const custom = storage.getCustomVideos();
           if (custom.some((item) => item.id === id)) {
             storage.setCustomVideos(custom.filter((item) => item.id !== id));
-          } else {
+          }
+          const shared = storage.getSharedVideos();
+          if (shared.some((item) => item.id === id)) {
+            storage.setSharedVideos(shared.filter((item) => item.id !== id));
+            deleteSharedVideoFromSupabase(id);
+          }
+          if (!custom.some((item) => item.id === id) && !shared.some((item) => item.id === id)) {
             const hidden = new Set(storage.getHiddenVideos());
             hidden.add(id);
             storage.setHiddenVideos([...hidden]);
@@ -657,6 +807,8 @@ window.HiddenGemsApp = (() => {
           toast('Video removed from the site view.', 'success');
           renderVideoList();
           window.dispatchEvent(new CustomEvent('hg:state-changed'));
+        window.dispatchEvent(new CustomEvent('hg:catalog-changed'));
+          window.dispatchEvent(new CustomEvent('hg:catalog-changed'));
         }));
       };
 
@@ -712,6 +864,12 @@ window.HiddenGemsApp = (() => {
           const items = storage.getCustomVideos().filter((video) => video.id !== id);
           items.push(item);
           storage.setCustomVideos(items);
+          const savedRemote = await saveSharedVideoToSupabase(item);
+          if (savedRemote) {
+            const sharedItems = storage.getSharedVideos().filter((video) => video.id !== id);
+            sharedItems.push(item);
+            storage.setSharedVideos(sharedItems);
+          }
         } else {
           storage.setVideoOverride(id, {
             title: item.title,
@@ -757,7 +915,7 @@ window.HiddenGemsApp = (() => {
   }
 
   function renderSimplePage(title, eyebrow, copy) { applyBg(); document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-5xl px-6 py-14"><div class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">${eyebrow}</p><h1 class="mt-3 text-4xl font-black">${title}</h1><div class="mt-6 max-w-none space-y-4 text-neutral-300">${copy}</div></div></main>` + shellFooter(); bindCommonUi(); }
-  function initHomePage() { getState().then(updateHomeStateUi); window.addEventListener('hg:state-changed', async () => updateHomeStateUi(await getState())); }
+  function initHomePage() { const mount = async () => { const state = await getState(); updateHomeStateUi(state); renderDynamicHomeContent(state); }; mount(); window.addEventListener('hg:state-changed', mount); window.addEventListener('hg:catalog-changed', mount); syncSharedCatalog(); }
   function initVipCheckoutPage() { const activateButton = document.getElementById('demo-activate-vip'); if (!activateButton) return; activateButton.addEventListener('click', async () => { const state = await getState(); if (!state.email) { toast('Log in first so VIP can be attached to your account.', 'error'); window.location.href = 'login.html'; return; } await syncVipForCurrentUser(true); storage.setRoleOverride(state.email, 'vip'); toast('VIP activated for this account.', 'success'); setTimeout(() => window.location.href = 'index.html', 700); }); }
 
   function initPage() {
@@ -776,6 +934,8 @@ window.HiddenGemsApp = (() => {
     bindCommonUi();
   }
 
+  window.addEventListener('storage', (event) => { if (Object.values(KEYS).includes(event.key)) window.dispatchEvent(new CustomEvent('hg:catalog-changed')); });
+  window.addEventListener('focus', syncSharedCatalog);
   document.addEventListener('DOMContentLoaded', initPage);
   return { storage, getState, getVideo, getCategory, allVideos, renderCategoryPage, renderVideoPage, renderPointsStore, renderLibraryPage, renderSimplePage, shellHeader, shellFooter, bindCommonUi, addPoints, initialsFromEmail, mountSharedHeader, refreshHeaderUi, signOutUser, syncVipForCurrentUser, canAccessVideo, initVipCheckoutPage };
 })();
