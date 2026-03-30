@@ -10,6 +10,10 @@ window.HiddenGemsApp = (() => {
   const SUPABASE_URL = AUTH_CONFIG.supabaseUrl || '';
   const SUPABASE_PUBLISHABLE_KEY = AUTH_CONFIG.supabaseAnonKey || '';
   const ADMIN_EMAILS = (APP_CONFIG.adminEmails || []).map((email) => String(email).trim().toLowerCase()).filter(Boolean);
+  const VIDEO_TABLE = 'hg_videos';
+  const VIDEO_BUCKET = 'hg-videos';
+  let liveVideoCache = [];
+  let liveVideoCacheLoaded = false;
 
   const KEYS = {
     points: 'hg_points',
@@ -177,11 +181,14 @@ window.HiddenGemsApp = (() => {
       category: String(base.category || base.categoryTitle || '').trim(),
       access: String(base.access || 'guest').trim().toLowerCase() === 'vip' ? 'vip' : 'guest',
       points: Math.max(0, Number(base.points) || 0),
+      videoStoragePath: String(base.videoStoragePath || base.video_storage_path || '').trim(),
+      isPublished: base.isPublished !== false && base.is_published !== false,
       isCustom: !!base.isCustom
     };
   }
 
   function getVideoSource(video) {
+    if (video?.videoStoragePath) return { type: 'storage', value: video.videoStoragePath, mimeType: video.videoMimeType || '', fileName: video.videoFileName || '' };
     if (video?.videoFile) return { type: 'file', value: video.videoFile, mimeType: video.videoMimeType || '', fileName: video.videoFileName || '', ref: video.videoFileRef || '' };
     if (video?.videoFileRef) return { type: 'file', value: '', mimeType: video.videoMimeType || '', fileName: video.videoFileName || '', ref: video.videoFileRef };
     if (video?.videoUrl) return { type: 'link', value: video.videoUrl };
@@ -253,6 +260,77 @@ window.HiddenGemsApp = (() => {
     return profile;
   }
 
+  function titleFromSlug(slug) {
+    return String(slug || '').replace(/-/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
+  }
+
+  function mapDbRowToVideo(row = {}) {
+    return normalizeVideoItem({
+      id: row.id,
+      title: row.title,
+      description: row.description,
+      image: row.thumbnail_url,
+      videoUrl: row.video_url,
+      videoStoragePath: row.video_storage_path,
+      videoFileName: row.video_file_name,
+      videoMimeType: row.video_mime_type,
+      categorySlug: row.category || 'creator-picks',
+      categoryTitle: titleFromSlug(row.category || 'creator-picks'),
+      category: titleFromSlug(row.category || 'creator-picks'),
+      access: row.access_type || 'guest',
+      points: 0,
+      isPublished: row.is_published !== false,
+      isCustom: true
+    });
+  }
+
+  async function refreshLiveVideoCache(force = false) {
+    const supabase = getSupabaseClient();
+    if (!supabase) return liveVideoCache;
+    if (liveVideoCacheLoaded && !force) return liveVideoCache;
+    try {
+      const result = await supabase
+        .from(VIDEO_TABLE)
+        .select('id,title,description,category,access_type,thumbnail_url,video_url,video_storage_path,video_file_name,video_mime_type,is_published,created_at')
+        .order('created_at', { ascending: false });
+      if (result.error) throw result.error;
+      liveVideoCache = (result.data || []).map(mapDbRowToVideo);
+      liveVideoCacheLoaded = true;
+      return liveVideoCache;
+    } catch (error) {
+      console.error('Hidden Gems live video sync failed', error);
+      return liveVideoCache;
+    }
+  }
+
+  function getLiveVideosSnapshot() {
+    return Array.isArray(liveVideoCache) ? liveVideoCache.slice() : [];
+  }
+
+  async function uploadVideoFileToSupabase(file, videoId) {
+    const supabase = getSupabaseClient();
+    if (!supabase || !file || !videoId) return null;
+    const safeName = String(file.name || 'video.mp4').replace(/[^a-zA-Z0-9._-]/g, '-');
+    const path = `videos/${videoId}/${Date.now()}-${safeName}`;
+    const result = await supabase.storage.from(VIDEO_BUCKET).upload(path, file, { upsert: true, contentType: file.type || 'video/mp4' });
+    if (result.error) throw result.error;
+    return { path, fileName: file.name || safeName, mimeType: file.type || 'video/mp4' };
+  }
+
+  async function removeVideoFileFromSupabase(path) {
+    const supabase = getSupabaseClient();
+    if (!supabase || !path) return;
+    try { await supabase.storage.from(VIDEO_BUCKET).remove([path]); } catch (error) {}
+  }
+
+  async function getSignedVideoUrl(path) {
+    const supabase = getSupabaseClient();
+    if (!supabase || !path) return '';
+    const result = await supabase.storage.from(VIDEO_BUCKET).createSignedUrl(path, 60 * 30);
+    if (result.error) throw result.error;
+    return result.data?.signedUrl || '';
+  }
+
   function getRoleForEmail(email, profile) {
     const normalized = String(email || '').trim().toLowerCase();
     if (!normalized) return 'guest';
@@ -294,6 +372,9 @@ window.HiddenGemsApp = (() => {
     const pointOverrides = storage.getPointsOverrides();
     const linkOverrides = storage.getLinkOverrides();
     const videoOverrides = storage.getVideoOverrides();
+    const liveVideos = getLiveVideosSnapshot().filter((video) => video.isPublished !== false);
+    const liveById = new Map(liveVideos.map((video) => [video.id, video]));
+    const seenIds = new Set();
 
     Object.entries(catalog).forEach(([slug, category]) => {
       category.slug = slug;
@@ -302,7 +383,9 @@ window.HiddenGemsApp = (() => {
         .filter((video) => !hidden.has(video[0]))
         .map((video) => {
           const id = video[0];
-          const override = videoOverrides[id] || {};
+          const live = liveById.get(id) || {};
+          const override = live.id ? live : (videoOverrides[id] || {});
+          seenIds.add(id);
           return normalizeVideoItem({
             id,
             title: override.title ?? video[1],
@@ -314,21 +397,34 @@ window.HiddenGemsApp = (() => {
             videoFileName: override.videoFileName || '',
             videoMimeType: override.videoMimeType || '',
             videoFileRef: override.videoFileRef || '',
-            sourceType: (override.videoFile || override.videoFileRef) ? 'file' : (override.sourceType || 'link'),
+            videoStoragePath: override.videoStoragePath || '',
+            sourceType: override.videoStoragePath ? 'storage' : ((override.videoFile || override.videoFileRef) ? 'file' : (override.sourceType || 'link')),
             categorySlug: override.categorySlug || slug,
             categoryTitle: override.categoryTitle || category.title,
             category: override.categoryTitle || category.title,
             access: override.access || (category.vip ? 'vip' : 'guest'),
-            isCustom: false
+            isPublished: override.isPublished !== false,
+            isCustom: !!live.id
           });
         });
     });
 
-    for (const rawVideo of storage.getCustomVideos()) {
-      const video = normalizeVideoItem({ ...normalizeVideoItem(rawVideo), ...rawVideo, isCustom: true });
+    for (const rawVideo of liveVideos) {
+      const video = normalizeVideoItem({ ...rawVideo, isCustom: true });
+      if (seenIds.has(video.id)) continue;
       const slug = video.categorySlug || 'creator-picks';
       if (!catalog[slug]) {
-        catalog[slug] = { title: video.categoryTitle || slug.replace(/-/g, ' ').replace(/\w/g, (m) => m.toUpperCase()), subtitle: 'Custom admin-managed category.', count: 'Custom', slug, access: video.access, videos: [] };
+        catalog[slug] = { title: video.categoryTitle || titleFromSlug(slug), subtitle: 'Custom admin-managed category.', count: 'Custom', slug, access: video.access, videos: [] };
+      }
+      catalog[slug].videos.push({ ...video, category: catalog[slug].title, categoryTitle: catalog[slug].title });
+    }
+
+    for (const rawVideo of storage.getCustomVideos()) {
+      const video = normalizeVideoItem({ ...normalizeVideoItem(rawVideo), ...rawVideo, isCustom: true });
+      if (seenIds.has(video.id) || liveById.has(video.id)) continue;
+      const slug = video.categorySlug || 'creator-picks';
+      if (!catalog[slug]) {
+        catalog[slug] = { title: video.categoryTitle || titleFromSlug(slug), subtitle: 'Custom admin-managed category.', count: 'Custom', slug, access: video.access, videos: [] };
       }
       catalog[slug].videos.push({ ...video, category: catalog[slug].title, categoryTitle: catalog[slug].title });
     }
@@ -336,7 +432,7 @@ window.HiddenGemsApp = (() => {
     Object.values(catalog).forEach((category) => {
       category.vip = (category.videos || []).some((video) => String(video.access || '').toLowerCase() === 'vip');
       category.access = category.vip ? 'vip' : 'guest';
-      category.videos = (category.videos || []).map((video) => ({ ...video, category: video.category || category.title, categoryTitle: video.categoryTitle || category.title }));
+      category.videos = (category.videos || []).filter((video) => video.isPublished !== false).map((video) => ({ ...video, category: video.category || category.title, categoryTitle: video.categoryTitle || category.title }));
     });
     return catalog;
   }
@@ -547,6 +643,7 @@ window.HiddenGemsApp = (() => {
     document.body.innerHTML = shellHeader() + `<main><section class="mx-auto max-w-7xl px-6 py-16"><a href="index.html" class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-300 transition hover:bg-white/10">← Back to Home</a><div id="category-hero" class="mt-8 rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"></div></section><section class="mx-auto max-w-7xl px-6 pb-20"><div id="wallet-summary" class="mb-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300">Loading wallet...</div><div id="category-grid" class="grid gap-6 md:grid-cols-2 xl:grid-cols-3"></div></section></main>` + shellFooter();
     bindCommonUi();
     const mount = async () => {
+      await refreshLiveVideoCache(true);
       const category = getCategory(slug); if (!category) return;
       document.getElementById('category-hero').innerHTML = `<div class="flex flex-wrap items-start justify-between gap-6"><div><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Category</p><h2 class="mt-3 text-4xl font-black">${escapeHtml(category.title)}</h2><p class="mt-4 max-w-2xl text-neutral-300">${escapeHtml(category.subtitle || 'Premium titles ready to unlock.')}</p></div><div class="rounded-2xl border border-white/10 bg-black/20 px-5 py-4 text-right"><p class="text-xs uppercase tracking-[0.25em] text-neutral-400">Access tier</p><p class="mt-2 text-2xl font-bold text-white">${category.vip ? 'VIP' : 'Guest'}</p><p class="mt-3 text-xs uppercase tracking-[0.25em] text-neutral-400">Videos in category</p><p class="mt-2 text-2xl font-bold text-white">${category.videos.length}</p><p class="text-sm text-neutral-400">Admin can access everything</p></div></div>`;
       const state = await getState();
@@ -557,11 +654,21 @@ window.HiddenGemsApp = (() => {
   }
 
   function renderVideoPage() {
-    const video = getVideo(qs('id')); if (!video) return;
+    const videoId = qs('id');
     applyBg();
-    document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-6xl px-6 py-14"><a href="${video.categorySlug}.html" class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-300 transition hover:bg-white/10">← Back</a><div class="mt-8 grid gap-8 lg:grid-cols-[1.15fr_0.85fr]"><section class="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 shadow-xl shadow-black/20"><div class="relative"><img src="${escapeHtml(video.image)}" class="h-[420px] w-full object-cover" alt="${escapeHtml(video.title)}"><div class="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent"></div><div class="absolute bottom-6 left-6"><p class="text-xs uppercase tracking-[0.25em] text-pink-300">${escapeHtml(video.category)}</p><h1 class="mt-2 text-4xl font-black">${escapeHtml(video.title)}</h1></div></div><div class="p-6"><div id="video-access-banner" class="rounded-[1.5rem] border border-white/10 bg-neutral-950/70 p-5 text-neutral-300">Checking access...</div><div id="video-player-shell" class="mt-6 rounded-[1.5rem] border border-white/10 bg-black/20 p-5"></div></div></section><aside class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><p class="text-xs uppercase tracking-[0.25em] text-pink-300">Access details</p><div class="mt-5 space-y-4"><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Category</p><p class="mt-1 text-lg font-semibold text-white">${escapeHtml(video.category)}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Unlock tier</p><p class="mt-1 text-lg font-semibold text-white">${video.access === 'vip' ? 'VIP / Admin' : `${video.points} pts or above`}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Role access</p><p class="mt-1 text-lg font-semibold text-white">Guest: standard · VIP: VIP + standard · Admin: all</p></div></div><div class="mt-6 flex flex-col gap-3"><a id="video-action-button" href="#" class="rounded-2xl bg-pink-500 px-6 py-3 text-center font-semibold text-white transition hover:bg-pink-400">Loading...</a><a href="points-store.html" class="rounded-2xl border border-white/15 px-6 py-3 text-center font-semibold text-white transition hover:bg-white/5">Get more points</a></div></aside></div></main>` + shellFooter();
+    document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-6xl px-6 py-14"><a id="video-back-link" href="index.html" class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-300 transition hover:bg-white/10">← Back</a><div class="mt-8 grid gap-8 lg:grid-cols-[1.15fr_0.85fr]"><section class="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 shadow-xl shadow-black/20"><div class="relative"><img id="video-hero-image" src="" class="h-[420px] w-full object-cover" alt=""><div class="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent"></div><div class="absolute bottom-6 left-6"><p id="video-category-label" class="text-xs uppercase tracking-[0.25em] text-pink-300"></p><h1 id="video-title-heading" class="mt-2 text-4xl font-black"></h1></div></div><div class="p-6"><div id="video-access-banner" class="rounded-[1.5rem] border border-white/10 bg-neutral-950/70 p-5 text-neutral-300">Checking access...</div><div id="video-player-shell" class="mt-6 rounded-[1.5rem] border border-white/10 bg-black/20 p-5"></div></div></section><aside class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><p class="text-xs uppercase tracking-[0.25em] text-pink-300">Access details</p><div class="mt-5 space-y-4"><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Category</p><p id="video-detail-category" class="mt-1 text-lg font-semibold text-white"></p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Unlock tier</p><p id="video-detail-tier" class="mt-1 text-lg font-semibold text-white"></p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Role access</p><p class="mt-1 text-lg font-semibold text-white">Guest: standard · VIP: VIP + standard · Admin: all</p></div></div><div class="mt-6 flex flex-col gap-3"><a id="video-action-button" href="#" class="rounded-2xl bg-pink-500 px-6 py-3 text-center font-semibold text-white transition hover:bg-pink-400">Loading...</a><a href="points-store.html" class="rounded-2xl border border-white/15 px-6 py-3 text-center font-semibold text-white transition hover:bg-white/5">Get more points</a></div></aside></div></main>` + shellFooter();
     bindCommonUi();
     const mount = async () => {
+      await refreshLiveVideoCache(true);
+      const video = getVideo(videoId);
+      if (!video) { window.location.href = 'index.html'; return; }
+      document.getElementById('video-back-link').href = `${video.categorySlug}.html`;
+      const heroImg = document.getElementById('video-hero-image');
+      if (heroImg) { heroImg.src = video.image || ''; heroImg.alt = video.title || ''; }
+      document.getElementById('video-category-label').textContent = video.category || '';
+      document.getElementById('video-title-heading').textContent = video.title || '';
+      document.getElementById('video-detail-category').textContent = video.category || '';
+      document.getElementById('video-detail-tier').textContent = video.access === 'vip' ? 'VIP / Admin' : `${video.points} pts or above`;
       const state = await getState();
       const actionButton = document.getElementById('video-action-button');
       const banner = document.getElementById('video-access-banner');
@@ -578,30 +685,27 @@ window.HiddenGemsApp = (() => {
         actionButton.textContent = `Unlock for ${video.points} pts`; actionButton.href = '#'; actionButton.onclick = (event) => { event.preventDefault(); buyVideo(video); setTimeout(mount, 300); };
       } else {
         const source = getVideoSource(video);
-        banner.innerHTML = `<p class="text-sm uppercase tracking-[0.2em] text-emerald-300">Access granted</p><h3 class="mt-2 text-2xl font-bold text-white">You can open this video</h3><p class="mt-3 text-neutral-300">${source.type === 'file' ? 'Your uploaded video file is ready below.' : source.type === 'link' ? 'Your custom video link is attached below.' : 'Add a custom video source from the admin portal whenever you are ready.'}</p>`;
-        if (source.type === 'file') {
-          let playableSrc = source.value;
-          if (!playableSrc && source.ref) {
-            try {
-              const blob = await getVideoBlob(source.ref);
-              if (blob) playableSrc = URL.createObjectURL(blob);
-            } catch (error) {
-              console.error(error);
-            }
+        banner.innerHTML = `<p class="text-sm uppercase tracking-[0.2em] text-emerald-300">Access Granted</p><h3 class="mt-2 text-2xl font-bold text-white">You can open this video</h3><p class="mt-3 text-neutral-300">${source.type === 'storage' || source.type === 'file' ? 'Your video file is attached below.' : source.type === 'link' ? 'Your custom video link is attached below.' : 'No video source has been added yet.'}</p>`;
+        if (source.type === 'storage') {
+          try {
+            const signedUrl = await getSignedVideoUrl(source.value);
+            player.innerHTML = signedUrl ? `<div class="space-y-4"><video controls playsinline preload="metadata" class="w-full rounded-2xl border border-white/10 bg-black"><source src="${escapeHtml(signedUrl)}" type="${escapeHtml(source.mimeType || 'video/mp4')}" />Your browser does not support embedded video playback for this file.</video>${source.fileName ? `<p class="text-sm text-neutral-500 break-all">${escapeHtml(source.fileName)}</p>` : ''}</div>` : '<p class="text-neutral-400">Uploaded video file could not be loaded.</p>';
+          } catch (error) {
+            console.error(error);
+            player.innerHTML = '<p class="text-neutral-400">Uploaded video file could not be loaded.</p>';
           }
-          if (playableSrc) {
-            player.innerHTML = `<div class="space-y-4"><p class="text-neutral-300">Uploaded video file:</p><video controls playsinline preload="metadata" class="w-full rounded-2xl border border-white/10 bg-black"><source src="${escapeHtml(playableSrc)}" type="${escapeHtml(source.mimeType || 'video/mp4')}" />Your browser does not support embedded video playback for this file.</video>${source.fileName ? `<p class="text-sm text-neutral-500 break-all">${escapeHtml(source.fileName)}</p>` : ''}</div>`;
-          } else {
-            player.innerHTML = '<p class="text-neutral-400">This uploaded video file was not found in browser storage anymore. Re-save the file from the admin page.</p>';
-          }
-          actionButton.textContent = 'Watch Video'; actionButton.href = '#video-player-shell'; actionButton.target = '_self'; actionButton.rel = ''; actionButton.onclick = null;
+        } else if (source.type === 'file') {
+          const blob = source.value ? null : await getVideoBlob(source.ref);
+          const objectUrl = source.value || (blob ? URL.createObjectURL(blob) : '');
+          player.innerHTML = objectUrl ? `<div class="space-y-4"><video controls playsinline preload="metadata" class="w-full rounded-2xl border border-white/10 bg-black"><source src="${escapeHtml(objectUrl)}" type="${escapeHtml(source.mimeType || 'video/mp4')}" />Your browser does not support embedded video playback for this file.</video>${source.fileName ? `<p class="text-sm text-neutral-500 break-all">${escapeHtml(source.fileName)}</p>` : ''}</div>` : '<p class="text-neutral-400">Uploaded video file could not be loaded in this browser.</p>';
         } else if (source.type === 'link') {
-          player.innerHTML = `<div class="space-y-4"><p class="text-neutral-300">Video destination:</p><a href="${escapeHtml(source.value)}" target="_blank" rel="noopener noreferrer" class="inline-flex rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Open Video Link</a><p class="text-sm text-neutral-500 break-all">${escapeHtml(source.value)}</p></div>`;
-          actionButton.textContent = 'Open Video Link'; actionButton.href = source.value; actionButton.target = '_blank'; actionButton.rel = 'noopener noreferrer'; actionButton.onclick = null;
+          player.innerHTML = `<p class="text-neutral-300">Video destination:</p><a class="mt-4 inline-flex rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white" href="${escapeHtml(source.value)}" target="_blank" rel="noreferrer">Open Video Link</a><p class="mt-3 break-all text-xs text-neutral-500">${escapeHtml(source.value)}</p>`;
         } else {
-          player.innerHTML = '<p class="text-neutral-400">No video source has been added yet. Add one from the admin portal.</p>';
-          actionButton.textContent = 'Back to Library'; actionButton.href = 'my-library.html'; actionButton.target = '_self'; actionButton.rel = ''; actionButton.onclick = null;
+          player.innerHTML = '<p class="text-neutral-400">No video source has been added yet.</p>';
         }
+        actionButton.textContent = source.type === 'link' ? 'Open Link' : 'Ready to watch';
+        actionButton.href = source.type === 'link' ? source.value : '#video-player-shell';
+        actionButton.onclick = null;
       }
     };
     mount(); window.addEventListener('hg:state-changed', mount);
@@ -626,6 +730,13 @@ window.HiddenGemsApp = (() => {
     document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-7xl px-6 py-14"><div class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">My Library</p><h1 class="mt-3 text-4xl font-black">Accessible videos for your account</h1><p class="mt-4 max-w-2xl text-neutral-300">Guest accounts see unlocked standard titles, VIP sees VIP and standard, admin sees all titles.</p></div><div id="library-summary" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300">Loading library...</div><div id="library-grid" class="mt-8 grid gap-6 md:grid-cols-2 xl:grid-cols-3"></div></main>` + shellFooter();
     bindCommonUi();
     const mount = async () => {
+      await refreshLiveVideoCache(true);
+      const video = getVideo(videoId); if (!video) { window.location.href = 'index.html'; return; }
+      const backLink = document.querySelector('main a.inline-flex'); if (backLink) backLink.href = `${video.categorySlug}.html`;
+      const heroImg = document.querySelector('section img'); if (heroImg) { heroImg.src = video.image || ''; heroImg.alt = video.title || ''; }
+      document.querySelector('section .text-xs.uppercase') && (document.querySelector('section .text-xs.uppercase').textContent = video.category || '');
+      document.querySelector('section h1') && (document.querySelector('section h1').textContent = video.title || '');
+      const detailBlocks = document.querySelectorAll('aside .rounded-2xl.bg-neutral-900\/80 p');
       const state = await getState();
       const videos = allVideos().filter((video) => { if (!canAccessVideo(state.role, video)) return false; if (state.role === 'admin' || state.role === 'vip') return true; return storage.isUnlocked(video.id); });
       document.getElementById('library-summary').innerHTML = `Role: <span class="font-bold text-pink-300">${state.role}</span> · Accessible titles: <span class="font-bold text-white">${videos.length}</span> · Demo wallet: <span class="font-bold text-white">${state.localPoints} points</span>`;
@@ -640,6 +751,13 @@ window.HiddenGemsApp = (() => {
     document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-7xl px-6 py-14"><div id="admin-gate"></div></main>` + shellFooter();
     bindCommonUi();
     const mount = async () => {
+      await refreshLiveVideoCache(true);
+      const video = getVideo(videoId); if (!video) { window.location.href = 'index.html'; return; }
+      const backLink = document.querySelector('main a.inline-flex'); if (backLink) backLink.href = `${video.categorySlug}.html`;
+      const heroImg = document.querySelector('section img'); if (heroImg) { heroImg.src = video.image || ''; heroImg.alt = video.title || ''; }
+      document.querySelector('section .text-xs.uppercase') && (document.querySelector('section .text-xs.uppercase').textContent = video.category || '');
+      document.querySelector('section h1') && (document.querySelector('section h1').textContent = video.title || '');
+      const detailBlocks = document.querySelectorAll('aside .rounded-2xl.bg-neutral-900\/80 p');
       const state = await getState();
       const gate = document.getElementById('admin-gate');
       if (state.role !== 'admin') { gate.innerHTML = `<div class="rounded-[2rem] border border-amber-400/30 bg-amber-500/10 p-8"><p class="text-sm uppercase tracking-[0.25em] text-amber-200">Admin only</p><h1 class="mt-3 text-4xl font-black">Access denied</h1><p class="mt-4 max-w-2xl text-neutral-200">Only accounts marked admin in your profile or listed in config.js can open this page.</p><a href="index.html" class="mt-6 inline-flex rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Back to Home</a></div>`; return; }
@@ -657,6 +775,7 @@ window.HiddenGemsApp = (() => {
       let videoData = '';
       let videoMimeType = '';
       let videoFileName = '';
+      let videoStoragePath = '';
 
       const setThumbnailPreview = (value) => {
         thumbnailData = value || '';
@@ -673,7 +792,8 @@ window.HiddenGemsApp = (() => {
 
       const updateSourceNote = () => {
         const link = String(form.elements.videoUrl.value || '').trim();
-        if (videoData) sourceNote.innerHTML = `<span class="font-semibold text-emerald-300">Using uploaded file</span>${videoFileName ? ` · ${escapeHtml(videoFileName)}` : ''}`;
+        if (videoStoragePath) sourceNote.innerHTML = `<span class="font-semibold text-emerald-300">Using shared uploaded file</span>${videoFileName ? ` · ${escapeHtml(videoFileName)}` : ''}`;
+        else if (videoData) sourceNote.innerHTML = `<span class="font-semibold text-emerald-300">Using uploaded file</span>${videoFileName ? ` · ${escapeHtml(videoFileName)}` : ''}`;
         else if (link) sourceNote.innerHTML = `<span class="font-semibold text-pink-300">Using video link</span> · ${escapeHtml(link)}`;
         else sourceNote.textContent = 'No source selected yet.';
       };
@@ -693,6 +813,7 @@ window.HiddenGemsApp = (() => {
         videoData = video.videoFile || '';
         videoMimeType = video.videoMimeType || '';
         videoFileName = video.videoFileName || '';
+        videoStoragePath = video.videoStoragePath || '';
         if (form.elements.thumbnailFile) form.elements.thumbnailFile.value = '';
         if (form.elements.videoFile) form.elements.videoFile.value = '';
         setThumbnailPreview(video.image || '');
@@ -711,6 +832,7 @@ window.HiddenGemsApp = (() => {
         videoData = '';
         videoMimeType = '';
         videoFileName = '';
+        videoStoragePath = '';
         setThumbnailPreview('');
         updateSourceNote();
         modeBadge.textContent = 'Add mode';
@@ -727,7 +849,7 @@ window.HiddenGemsApp = (() => {
         document.getElementById('admin-video-list').innerHTML = videos.length ? videos.map((video) => {
           const source = getVideoSource(video);
           const accessClass = video.access === 'vip' ? 'border-pink-400/30 bg-pink-500/10 text-pink-200' : 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200';
-          return `<div class="rounded-[1.75rem] border border-white/10 bg-neutral-900/80 p-4"><div class="grid gap-4 md:grid-cols-[180px_1fr]"><div class="overflow-hidden rounded-2xl border border-white/10 bg-black/30">${video.image ? `<img src="${escapeHtml(video.image)}" alt="${escapeHtml(video.title)}" class="h-40 w-full object-cover" />` : '<div class="flex h-40 items-center justify-center text-sm text-neutral-500">No thumbnail</div>'}</div><div><div class="flex flex-wrap items-start justify-between gap-3"><div><div class="flex flex-wrap items-center gap-2"><p class="text-lg font-semibold text-white">${escapeHtml(video.title)}</p><span class="rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${accessClass}">${video.access}</span>${video.isCustom ? '<span class="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-300">Custom</span>' : '<span class="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400">Catalog</span>'}</div><p class="mt-2 text-sm text-neutral-400">${escapeHtml(video.category)} · ${video.points} pts</p></div><div class="text-sm text-neutral-400">${source.type === 'file' ? 'Uploaded file' : source.type === 'link' ? 'Video link' : 'No source'}</div></div><p class="mt-3 text-sm text-neutral-300">${escapeHtml(video.description || 'No description added yet.')}</p><div class="mt-4 flex flex-wrap gap-3"><button data-edit-video="${video.id}" class="rounded-xl bg-pink-500 px-4 py-2 text-sm font-semibold text-white">Edit</button><button data-delete-video="${video.id}" class="rounded-xl border border-rose-400/20 bg-rose-500/10 px-4 py-2 text-sm text-rose-200">${video.isCustom ? 'Delete' : 'Hide'}</button></div></div></div></div>`;
+          return `<div class="rounded-[1.75rem] border border-white/10 bg-neutral-900/80 p-4"><div class="grid gap-4 md:grid-cols-[180px_1fr]"><div class="overflow-hidden rounded-2xl border border-white/10 bg-black/30">${video.image ? `<img src="${escapeHtml(video.image)}" alt="${escapeHtml(video.title)}" class="h-40 w-full object-cover" />` : '<div class="flex h-40 items-center justify-center text-sm text-neutral-500">No thumbnail</div>'}</div><div><div class="flex flex-wrap items-start justify-between gap-3"><div><div class="flex flex-wrap items-center gap-2"><p class="text-lg font-semibold text-white">${escapeHtml(video.title)}</p><span class="rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${accessClass}">${video.access}</span>${video.isCustom ? '<span class="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-300">Custom</span>' : '<span class="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400">Catalog</span>'}</div><p class="mt-2 text-sm text-neutral-400">${escapeHtml(video.category)} · ${video.points} pts</p></div><div class="text-sm text-neutral-400">${source.type === 'storage' ? 'Shared uploaded file' : source.type === 'file' ? 'Uploaded file' : source.type === 'link' ? 'Video link' : 'No source'}</div></div><p class="mt-3 text-sm text-neutral-300">${escapeHtml(video.description || 'No description added yet.')}</p><div class="mt-4 flex flex-wrap gap-3"><button data-edit-video="${video.id}" class="rounded-xl bg-pink-500 px-4 py-2 text-sm font-semibold text-white">Edit</button><button data-delete-video="${video.id}" class="rounded-xl border border-rose-400/20 bg-rose-500/10 px-4 py-2 text-sm text-rose-200">${video.isCustom ? 'Delete' : 'Hide'}</button></div></div></div></div>`;
         }).join('') : '<div class="rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-6 text-neutral-300">No videos found.</div>';
 
         document.querySelectorAll('[data-edit-video]').forEach((button) => button.addEventListener('click', () => {
@@ -739,10 +861,16 @@ window.HiddenGemsApp = (() => {
           const id = button.dataset.deleteVideo;
           const custom = storage.getCustomVideos();
           const targetCustom = custom.find((item) => item.id === id);
+          const liveTarget = getLiveVideosSnapshot().find((item) => item.id === id) || null;
           const targetOverride = storage.getVideoOverrides()[id] || null;
           if (targetCustom?.videoFileRef) { try { await removeVideoBlob(targetCustom.videoFileRef); } catch (error) {} }
           if (targetOverride?.videoFileRef) { try { await removeVideoBlob(targetOverride.videoFileRef); } catch (error) {} }
-          if (custom.some((item) => item.id === id)) {
+          const supabase = getSupabaseClient();
+          if (liveTarget && supabase) {
+            if (liveTarget.videoStoragePath) await removeVideoFileFromSupabase(liveTarget.videoStoragePath);
+            try { await supabase.from(VIDEO_TABLE).delete().eq('id', id); } catch (error) { console.error(error); }
+            await refreshLiveVideoCache(true);
+          } else if (custom.some((item) => item.id === id)) {
             storage.setCustomVideos(custom.filter((item) => item.id !== id));
           } else {
             const hidden = new Set(storage.getHiddenVideos());
@@ -808,36 +936,80 @@ window.HiddenGemsApp = (() => {
         if (!item.videoFile && !item.videoFileRef && !item.videoUrl) { toast('Add a video file or a video link.', 'error'); return; }
 
         try {
-          if (form.elements.videoFile?.files?.[0]) {
-            const blobRef = `hg-video-${id}`;
-            await saveVideoBlob(blobRef, form.elements.videoFile.files[0]);
-            item.videoFileRef = blobRef;
-            item.videoFile = '';
-            item.sourceType = 'file';
-          }
+          const supabase = getSupabaseClient();
+          const currentLive = getLiveVideosSnapshot().find((video) => video.id === id) || null;
+          const selectedFile = form.elements.videoFile?.files?.[0] || null;
 
-          if (isCustom) {
-            const items = storage.getCustomVideos().filter((video) => video.id !== id);
-            items.push(item);
-            storage.setCustomVideos(items);
-          } else {
-            storage.setVideoOverride(id, {
+          if (supabase) {
+            const user = await getSessionUser();
+            let nextStoragePath = currentLive?.videoStoragePath || '';
+            let nextFileName = currentLive?.videoFileName || '';
+            let nextMimeType = currentLive?.videoMimeType || '';
+
+            if (selectedFile) {
+              if (currentLive?.videoStoragePath) await removeVideoFileFromSupabase(currentLive.videoStoragePath);
+              const uploaded = await uploadVideoFileToSupabase(selectedFile, id);
+              nextStoragePath = uploaded.path;
+              nextFileName = uploaded.fileName;
+              nextMimeType = uploaded.mimeType;
+              item.videoUrl = '';
+            } else if (item.videoUrl) {
+              if (currentLive?.videoStoragePath) await removeVideoFileFromSupabase(currentLive.videoStoragePath);
+              nextStoragePath = '';
+              nextFileName = '';
+              nextMimeType = '';
+            }
+
+            const payload = {
+              id: item.id,
               title: item.title,
               description: item.description,
-              image: item.image,
-              videoUrl: item.videoUrl,
-              videoFile: item.videoFile,
-              videoFileRef: item.videoFileRef,
-              videoFileName: item.videoFileName,
-              videoMimeType: item.videoMimeType,
-              sourceType: item.sourceType,
-              categorySlug: item.categorySlug,
-              categoryTitle: item.categoryTitle,
-              access: item.access,
-              points: item.points
-            });
-            storage.setVideoPoints(id, item.points);
-            storage.setVideoLink(id, item.videoUrl);
+              category: item.categorySlug,
+              access_type: item.access,
+              thumbnail_url: item.image,
+              video_url: item.videoUrl || '',
+              video_storage_path: nextStoragePath || null,
+              video_file_name: nextFileName || null,
+              video_mime_type: nextMimeType || null,
+              is_published: true,
+              sort_order: 0,
+              created_by: user?.id || null,
+              updated_at: new Date().toISOString()
+            };
+            const result = await supabase.from(VIDEO_TABLE).upsert(payload);
+            if (result.error) throw result.error;
+            await refreshLiveVideoCache(true);
+          } else {
+            if (selectedFile) {
+              const blobRef = `hg-video-${id}`;
+              await saveVideoBlob(blobRef, selectedFile);
+              item.videoFileRef = blobRef;
+              item.videoFile = '';
+              item.sourceType = 'file';
+            }
+            if (isCustom) {
+              const items = storage.getCustomVideos().filter((video) => video.id !== id);
+              items.push(item);
+              storage.setCustomVideos(items);
+            } else {
+              storage.setVideoOverride(id, {
+                title: item.title,
+                description: item.description,
+                image: item.image,
+                videoUrl: item.videoUrl,
+                videoFile: item.videoFile,
+                videoFileRef: item.videoFileRef,
+                videoFileName: item.videoFileName,
+                videoMimeType: item.videoMimeType,
+                sourceType: item.sourceType,
+                categorySlug: item.categorySlug,
+                categoryTitle: item.categoryTitle,
+                access: item.access,
+                points: item.points
+              });
+              storage.setVideoPoints(id, item.points);
+              storage.setVideoLink(id, item.videoUrl);
+            }
           }
 
           resetVideoForm();
@@ -846,7 +1018,7 @@ window.HiddenGemsApp = (() => {
           window.dispatchEvent(new CustomEvent('hg:state-changed'));
         } catch (error) {
           console.error(error);
-          toast('Video file could not be saved. Try a smaller file or save a direct video link instead.', 'error');
+          toast('Video could not be saved to Supabase. Check your storage/table policies and try again.', 'error');
         }
       });
 
@@ -870,7 +1042,7 @@ window.HiddenGemsApp = (() => {
   }
 
   function renderSimplePage(title, eyebrow, copy) { applyBg(); document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-5xl px-6 py-14"><div class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">${eyebrow}</p><h1 class="mt-3 text-4xl font-black">${title}</h1><div class="mt-6 max-w-none space-y-4 text-neutral-300">${copy}</div></div></main>` + shellFooter(); bindCommonUi(); }
-  function initHomePage() { getState().then(updateHomeStateUi); window.addEventListener('hg:state-changed', async () => updateHomeStateUi(await getState())); }
+  function initHomePage() { const syncHome = async () => { await refreshLiveVideoCache(true); updateHomeStateUi(await getState()); }; syncHome(); window.addEventListener('hg:state-changed', syncHome); }
   function initVipCheckoutPage() { const activateButton = document.getElementById('demo-activate-vip'); if (!activateButton) return; activateButton.addEventListener('click', async () => { const state = await getState(); if (!state.email) { toast('Log in first so VIP can be attached to your account.', 'error'); window.location.href = 'login.html'; return; } await syncVipForCurrentUser(true); storage.setRoleOverride(state.email, 'vip'); toast('VIP activated for this account.', 'success'); setTimeout(() => window.location.href = 'index.html', 700); }); }
 
   function initPage() {
