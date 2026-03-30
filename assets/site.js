@@ -232,7 +232,7 @@ window.HiddenGemsApp = (() => {
     if (supabase) {
       try { await supabase.from('profiles').upsert({ id: user.id, email, is_vip: !!isVip, points_balance: Number(cached.points_balance || 0), role: isVip ? 'vip' : (cached.role || 'guest') }); } catch (error) {}
     }
-    window.dispatchEvent(new CustomEvent('hg:state-changed'));
+    dispatchCatalogChanged();
     return true;
   }
 
@@ -438,15 +438,15 @@ window.HiddenGemsApp = (() => {
     if (!video) return;
     getState().then((state) => {
       if (video.access === 'vip' && state.role === 'guest') { toast('This title requires VIP access.', 'error'); return; }
-      if (state.role === 'vip' || state.role === 'admin') { storage.unlock(video.id); window.dispatchEvent(new CustomEvent('hg:state-changed')); location.href = `video.html?id=${encodeURIComponent(video.id)}`; return; }
+      if (state.role === 'vip' || state.role === 'admin') { storage.unlock(video.id); dispatchCatalogChanged(); location.href = `video.html?id=${encodeURIComponent(video.id)}`; return; }
       if (storage.isUnlocked(video.id)) { location.href = `video.html?id=${encodeURIComponent(video.id)}`; return; }
       const local = storage.getPoints();
       if (local < video.points) { toast(`You need ${video.points - local} more points.`, 'error'); return; }
-      storage.setPoints(local - video.points); storage.unlock(video.id); storage.addTransaction({ type: 'unlock', label: video.title, amount: -video.points, id: video.id }); toast(`${video.title} unlocked.`, 'success'); window.dispatchEvent(new CustomEvent('hg:state-changed')); setTimeout(() => location.href = `video.html?id=${encodeURIComponent(video.id)}`, 500);
+      storage.setPoints(local - video.points); storage.unlock(video.id); storage.addTransaction({ type: 'unlock', label: video.title, amount: -video.points, id: video.id }); toast(`${video.title} unlocked.`, 'success'); dispatchCatalogChanged(); setTimeout(() => location.href = `video.html?id=${encodeURIComponent(video.id)}`, 500);
     });
   }
 
-  function addPoints(amount, label) { const total = storage.addPoints(amount); storage.addTransaction({ type: 'points', label, amount }); toast(`${amount} points added. Wallet: ${total} pts`, 'success'); window.dispatchEvent(new CustomEvent('hg:state-changed')); }
+  function addPoints(amount, label) { const total = storage.addPoints(amount); storage.addTransaction({ type: 'points', label, amount }); toast(`${amount} points added. Wallet: ${total} pts`, 'success'); dispatchCatalogChanged(); }
 
   function videoPrimaryAction(state, video) {
     if (!canAccessVideo(state.role, video)) return { text: 'Join VIP', href: 'vip-checkout.html', kind: 'link' };
@@ -472,8 +472,13 @@ window.HiddenGemsApp = (() => {
     applyBg();
     document.body.innerHTML = shellHeader() + `<main><section class="mx-auto max-w-7xl px-6 py-16"><a href="index.html" class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-300 transition hover:bg-white/10">← Back to Home</a><div class="mt-8 rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><div class="flex flex-wrap items-start justify-between gap-6"><div><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Category</p><h2 class="mt-3 text-4xl font-black">${escapeHtml(category.title)}</h2><p class="mt-4 max-w-2xl text-neutral-300">${escapeHtml(category.subtitle || 'Premium titles ready to unlock.')}</p></div><div class="rounded-2xl border border-white/10 bg-black/20 px-5 py-4 text-right"><p class="text-xs uppercase tracking-[0.25em] text-neutral-400">Access tier</p><p class="mt-2 text-2xl font-bold text-white">${category.vip ? 'VIP' : 'Guest'}</p><p class="text-sm text-neutral-400">Admin can access everything</p></div></div></div></section><section class="mx-auto max-w-7xl px-6 pb-20"><div id="wallet-summary" class="mb-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300">Loading wallet...</div><div id="category-grid" class="grid gap-6 md:grid-cols-2 xl:grid-cols-3"></div></section></main>` + shellFooter();
     bindCommonUi();
-    const mount = async () => { const state = await getState(); document.getElementById('wallet-summary').innerHTML = `Role: <span class="font-bold text-pink-300">${state.role}</span> · Wallet: <span class="font-bold text-white">${state.localPoints} points</span> · Signed in: <span class="font-bold text-white">${state.email || 'No'}</span>`; renderVideoCards(document.getElementById('category-grid'), category.videos, state); };
-    mount(); window.addEventListener('hg:state-changed', mount);
+    const mount = async () => {
+      const liveCategory = getCategory(slug) || category;
+      const state = await getState();
+      document.getElementById('wallet-summary').innerHTML = `Role: <span class="font-bold text-pink-300">${state.role}</span> · Wallet: <span class="font-bold text-white">${state.localPoints} points</span> · Signed in: <span class="font-bold text-white">${state.email || 'No'}</span>`;
+      renderVideoCards(document.getElementById('category-grid'), liveCategory.videos || [], state);
+    };
+    mount(); window.addEventListener('hg:state-changed', mount); window.addEventListener('hg:catalog-changed', mount); window.addEventListener('storage', (event) => { if (!event.key || String(event.key).startsWith('hg_')) mount(); });
   }
 
   function renderVideoPage() {
@@ -539,7 +544,7 @@ window.HiddenGemsApp = (() => {
       if (!videos.length) document.getElementById('library-grid').innerHTML = '<div class="rounded-[2rem] border border-dashed border-white/15 bg-white/[0.03] p-8 text-neutral-300 md:col-span-2 xl:col-span-3">No videos in your current library yet. Guests need to unlock standard titles with points. VIP and admin access appears here automatically.</div>';
       else renderVideoCards(document.getElementById('library-grid'), videos, state);
     };
-    mount(); window.addEventListener('hg:state-changed', mount);
+    mount(); window.addEventListener('hg:state-changed', mount); window.addEventListener('hg:catalog-changed', mount); window.addEventListener('storage', (event) => { if (!event.key || String(event.key).startsWith('hg_')) mount(); });
   }
 
   function renderAdminPage() {
@@ -626,7 +631,7 @@ window.HiddenGemsApp = (() => {
       const renderRoleList = () => {
         const map = storage.getRoleOverrides(); const entries = Object.entries(map);
         document.getElementById('admin-role-list').innerHTML = entries.length ? entries.map(([email, role]) => `<div class="flex items-center justify-between rounded-2xl bg-neutral-900/80 px-4 py-4"><div><p class="font-medium text-white">${escapeHtml(email)}</p><p class="text-sm text-neutral-400 uppercase">${escapeHtml(role)}</p></div><button data-remove-role="${escapeHtml(email)}" class="rounded-xl border border-white/10 px-3 py-2 text-sm text-white">Remove</button></div>`).join('') : '<p class="text-sm text-neutral-400">No local role overrides yet.</p>';
-        document.querySelectorAll('[data-remove-role]').forEach((button) => button.addEventListener('click', () => { storage.setRoleOverride(button.dataset.removeRole, null); renderRoleList(); window.dispatchEvent(new CustomEvent('hg:state-changed')); }));
+        document.querySelectorAll('[data-remove-role]').forEach((button) => button.addEventListener('click', () => { storage.setRoleOverride(button.dataset.removeRole, null); renderRoleList(); dispatchCatalogChanged(); }));
       };
 
       const renderVideoList = () => {
@@ -656,7 +661,7 @@ window.HiddenGemsApp = (() => {
           if (form.elements.videoId.value === id) resetVideoForm();
           toast('Video removed from the site view.', 'success');
           renderVideoList();
-          window.dispatchEvent(new CustomEvent('hg:state-changed'));
+          dispatchCatalogChanged();
         }));
       };
 
@@ -734,7 +739,7 @@ window.HiddenGemsApp = (() => {
         resetVideoForm();
         renderVideoList();
         toast(`Video saved as ${item.access.toUpperCase()}.`, 'success');
-        window.dispatchEvent(new CustomEvent('hg:state-changed'));
+        dispatchCatalogChanged();
       });
 
       resetButton.addEventListener('click', resetVideoForm);
@@ -746,7 +751,7 @@ window.HiddenGemsApp = (() => {
         storage.setRoleOverride(email, role);
         const cached = storage.getCachedProfile(email) || { email, points_balance: 0, is_vip: false };
         storage.cacheProfile(email, { ...cached, email, is_vip: role === 'vip' || role === 'admin', role });
-        toast('Role saved.', 'success'); event.currentTarget.reset(); renderRoleList(); window.dispatchEvent(new CustomEvent('hg:state-changed'));
+        toast('Role saved.', 'success'); event.currentTarget.reset(); renderRoleList(); dispatchCatalogChanged();
       });
 
       resetVideoForm();
@@ -757,87 +762,131 @@ window.HiddenGemsApp = (() => {
   }
 
   function renderSimplePage(title, eyebrow, copy) { applyBg(); document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-5xl px-6 py-14"><div class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">${eyebrow}</p><h1 class="mt-3 text-4xl font-black">${title}</h1><div class="mt-6 max-w-none space-y-4 text-neutral-300">${copy}</div></div></main>` + shellFooter(); bindCommonUi(); }
-  function visibleVideosForRole(role) {
-    return allVideos().filter((video) => canAccessVideo(role, video));
+
+  function dispatchCatalogChanged() {
+    window.dispatchEvent(new CustomEvent('hg:catalog-changed'));
+    window.dispatchEvent(new CustomEvent('hg:state-changed'));
   }
 
-  function featuredCandidatesForRole(role) {
-    const videos = visibleVideosForRole(role);
-    const custom = videos.filter((video) => video.isCustom);
-    const catalog = videos.filter((video) => !video.isCustom);
-    return [...custom.reverse(), ...catalog];
+  function sortHomeVideos(videos = []) {
+    return [...videos].sort((a, b) => {
+      const customDelta = Number(!!b.isCustom) - Number(!!a.isCustom);
+      if (customDelta) return customDelta;
+      return String(b.id || '').localeCompare(String(a.id || ''));
+    });
   }
 
-  function syncHomeStats(role) {
-    const stats = Array.from(document.querySelectorAll('section .mt-10.flex.flex-wrap.gap-6.text-sm.text-neutral-400 > div'));
-    if (stats.length < 2) return;
-    const visible = visibleVideosForRole(role);
-    const visibleCategories = new Set(visible.map((video) => video.categorySlug)).size;
-    const statValue = (index, value) => {
-      const valueNode = stats[index]?.querySelector('p.text-2xl');
+  function homeVisibleVideosForState(state) {
+    return sortHomeVideos(allVideos().filter((video) => canAccessVideo(state.role, video)));
+  }
+
+  function updateHeroCatalogStats(state) {
+    const labels = Array.from(document.querySelectorAll('main section:first-of-type p')).map((node) => ({ node, text: String(node.textContent || '').trim().toLowerCase() }));
+    const setStat = (labelText, value) => {
+      const match = labels.find((entry) => entry.text === labelText.toLowerCase());
+      const valueNode = match?.node?.previousElementSibling;
       if (valueNode) valueNode.textContent = value;
     };
-    statValue(0, String(visible.length));
-    statValue(1, String(visibleCategories));
+    const categories = Object.values(allCategories());
+    const visibleStandardCount = allVideos().filter((video) => canAccessVideo(state.role, video)).length;
+    setStat('Videos available', String(visibleStandardCount));
+    setStat('Categories', String(categories.length));
   }
 
-  function syncHomeFeatured(role) {
-    const cards = Array.from(document.querySelectorAll('#featured .grid > div')).filter((node) => !node.id || node.id !== 'vip-feature-card');
+  function updateHomeFeaturedSection(state) {
+    const featuredSection = document.getElementById('featured');
+    if (!featuredSection) return;
+    const cards = featuredSection.querySelectorAll('.grid > div.group, .grid > article, .grid > #vip-feature-card');
     if (!cards.length) return;
-    const candidates = featuredCandidatesForRole(role).filter((video) => video.access === 'guest');
+    const videos = homeVisibleVideosForState(state).slice(0, 3);
     cards.forEach((card, index) => {
-      const video = candidates[index];
-      if (!video) return;
+      const video = videos[index];
+      if (!video) {
+        if (index > 0) card.classList.add('hidden');
+        return;
+      }
+      card.classList.remove('hidden');
       const image = card.querySelector('img');
       const badge = card.querySelector('.absolute.left-4.top-4');
       const title = card.querySelector('h4');
-      const meta = card.querySelector('p.mt-1');
+      const subtitle = title?.nextElementSibling;
       const priceBox = card.querySelector('.rounded-xl.bg-pink-500\/10');
-      const actions = card.querySelectorAll('a');
-      if (image) { image.src = video.image; image.alt = video.title; }
+      const links = card.querySelectorAll('a');
+      if (image) {
+        image.src = video.image;
+        image.alt = video.title;
+      }
       if (badge) badge.textContent = video.category;
       if (title) title.textContent = video.title;
-      if (meta) meta.textContent = video.isCustom ? 'New upload' : 'by Hidden Gems';
+      if (subtitle) subtitle.textContent = video.access === 'vip' ? 'VIP exclusive' : 'by Hidden Gems';
       if (priceBox) {
-        priceBox.innerHTML = `<div>${video.points} pts</div><div class="text-[11px] text-neutral-400">${moneyFromPoints(video.points)} • ${video.access === 'vip' ? 'VIP only' : 'View only'}</div>`;
+        priceBox.innerHTML = video.access === 'vip'
+          ? '<div>VIP</div><div class="text-[11px] text-neutral-400">Members only</div>'
+          : `<div>${video.points} pts</div><div class="text-[11px] text-neutral-400">${moneyFromPoints(video.points)} • View only</div>`;
       }
-      if (actions[0]) { actions[0].href = `video.html?id=${encodeURIComponent(video.id)}`; actions[0].textContent = 'Preview / Unlock'; }
-      if (actions[1]) { actions[1].href = `${video.categorySlug}.html`; actions[1].textContent = 'Category'; }
+      if (links[0]) {
+        links[0].href = `video.html?id=${encodeURIComponent(video.id)}`;
+        links[0].textContent = video.access === 'vip' && state.role === 'guest' ? 'Preview / Join VIP' : 'Preview / Unlock';
+      }
+      if (links[1]) links[1].href = `${video.categorySlug}.html`;
+      if (card.id === 'vip-feature-card') {
+        const overlay = document.getElementById('vip-feature-overlay');
+        const primary = document.getElementById('vip-feature-primary');
+        if (overlay && primary) {
+          if (video.access === 'vip' && state.role === 'guest') {
+            overlay.classList.remove('hidden');
+            overlay.classList.add('flex');
+            primary.textContent = 'Join VIP';
+            primary.href = 'vip-checkout.html';
+          } else {
+            overlay.classList.add('hidden');
+            overlay.classList.remove('flex');
+            primary.textContent = video.access === 'vip' ? 'Open VIP Vault' : 'Preview / Unlock';
+            primary.href = `video.html?id=${encodeURIComponent(video.id)}`;
+          }
+        }
+      }
     });
   }
 
-  function syncHomeCategoryCounts(role) {
-    const section = document.getElementById('categories');
-    if (!section) return;
-    const cards = Array.from(section.querySelectorAll('.mt-8.grid > div'));
-    if (!cards.length) return;
-    const order = ['new-releases', 'most-popular', 'behind-the-scenes', 'live-sessions', 'short-films', 'creator-picks', 'vip-exclusives'];
-    const catalog = allCategories();
-    cards.forEach((card, index) => {
-      const slug = order[index];
-      const category = catalog[slug];
-      if (!category) return;
-      const countBadge = card.querySelector('.mb-8');
-      if (!countBadge) return;
-      const visibleCount = (category.videos || []).filter((video) => canAccessVideo(role, video)).length;
-      const baseCount = ((window.HIDDEN_GEMS_CATALOG || {})[slug]?.videos || []).length;
-      let label = slug === 'vip-exclusives' && role === 'guest' ? `${visibleCount} locked` : `${visibleCount} videos`;
-      if (visibleCount > baseCount) label += ' · +new';
-      countBadge.textContent = label;
+  function updateHomeCategoryCards(state) {
+    const categoriesSection = document.getElementById('categories');
+    if (!categoriesSection) return;
+    const categoryCards = Array.from(categoriesSection.querySelectorAll('.grid > div'));
+    const stats = new Map(Object.entries(allCategories()).map(([slug, category]) => {
+      const count = (category.videos || []).length;
+      return [String(category.title || '').trim().toLowerCase(), { slug, count, vip: !!category.vip }];
+    }));
+    categoryCards.forEach((card) => {
+      const titleNode = card.querySelector('h4');
+      const countBadge = card.querySelector('.mb-8.inline-flex');
+      const link = card.querySelector('a');
+      if (!titleNode || !countBadge) return;
+      const stat = stats.get(String(titleNode.textContent || '').trim().toLowerCase());
+      if (!stat) return;
+      countBadge.textContent = stat.vip ? `${stat.count} videos` : `${stat.count} videos`;
+      if (link) link.href = `${stat.slug}.html`;
     });
+  }
+
+  async function updateHomeCatalogUi(state) {
+    updateHeroCatalogStats(state);
+    updateHomeFeaturedSection(state);
+    updateHomeCategoryCards(state);
+    updateHomeStateUi(state);
   }
 
   function initHomePage() {
-    const mount = async () => {
-      const state = await getState();
-      updateHomeStateUi(state);
-      syncHomeStats(state.role);
-      syncHomeFeatured(state.role);
-      syncHomeCategoryCounts(state.role);
-    };
-    mount();
-    window.addEventListener('hg:state-changed', mount);
-    window.addEventListener('storage', mount);
+    let mounted = false;
+    const refresh = async () => updateHomeCatalogUi(await getState());
+    refresh();
+    if (mounted) return;
+    mounted = true;
+    window.addEventListener('hg:state-changed', refresh);
+    window.addEventListener('hg:catalog-changed', refresh);
+    window.addEventListener('storage', (event) => {
+      if (!event.key || String(event.key).startsWith('hg_')) refresh();
+    });
   }
   function initVipCheckoutPage() { const activateButton = document.getElementById('demo-activate-vip'); if (!activateButton) return; activateButton.addEventListener('click', async () => { const state = await getState(); if (!state.email) { toast('Log in first so VIP can be attached to your account.', 'error'); window.location.href = 'login.html'; return; } await syncVipForCurrentUser(true); storage.setRoleOverride(state.email, 'vip'); toast('VIP activated for this account.', 'success'); setTimeout(() => window.location.href = 'index.html', 700); }); }
 
