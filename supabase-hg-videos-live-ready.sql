@@ -4,6 +4,10 @@
 alter table if exists public.hg_videos
   add column if not exists image text not null default '',
   add column if not exists video_storage_path text,
+  add column if not exists video_file text,
+  add column if not exists video_file_name text,
+  add column if not exists video_mime_type text,
+  add column if not exists source_type text,
   add column if not exists is_published boolean not null default true,
   add column if not exists created_by uuid,
   add column if not exists category_slug text,
@@ -40,7 +44,8 @@ where points is null;
 alter table public.hg_videos
   alter column category_slug set default 'creator-picks',
   alter column category_title set default 'Category 6',
-  alter column points set default 0;
+  alter column points set default 0,
+  alter column source_type set default 'link';
 
 create index if not exists hg_videos_category_slug_idx on public.hg_videos(category_slug);
 create index if not exists hg_videos_is_published_idx on public.hg_videos(is_published) where deleted_at is null;
@@ -104,3 +109,12 @@ begin
     create policy hg_videos_storage_delete on storage.objects for delete using (bucket_id = 'hg-videos');
   end if;
 end $$;
+
+
+update public.hg_videos
+set source_type = case
+  when coalesce(video_storage_path, '') <> '' then 'file'
+  when coalesce(video_url, '') <> '' then 'link'
+  else coalesce(nullif(source_type, ''), 'link')
+end
+where source_type is null or source_type = '';

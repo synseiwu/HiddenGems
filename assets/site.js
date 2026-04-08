@@ -299,9 +299,17 @@ window.HiddenGemsApp = (() => {
   }
 
   function shouldUseTemplateCatalog() {
-    if (hasSharedVideoCatalog()) return false;
-    if (storage.getCustomVideos().length) return false;
-    return true;
+    return false;
+  }
+
+  function extractErrorMessage(error, fallback = 'Unknown error.') {
+    if (!error) return fallback;
+    if (typeof error === 'string') return error;
+    if (typeof error.message === 'string' && error.message.trim()) return error.message.trim();
+    if (typeof error.error_description === 'string' && error.error_description.trim()) return error.error_description.trim();
+    if (typeof error.details === 'string' && error.details.trim()) return error.details.trim();
+    if (typeof error.hint === 'string' && error.hint.trim()) return error.hint.trim();
+    return fallback;
   }
 
   function mapDbVideo(row = {}) {
@@ -353,8 +361,8 @@ window.HiddenGemsApp = (() => {
     if (!supabase || !file) return null;
     const ext = ((file.name || '').split('.').pop() || 'mp4').toLowerCase();
     const path = `videos/${id}/main.${ext}`;
-    const result = await supabase.storage.from('hg-videos').upload(path, file, { upsert: true, contentType: file.type || 'video/mp4' });
-    if (result?.error) throw result.error;
+    const result = await supabase.storage.from('hg-videos').upload(path, file, { upsert: true, contentType: file.type || 'video/mp4', cacheControl: '3600' });
+    if (result?.error) throw new Error(extractErrorMessage(result.error, 'Storage upload failed.'));
     return { path, fileName: file.name || `main.${ext}`, mimeType: file.type || 'video/mp4' };
   }
 
@@ -380,7 +388,8 @@ window.HiddenGemsApp = (() => {
   async function saveVideoToSupabase(item) {
     const supabase = getSupabaseClient();
     const user = await getSessionUser();
-    if (!supabase || !user) return false;
+    if (!supabase) throw new Error('Supabase is not configured in config.js.');
+    if (!user) throw new Error('You must be signed in before saving a video.');
     const payload = {
       id: item.id,
       title: item.title,
@@ -402,7 +411,7 @@ window.HiddenGemsApp = (() => {
       updated_at: new Date().toISOString()
     };
     const result = await supabase.from('hg_videos').upsert(payload, { onConflict: 'id' });
-    if (result?.error) throw result.error;
+    if (result?.error) throw new Error(extractErrorMessage(result.error, 'Database save failed.'));
     supabaseVideosLoaded = false;
     return true;
   }
@@ -444,51 +453,23 @@ window.HiddenGemsApp = (() => {
 
   function allCategories() {
     const baseCatalog = window.HIDDEN_GEMS_CATALOG || {};
-    const catalog = shouldUseTemplateCatalog()
-      ? JSON.parse(JSON.stringify(baseCatalog))
-      : Object.fromEntries(Object.entries(baseCatalog).map(([slug, category]) => [slug, {
-          ...category,
-          title: categoryDisplayName(slug, category.title),
-          subtitle: category.subtitle,
-          count: '0 videos',
-          slug,
-          vip: slug === 'vip-exclusives',
-          access: slug === 'vip-exclusives' ? 'vip' : 'guest',
-          videos: []
-        }]));
+    const catalog = Object.fromEntries(Object.entries(baseCatalog).map(([slug, category]) => [slug, {
+      ...category,
+      title: categoryDisplayName(slug, category.title),
+      subtitle: category.subtitle,
+      count: '0 videos',
+      slug,
+      vip: slug === 'vip-exclusives',
+      access: slug === 'vip-exclusives' ? 'vip' : 'guest',
+      videos: []
+    }]));
     const hidden = new Set(storage.getHiddenVideos());
-    const pointOverrides = storage.getPointsOverrides();
-    const linkOverrides = storage.getLinkOverrides();
-    const videoOverrides = storage.getVideoOverrides();
 
     Object.entries(catalog).forEach(([slug, category]) => {
       category.slug = slug;
       category.title = categoryDisplayName(slug, category.title);
       category.access = category.vip ? 'vip' : 'guest';
-      category.videos = (category.videos || [])
-        .filter((video) => !hidden.has(video[0]))
-        .map((video) => {
-          const id = video[0];
-          const override = videoOverrides[id] || {};
-          return normalizeVideoItem({
-            id,
-            title: override.title ?? video[1],
-            description: override.description ?? video[2],
-            points: Object.prototype.hasOwnProperty.call(pointOverrides, id) ? Number(pointOverrides[id]) : Number((override.points ?? video[3]) || 0),
-            image: override.image ?? video[4],
-            videoUrl: override.videoUrl ?? (linkOverrides[id] || ''),
-            videoFile: override.videoFile || '',
-            videoFileName: override.videoFileName || '',
-            videoMimeType: override.videoMimeType || '',
-            videoFileRef: override.videoFileRef || '',
-            sourceType: (override.videoFile || override.videoFileRef) ? 'file' : (override.sourceType || 'link'),
-            categorySlug: override.categorySlug || slug,
-            categoryTitle: categoryDisplayName(override.categorySlug || slug, override.categoryTitle || category.title),
-            category: categoryDisplayName(override.categorySlug || slug, override.categoryTitle || category.title),
-            access: override.access || (category.vip ? 'vip' : 'guest'),
-            isCustom: false
-          });
-        });
+      category.videos = [];
     });
 
     for (const rawVideo of storage.getCustomVideos()) {
@@ -663,7 +644,10 @@ window.HiddenGemsApp = (() => {
       const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime() || 0;
       return bTime - aTime;
     }).slice(0, 3);
-    if (!featured.length) return;
+    if (!featured.length) {
+      grid.innerHTML = '<div class="md:col-span-2 xl:col-span-3 rounded-[1.75rem] border border-dashed border-white/15 bg-white/[0.03] p-8 text-center text-neutral-300">No live videos yet. Add videos from the admin portal and they will appear here automatically.</div>';
+      return;
+    }
     renderVideoCards(grid, featured, state);
   }
 
@@ -1085,14 +1069,13 @@ window.HiddenGemsApp = (() => {
 
         try {
           const pickedVideoFile = form.elements.videoFile?.files?.[0] || null;
+          const hasSharedBackend = !!getSupabaseClient();
           if (pickedVideoFile) {
-            let uploaded = null;
-            try {
-              uploaded = await uploadVideoToSupabaseStorage(pickedVideoFile, id);
-            } catch (error) {
-              console.error(error);
-            }
-            if (uploaded?.path) {
+            if (hasSharedBackend) {
+              const uploaded = await uploadVideoToSupabaseStorage(pickedVideoFile, id);
+              if (!uploaded?.path) {
+                throw new Error('Storage upload did not return a file path.');
+              }
               item.videoStoragePath = uploaded.path;
               item.videoFileName = uploaded.fileName;
               item.videoMimeType = uploaded.mimeType;
@@ -1110,14 +1093,15 @@ window.HiddenGemsApp = (() => {
           }
 
           let savedToSupabase = false;
-          const hasSharedBackend = !!getSupabaseClient();
+          let saveErrorMessage = '';
           try {
             savedToSupabase = await saveVideoToSupabase(item);
           } catch (error) {
             console.error(error);
+            saveErrorMessage = extractErrorMessage(error, 'Shared catalog save failed.');
           }
           if (hasSharedBackend && !savedToSupabase) {
-            throw new Error('Shared catalog save failed.');
+            throw new Error(saveErrorMessage || 'Shared catalog save failed.');
           }
 
           if (savedToSupabase) {
@@ -1155,7 +1139,7 @@ window.HiddenGemsApp = (() => {
           window.dispatchEvent(new CustomEvent('hg:state-changed'));
         } catch (error) {
           console.error(error);
-          toast('Video save failed. Try a smaller file or a direct video link.', 'error');
+          toast(`Video save failed: ${extractErrorMessage(error, 'Check Supabase storage, SQL columns, and bucket policies.')}`, 'error');
         } finally {
           if (submitButton) { submitButton.disabled = false; submitButton.textContent = 'Save video'; }
         }
