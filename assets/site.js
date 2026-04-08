@@ -543,7 +543,7 @@ window.HiddenGemsApp = (() => {
           </a>
           <nav class="hidden gap-6 text-sm text-neutral-300 md:flex">
             <a data-nav-link="home" href="index.html" class="transition hover:text-pink-300">Home</a>
-            <a data-nav-link="new-releases" href="new-releases.html" class="transition hover:text-pink-300">Categories</a>
+            <a data-nav-link="categories" href="index.html#categories" class="transition hover:text-pink-300">Categories</a>
             <a data-nav-link="points-store" href="points-store.html" class="transition hover:text-pink-300">Points</a>
             <a data-nav-link="vip-exclusives" href="vip-exclusives.html" class="transition hover:text-pink-300">VIP</a>
             <a data-nav-link="my-library" href="my-library.html" class="transition hover:text-pink-300">Library</a><a data-nav-link="all-videos" href="all-videos.html" class="transition hover:text-pink-300">All Videos</a>
@@ -556,7 +556,7 @@ window.HiddenGemsApp = (() => {
         <div id="mobile-menu" class="hidden border-t border-white/10 bg-black/95 px-6 py-4 md:hidden">
           <div class="flex flex-col gap-4 text-sm text-neutral-300">
             <a href="index.html">Home</a>
-            <a href="new-releases.html">Categories</a>
+            <a href="index.html#categories">Categories</a>
             <a href="points-store.html">Points</a>
             <a href="vip-exclusives.html">VIP</a>
             <a href="my-library.html">Library</a><a href="all-videos.html">All Videos</a>
@@ -567,7 +567,7 @@ window.HiddenGemsApp = (() => {
   }
 
   function shellFooter() {
-    return `<footer class="border-t border-white/10 bg-black/60"><div class="mx-auto grid max-w-7xl gap-10 px-6 py-12 md:grid-cols-[1.2fr_1fr_1fr_1fr]"><div><h4 class="text-xl font-bold text-pink-400">${BRAND_NAME}</h4><p class="mt-3 max-w-sm text-sm text-neutral-400">Premium digital video content with role-based access for guest, VIP, and admin accounts.</p></div><div><h5 class="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-300">Explore</h5><div class="mt-4 space-y-3"><a href="new-releases.html" class="block text-sm text-neutral-400 transition hover:text-white">New Releases</a><a href="most-popular.html" class="block text-sm text-neutral-400 transition hover:text-white">Most Popular</a><a href="vip-exclusives.html" class="block text-sm text-neutral-400 transition hover:text-white">VIP Exclusives</a></div></div><div><h5 class="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-300">Account</h5><div class="mt-4 space-y-3"><a href="account.html" class="block text-sm text-neutral-400 transition hover:text-white">Account</a><a href="my-library.html" class="block text-sm text-neutral-400 transition hover:text-white">My Library</a><a href="all-videos.html" class="block text-sm text-neutral-400 transition hover:text-white">All Videos</a><a href="points-store.html" class="block text-sm text-neutral-400 transition hover:text-white">Points Store</a><a id="footer-admin-link" href="admin.html" class="hidden block text-sm text-neutral-400 transition hover:text-white">Admin Portal</a></div></div><div><h5 class="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-300">Policies</h5><div class="mt-4 space-y-3"><a href="about.html" class="block text-sm text-neutral-400 transition hover:text-white">About</a><a href="contact.html" class="block text-sm text-neutral-400 transition hover:text-white">Contact</a><a href="privacy.html" class="block text-sm text-neutral-400 transition hover:text-white">Privacy Policy</a><a href="terms.html" class="block text-sm text-neutral-400 transition hover:text-white">Terms</a><a href="refund-policy.html" class="block text-sm text-neutral-400 transition hover:text-white">Refund Policy</a></div></div></div></footer>`;
+    return `<footer class="border-t border-white/10 bg-black/60"><div class="mx-auto grid max-w-7xl gap-10 px-6 py-12 md:grid-cols-[1.2fr_1fr_1fr_1fr]"><div><h4 class="text-xl font-bold text-pink-400">${BRAND_NAME}</h4><p class="mt-3 max-w-sm text-sm text-neutral-400">Premium digital video content with role-based access for guest, VIP, and admin accounts.</p></div><div><h5 class="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-300">Explore</h5><div class="mt-4 space-y-3"><a href="index.html#categories" class="block text-sm text-neutral-400 transition hover:text-white">All Categories</a><a href="new-releases.html" class="block text-sm text-neutral-400 transition hover:text-white">Category 1</a><a href="creator-picks.html" class="block text-sm text-neutral-400 transition hover:text-white">Category 6</a><a href="vip-exclusives.html" class="block text-sm text-neutral-400 transition hover:text-white">Category 7</a></div></div><div><h5 class="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-300">Account</h5><div class="mt-4 space-y-3"><a href="account.html" class="block text-sm text-neutral-400 transition hover:text-white">Account</a><a href="my-library.html" class="block text-sm text-neutral-400 transition hover:text-white">My Library</a><a href="all-videos.html" class="block text-sm text-neutral-400 transition hover:text-white">All Videos</a><a href="points-store.html" class="block text-sm text-neutral-400 transition hover:text-white">Points Store</a><a id="footer-admin-link" href="admin.html" class="hidden block text-sm text-neutral-400 transition hover:text-white">Admin Portal</a></div></div><div><h5 class="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-300">Policies</h5><div class="mt-4 space-y-3"><a href="about.html" class="block text-sm text-neutral-400 transition hover:text-white">About</a><a href="contact.html" class="block text-sm text-neutral-400 transition hover:text-white">Contact</a><a href="privacy.html" class="block text-sm text-neutral-400 transition hover:text-white">Privacy Policy</a><a href="terms.html" class="block text-sm text-neutral-400 transition hover:text-white">Terms</a><a href="refund-policy.html" class="block text-sm text-neutral-400 transition hover:text-white">Refund Policy</a></div></div></div></footer>`;
   }
 
   function authButtonsMarkup() { return `<a href="login.html" class="rounded-xl border border-white/15 px-4 py-2 text-sm text-white transition hover:bg-white/5">Log In</a><a href="signup.html" class="rounded-xl bg-pink-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-pink-500/20 transition hover:bg-pink-400">Sign Up</a>`; }
@@ -593,7 +593,7 @@ window.HiddenGemsApp = (() => {
     const state = await getState();
     if (desktop) { desktop.innerHTML = state.email ? desktopAccountMarkup(state) : authButtonsMarkup(); desktop.classList.remove('hidden'); desktop.classList.add('flex'); }
     if (mobile) mobile.innerHTML = state.email ? mobileAccountMarkup(state) : '<a href="login.html">Log In</a><a href="signup.html">Create Account</a>';
-    document.querySelectorAll('[data-nav-link]').forEach((link) => { if (link.dataset.navLink === currentPageKey()) link.classList.add('text-pink-300'); });
+    document.querySelectorAll('[data-nav-link]').forEach((link) => { const current = currentPageKey(); const nav = link.dataset.navLink; if (nav === current || (nav === 'categories' && current === 'home')) link.classList.add('text-pink-300'); });
     const menuButton = document.getElementById('account-menu-button');
     const dropdown = document.getElementById('account-menu-dropdown');
     if (menuButton && dropdown) {
@@ -673,16 +673,15 @@ window.HiddenGemsApp = (() => {
     const categorySection = document.getElementById('categories');
     if (categorySection) {
       categorySection.querySelectorAll('a[href$=".html"]').forEach((link) => {
-        const href = link.getAttribute('href') || '';
-        const slug = href.replace(/\.html$/i, '').trim();
+        const href = String(link.getAttribute('href') || '').trim();
+        const slug = href.replace(/\.html$/i, '');
         if (!categories[slug]) return;
-        const card = link.closest('div.rounded-\[1\.75rem\], #vip-category-card') || link.closest('div');
-        const badge = card?.querySelector('div.inline-flex.rounded-2xl');
+        const card = link.parentElement;
+        if (!card) return;
+        const badge = card.querySelector('div.inline-flex.rounded-2xl');
         if (badge) badge.textContent = `${categories[slug].videos.length} videos`;
-        const heading = card?.querySelector('h4, h3');
+        const heading = card.querySelector('h4, h3');
         if (heading) heading.textContent = categoryDisplayName(slug, categories[slug].title);
-        const label = card?.querySelector('p.text-sm.text-neutral-400');
-        if (label && /videos$/i.test(label.textContent || '')) label.textContent = `${categories[slug].videos.length} videos`;
       });
     }
 
@@ -728,6 +727,7 @@ window.HiddenGemsApp = (() => {
   }
 
   function renderCategoryPage(slug) {
+    document.title = `${categoryDisplayName(slug, getCategory(slug)?.title || titleFromSlug(slug))} | ${BRAND_NAME}`;
     applyBg();
     document.body.innerHTML = shellHeader() + `<main><section class="mx-auto max-w-7xl px-6 py-16"><a href="index.html" class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-300 transition hover:bg-white/10">← Back to Home</a><div id="category-hero" class="mt-8 rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"></div></section><section class="mx-auto max-w-7xl px-6 pb-20"><div id="wallet-summary" class="mb-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300">Loading wallet...</div><div id="category-grid" class="grid gap-6 md:grid-cols-2 xl:grid-cols-3"></div></section></main>` + shellFooter();
     bindCommonUi();
@@ -744,6 +744,7 @@ window.HiddenGemsApp = (() => {
 
   function renderVideoPage() {
     const requestedId = qs('id');
+    document.title = `Video | ${BRAND_NAME}`;
     applyBg();
     const mount = async () => {
       await refreshSupabaseVideos(true);
@@ -1165,7 +1166,7 @@ window.HiddenGemsApp = (() => {
   }
 
   function renderSimplePage(title, eyebrow, copy) { applyBg(); document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-5xl px-6 py-14"><div class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">${eyebrow}</p><h1 class="mt-3 text-4xl font-black">${title}</h1><div class="mt-6 max-w-none space-y-4 text-neutral-300">${copy}</div></div></main>` + shellFooter(); bindCommonUi(); }
-  function initHomePage() { refreshSupabaseVideos(true).then(() => getState().then(updateHomeStateUi)); window.addEventListener('hg:state-changed', async () => { await refreshSupabaseVideos(true); updateHomeStateUi(await getState()); }); }
+  function initHomePage() { document.title = BRAND_NAME; refreshSupabaseVideos(true).then(() => getState().then(updateHomeStateUi)); window.addEventListener('hg:state-changed', async () => { await refreshSupabaseVideos(true); updateHomeStateUi(await getState()); }); }
   function initVipCheckoutPage() { const activateButton = document.getElementById('demo-activate-vip'); if (!activateButton) return; activateButton.addEventListener('click', async () => { const state = await getState(); if (!state.email) { toast('Log in first so VIP can be attached to your account.', 'error'); window.location.href = 'login.html'; return; } await syncVipForCurrentUser(true); storage.setRoleOverride(state.email, 'vip'); toast('VIP activated for this account.', 'success'); setTimeout(() => window.location.href = 'index.html', 700); }); }
 
   function initPage() {
