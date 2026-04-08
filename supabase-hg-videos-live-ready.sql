@@ -47,6 +47,34 @@ create index if not exists hg_videos_is_published_idx on public.hg_videos(is_pub
 
 alter table public.hg_videos replica identity full;
 
+
+alter table public.hg_videos enable row level security;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies where schemaname = 'public' and tablename = 'hg_videos' and policyname = 'hg_videos_select_all'
+  ) then
+    create policy hg_videos_select_all on public.hg_videos for select using (true);
+  end if;
+  if not exists (
+    select 1 from pg_policies where schemaname = 'public' and tablename = 'hg_videos' and policyname = 'hg_videos_insert_all'
+  ) then
+    create policy hg_videos_insert_all on public.hg_videos for insert with check (true);
+  end if;
+  if not exists (
+    select 1 from pg_policies where schemaname = 'public' and tablename = 'hg_videos' and policyname = 'hg_videos_update_all'
+  ) then
+    create policy hg_videos_update_all on public.hg_videos for update using (true) with check (true);
+  end if;
+  if not exists (
+    select 1 from pg_policies where schemaname = 'public' and tablename = 'hg_videos' and policyname = 'hg_videos_delete_all'
+  ) then
+    create policy hg_videos_delete_all on public.hg_videos for delete using (true);
+  end if;
+end $$;
+
+
 -- Storage bucket expected by the fixed site.js upload flow.
 insert into storage.buckets (id, name, public)
 select 'hg-videos', 'hg-videos', false

@@ -294,6 +294,16 @@ window.HiddenGemsApp = (() => {
   let supabaseVideosCache = [];
   let supabaseVideosLoaded = false;
 
+  function hasSharedVideoCatalog() {
+    return supabaseVideosCache.length > 0;
+  }
+
+  function shouldUseTemplateCatalog() {
+    if (hasSharedVideoCatalog()) return false;
+    if (storage.getCustomVideos().length) return false;
+    return true;
+  }
+
   function mapDbVideo(row = {}) {
     const slug = String(row.category_slug || row.category || 'creator-picks').trim() || 'creator-picks';
     const categoryTitle = categoryDisplayName(slug, row.category_title || row.categoryTitle || '');
@@ -433,7 +443,19 @@ window.HiddenGemsApp = (() => {
   }
 
   function allCategories() {
-    const catalog = JSON.parse(JSON.stringify(window.HIDDEN_GEMS_CATALOG || {}));
+    const baseCatalog = window.HIDDEN_GEMS_CATALOG || {};
+    const catalog = shouldUseTemplateCatalog()
+      ? JSON.parse(JSON.stringify(baseCatalog))
+      : Object.fromEntries(Object.entries(baseCatalog).map(([slug, category]) => [slug, {
+          ...category,
+          title: categoryDisplayName(slug, category.title),
+          subtitle: category.subtitle,
+          count: '0 videos',
+          slug,
+          vip: slug === 'vip-exclusives',
+          access: slug === 'vip-exclusives' ? 'vip' : 'guest',
+          videos: []
+        }]));
     const hidden = new Set(storage.getHiddenVideos());
     const pointOverrides = storage.getPointsOverrides();
     const linkOverrides = storage.getLinkOverrides();
@@ -633,6 +655,18 @@ window.HiddenGemsApp = (() => {
     document.getElementById('logout-button')?.addEventListener('click', signOutUser);
   }
 
+  function renderHomeFeaturedGrid(state, videos) {
+    const grid = document.getElementById('featured-grid');
+    if (!grid) return;
+    const featured = videos.slice().sort((a, b) => {
+      const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime() || 0;
+      const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime() || 0;
+      return bTime - aTime;
+    }).slice(0, 3);
+    if (!featured.length) return;
+    renderVideoCards(grid, featured, state);
+  }
+
   function updateHomeStateUi(state) {
     syncLegacyHomeHeader(state);
     const access = document.getElementById('hero-access-text');
@@ -644,6 +678,7 @@ window.HiddenGemsApp = (() => {
 
     const categories = allCategories();
     const videos = allVideos();
+    renderHomeFeaturedGrid(state, videos);
 
     document.querySelectorAll('section .text-2xl.font-bold.text-white').forEach((node) => {
       const label = node.nextElementSibling?.textContent?.trim()?.toLowerCase() || '';
@@ -1075,17 +1110,24 @@ window.HiddenGemsApp = (() => {
           }
 
           let savedToSupabase = false;
+          const hasSharedBackend = !!getSupabaseClient();
           try {
             savedToSupabase = await saveVideoToSupabase(item);
           } catch (error) {
             console.error(error);
           }
+          if (hasSharedBackend && !savedToSupabase) {
+            throw new Error('Shared catalog save failed.');
+          }
 
-          if (isCustom) {
+          if (savedToSupabase) {
+            storage.setCustomVideos(storage.getCustomVideos().filter((video) => video.id !== id));
+            storage.removeVideoOverride(id);
+          } else if (!hasSharedBackend && isCustom) {
             const items = storage.getCustomVideos().filter((video) => video.id !== id);
             items.push(item);
             storage.setCustomVideos(items);
-          } else {
+          } else if (!hasSharedBackend) {
             storage.setVideoOverride(id, {
               title: item.title,
               description: item.description,
