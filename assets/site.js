@@ -727,7 +727,18 @@ window.HiddenGemsApp = (() => {
     });
   }
 
-  function addPoints(amount, label) { const total = storage.addPoints(amount); storage.addTransaction({ type: 'points', label, amount }); toast(`${amount} points added. Wallet: ${total} pts`, 'success'); window.dispatchEvent(new CustomEvent('hg:state-changed')); }
+  async function addPoints(amount, label) {
+    const state = await getState();
+    if (state.role !== 'admin') {
+      toast('Only admins can manually grant points. Guest and VIP points should come from the payment flow.', 'error');
+      return false;
+    }
+    const total = storage.addPoints(amount);
+    storage.addTransaction({ type: 'points', label, amount, grantedBy: state.email || 'admin' });
+    toast(`${amount} points added. Wallet: ${total} pts`, 'success');
+    window.dispatchEvent(new CustomEvent('hg:state-changed'));
+    return true;
+  }
 
   function videoPrimaryAction(state, video) {
     if (!canAccessVideo(state.role, video)) return { text: 'Join VIP', href: 'vip-checkout.html', kind: 'link' };
@@ -833,7 +844,6 @@ window.HiddenGemsApp = (() => {
   }
 
   function renderPointsStore() {
-
     const packs = [
       { label: 'Starter Cache', points: 300, price: '$3.00', copy: 'Perfect for one quick unlock' },
       { label: 'Silver Stash', points: 550, price: '$5.00', copy: 'Best value for a medium unlock' },
@@ -841,10 +851,31 @@ window.HiddenGemsApp = (() => {
       { label: 'Gem Reserve', points: 1700, price: '$14.00', copy: 'Best for repeat unlocks' }
     ];
     applyBg();
-    document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-7xl px-6 py-14"><div class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Points Store</p><h1 class="mt-3 text-4xl font-black">Stock your wallet</h1><p class="mt-4 max-w-2xl text-neutral-300">Guest users can spend points on standard videos. VIP and admin can already open everything in their access tier.</p></div><div id="points-wallet-banner" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300">Loading wallet...</div><div class="mt-10 grid gap-6 md:grid-cols-2 xl:grid-cols-4">${packs.map((pack) => `<div class="rounded-[2rem] border border-white/10 bg-white/5 p-8 text-center shadow-xl shadow-black/20"><p class="text-sm uppercase tracking-[0.25em] text-neutral-400">${pack.label}</p><p class="mt-4 text-5xl font-black">${pack.points}</p><p class="mt-2 text-neutral-400">Points included</p><p class="mt-6 text-3xl font-bold text-pink-300">${pack.price}</p><p class="mt-2 text-sm text-neutral-500">${pack.copy}</p><button data-pack="${pack.points}" data-pack-label="${pack.label}" class="mt-8 block w-full rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Add to Wallet</button></div>`).join('')}</div></main>` + shellFooter();
+    document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-7xl px-6 py-14"><div class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Points Store</p><h1 class="mt-3 text-4xl font-black">Stock your wallet</h1><p class="mt-4 max-w-2xl text-neutral-300">Guest users can spend points on standard videos. VIP and admin can already open everything in their access tier.</p></div><div id="points-wallet-banner" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300">Loading wallet...</div><div id="points-store-note" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300"></div><div class="mt-10 grid gap-6 md:grid-cols-2 xl:grid-cols-4">${packs.map((pack) => `<div class="rounded-[2rem] border border-white/10 bg-white/5 p-8 text-center shadow-xl shadow-black/20"><p class="text-sm uppercase tracking-[0.25em] text-neutral-400">${pack.label}</p><p class="mt-4 text-5xl font-black">${pack.points}</p><p class="mt-2 text-neutral-400">Points included</p><p class="mt-6 text-3xl font-bold text-pink-300">${pack.price}</p><p class="mt-2 text-sm text-neutral-500">${pack.copy}</p><button data-pack="${pack.points}" data-pack-label="${pack.label}" class="mt-8 block w-full rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Add to Wallet</button></div>`).join('')}</div></main>` + shellFooter();
     bindCommonUi();
-    const mount = async () => { const state = await getState(); document.getElementById('points-wallet-banner').innerHTML = `Signed in: <span class="font-bold text-white">${state.email || 'No'}</span> · Role: <span class="font-bold text-pink-300">${state.role}</span> · Wallet balance: <span class="font-bold text-white">${state.localPoints} points</span>`; };
-    mount(); document.querySelectorAll('[data-pack]').forEach((button) => button.addEventListener('click', () => addPoints(Number(button.dataset.pack), button.dataset.packLabel))); window.addEventListener('hg:state-changed', mount);
+    const mount = async () => {
+      const state = await getState();
+      document.getElementById('points-wallet-banner').innerHTML = `Signed in: <span class="font-bold text-white">${state.email || 'No'}</span> · Role: <span class="font-bold text-pink-300">${state.role}</span> · Wallet balance: <span class="font-bold text-white">${state.localPoints} points</span>`;
+      const note = document.getElementById('points-store-note');
+      if (state.role === 'admin') {
+        note.innerHTML = 'Admin mode: these buttons can manually grant test points for moderation and support.';
+      } else {
+        note.innerHTML = 'Manual point grants are disabled for guest and VIP accounts. Points should only be added through your real payment flow.';
+      }
+      document.querySelectorAll('[data-pack]').forEach((button) => {
+        if (state.role === 'admin') {
+          button.disabled = false;
+          button.textContent = `Grant ${button.dataset.pack} points`;
+          button.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-neutral-700');
+          button.classList.add('bg-pink-500');
+        } else {
+          button.disabled = true;
+          button.textContent = 'Payment flow only';
+          button.classList.add('opacity-50', 'cursor-not-allowed', 'bg-neutral-700');
+        }
+      });
+    };
+    mount(); document.querySelectorAll('[data-pack]').forEach((button) => button.addEventListener('click', async () => { if (button.disabled) return; await addPoints(Number(button.dataset.pack), button.dataset.packLabel); })); window.addEventListener('hg:state-changed', mount);
   }
 
   function renderLibraryPage() {
@@ -907,6 +938,7 @@ window.HiddenGemsApp = (() => {
     document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-7xl px-6 py-14"><div id="admin-gate"></div></main>` + shellFooter();
     bindCommonUi();
     const mount = async () => {
+      await refreshSupabaseVideos(true);
       const state = await getState();
       const gate = document.getElementById('admin-gate');
       if (state.role !== 'admin') { gate.innerHTML = `<div class="rounded-[2rem] border border-amber-400/30 bg-amber-500/10 p-8"><p class="text-sm uppercase tracking-[0.25em] text-amber-200">Admin only</p><h1 class="mt-3 text-4xl font-black">Access denied</h1><p class="mt-4 max-w-2xl text-neutral-200">Only accounts marked admin in your profile or listed in config.js can open this page.</p><a href="index.html" class="mt-6 inline-flex rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Back to Home</a></div>`; return; }
@@ -1018,12 +1050,16 @@ window.HiddenGemsApp = (() => {
       };
 
       const renderVideoList = () => {
-        const videos = allVideos();
+        const videos = allVideos().sort((a, b) => {
+          const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime() || 0;
+          const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime() || 0;
+          return bTime - aTime;
+        });
         document.getElementById('admin-video-list').innerHTML = videos.length ? videos.map((video) => {
           const source = getVideoSource(video);
           const accessClass = video.access === 'vip' ? 'border-pink-400/30 bg-pink-500/10 text-pink-200' : 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200';
           const publishClass = video.isPublished === false ? 'border-amber-400/30 bg-amber-500/10 text-amber-200' : 'border-sky-400/30 bg-sky-500/10 text-sky-200';
-          return `<div class="rounded-[1.75rem] border border-white/10 bg-neutral-900/80 p-4"><div class="grid gap-4 md:grid-cols-[180px_1fr]"><div class="overflow-hidden rounded-2xl border border-white/10 bg-black/30">${video.image ? `<img src="${escapeHtml(video.image)}" alt="${escapeHtml(video.title)}" class="h-40 w-full object-cover" />` : '<div class="flex h-40 items-center justify-center text-sm text-neutral-500">No thumbnail</div>'}</div><div><div class="flex flex-wrap items-start justify-between gap-3"><div><div class="flex flex-wrap items-center gap-2"><p class="text-lg font-semibold text-white">${escapeHtml(video.title)}</p><span class="rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${accessClass}">${video.access}</span><span class="rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${publishClass}">${video.isPublished === false ? 'draft' : 'published'}</span>${video.isCustom ? '<span class="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-300">Custom</span>' : '<span class="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400">Catalog</span>'}</div><p class="mt-2 text-sm text-neutral-400">${escapeHtml(video.category)} · ${video.points} pts</p></div><div class="text-sm text-neutral-400">${source.type === 'file' ? 'Uploaded file' : source.type === 'link' ? 'Video link' : 'No source'}</div></div><p class="mt-3 text-sm text-neutral-300">${escapeHtml(video.description || 'No description added yet.')}</p><div class="mt-4 flex flex-wrap gap-3"><button data-edit-video="${video.id}" class="rounded-xl bg-pink-500 px-4 py-2 text-sm font-semibold text-white">Edit</button><button data-delete-video="${video.id}" class="rounded-xl border border-rose-400/20 bg-rose-500/10 px-4 py-2 text-sm text-rose-200">${video.isCustom ? 'Delete' : 'Hide'}</button></div></div></div></div>`;
+          return `<div class="rounded-[1.75rem] border border-white/10 bg-neutral-900/80 p-4"><div class="grid gap-4 md:grid-cols-[180px_1fr]"><div class="overflow-hidden rounded-2xl border border-white/10 bg-black/30">${video.image ? `<img src="${escapeHtml(video.image)}" alt="${escapeHtml(video.title)}" class="h-40 w-full object-cover" />` : '<div class="flex h-40 items-center justify-center text-sm text-neutral-500">No thumbnail</div>'}</div><div><div class="flex flex-wrap items-start justify-between gap-3"><div><div class="flex flex-wrap items-center gap-2"><p class="text-lg font-semibold text-white">${escapeHtml(video.title)}</p><span class="rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${accessClass}">${video.access}</span><span class="rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${publishClass}">${video.isPublished === false ? 'draft' : 'published'}</span>${video.isCustom ? '<span class="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-300">Custom</span>' : '<span class="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400">Catalog</span>'}</div><p class="mt-2 text-sm text-neutral-400">${escapeHtml(video.category)} · ${video.points} pts</p></div><div class="text-sm text-neutral-400">${source.type === 'file' ? 'Uploaded file' : source.type === 'link' ? 'Video link' : 'No source'}</div></div><p class="mt-3 text-sm text-neutral-300">${escapeHtml(video.description || 'No description added yet.')}</p><div class="mt-4 flex flex-wrap gap-3"><button data-edit-video="${video.id}" class="rounded-xl bg-pink-500 px-4 py-2 text-sm font-semibold text-white">Edit</button><button data-delete-video="${video.id}" class="rounded-xl border border-rose-400/20 bg-rose-500/10 px-4 py-2 text-sm text-rose-200">Delete</button></div></div></div></div>`;
         }).join('') : '<div class="rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-6 text-neutral-300">No videos found.</div>';
 
         document.querySelectorAll('[data-edit-video]').forEach((button) => button.addEventListener('click', () => {
@@ -1033,6 +1069,7 @@ window.HiddenGemsApp = (() => {
 
         document.querySelectorAll('[data-delete-video]').forEach((button) => button.addEventListener('click', async () => {
           const id = button.dataset.deleteVideo;
+          if (!window.confirm('Delete this video from the site? This cannot be undone.')) return;
           const custom = storage.getCustomVideos();
           const targetCustom = custom.find((item) => item.id === id);
           const targetOverride = storage.getVideoOverrides()[id] || null;
@@ -1048,12 +1085,9 @@ window.HiddenGemsApp = (() => {
           }
           if (custom.some((item) => item.id === id)) {
             storage.setCustomVideos(custom.filter((item) => item.id !== id));
-          } else {
-            const hidden = new Set(storage.getHiddenVideos());
-            hidden.add(id);
-            storage.setHiddenVideos([...hidden]);
-            storage.removeVideoOverride(id);
           }
+          storage.removeVideoOverride(id);
+          storage.setHiddenVideos(storage.getHiddenVideos().filter((videoId) => String(videoId) !== String(id)));
           if (form.elements.videoId.value === id) resetVideoForm();
           await refreshSupabaseVideos(true);
           toast('Video removed from the site view.', 'success');
