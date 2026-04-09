@@ -575,6 +575,27 @@ window.HiddenGemsApp = (() => {
     supabaseVideosLoaded = false;
   }
 
+  function stripUnsupportedHgVideoColumns(payload, error) {
+    const message = String(error?.message || error?.details || error?.hint || error || '');
+    const match = message.match(/Could not find the '([^']+)' column of 'hg_videos'/i);
+    if (!match || !match[1] || !(match[1] in payload)) return null;
+    const nextPayload = { ...payload };
+    delete nextPayload[match[1]];
+    return nextPayload;
+  }
+
+  async function upsertHgVideoPayload(supabase, payload) {
+    let nextPayload = { ...payload };
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const result = await supabase.from('hg_videos').upsert(nextPayload, { onConflict: 'id' });
+      if (!result?.error) return result;
+      const stripped = stripUnsupportedHgVideoColumns(nextPayload, result.error);
+      if (!stripped) throw result.error;
+      nextPayload = stripped;
+    }
+    throw new Error('Video save failed because the hg_videos schema is missing required columns. Run the latest SQL update and try again.');
+  }
+
   async function saveVideoToSupabase(item) {
     const supabase = getSupabaseClient();
     const user = await getSessionUser();
@@ -608,7 +629,7 @@ window.HiddenGemsApp = (() => {
       created_by: user.id,
       updated_at: new Date().toISOString()
     };
-    const result = await supabase.from('hg_videos').upsert(payload, { onConflict: 'id' });
+    const result = await upsertHgVideoPayload(supabase, payload);
     if (result?.error) throw new Error(extractErrorMessage(result.error, 'Database save failed.'));
     supabaseVideosLoaded = false;
     return true;
@@ -979,16 +1000,25 @@ window.HiddenGemsApp = (() => {
         bindCommonUi();
         return;
       }
-      document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-6xl px-6 py-14"><a href="${video.categorySlug}.html" class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-300 transition hover:bg-white/10">← Back</a><div class="mt-8 grid gap-8 lg:grid-cols-[1.15fr_0.85fr]"><section class="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 shadow-xl shadow-black/20"><div class="relative"><img src="${escapeHtml(video.image)}" class="h-[420px] w-full object-cover" alt="${escapeHtml(video.title)}"><div class="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent"></div><div class="absolute bottom-6 left-6"><p class="text-xs uppercase tracking-[0.25em] text-pink-300">${escapeHtml(video.category)}</p><h1 class="mt-2 text-4xl font-black">${escapeHtml(video.title)}</h1></div></div><div class="p-6"><div id="video-access-banner" class="rounded-[1.5rem] border border-white/10 bg-neutral-950/70 p-5 text-neutral-300">Checking access...</div><div id="video-player-shell" class="mt-6 rounded-[1.5rem] border border-white/10 bg-black/20 p-5"></div><div id="video-description-shell" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-5"><p class="text-xs uppercase tracking-[0.25em] text-neutral-500">Description</p><p class="mt-3 text-neutral-200">${escapeHtml(video.description || 'No description added yet.')}</p></div><div id="video-external-file-shell" class="mt-4 ${video.externalFileUrl ? '' : 'hidden '}rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-5"><p class="text-xs uppercase tracking-[0.25em] text-neutral-500">External file link</p><div class="mt-3">${video.externalFileUrl ? `<a href="${escapeHtml(video.externalFileUrl)}" target="_blank" rel="noopener noreferrer" class="break-all text-pink-300 transition hover:text-pink-200">${escapeHtml(video.externalFileUrl)}</a>` : ''}</div></div></div></section><aside class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><p class="text-xs uppercase tracking-[0.25em] text-pink-300">Access details</p><div class="mt-5 space-y-4"><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Category</p><p class="mt-1 text-lg font-semibold text-white">${escapeHtml(video.category)}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Unlock tier</p><p class="mt-1 text-lg font-semibold text-white">${video.access === 'vip' ? 'VIP / Admin' : `${video.points} pts or above`}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Role access</p><p class="mt-1 text-lg font-semibold text-white">Guest: preview only · VIP: full access + downloads · Admin: all access</p></div></div><div class="mt-6 flex flex-col gap-3"><a id="video-action-button" href="#" class="rounded-2xl bg-pink-500 px-6 py-3 text-center font-semibold text-white transition hover:bg-pink-400">Loading...</a><a href="points-store.html" class="rounded-2xl border border-white/15 px-6 py-3 text-center font-semibold text-white transition hover:bg-white/5">Get more points</a></div></aside></div></main>` + shellFooter();
+      document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-6xl px-6 py-14"><a href="${video.categorySlug}.html" class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-300 transition hover:bg-white/10">← Back</a><div class="mt-8 grid gap-8 lg:grid-cols-[1.15fr_0.85fr]"><section class="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 shadow-xl shadow-black/20"><div class="relative"><img src="${escapeHtml(video.image)}" class="h-[420px] w-full object-cover" alt="${escapeHtml(video.title)}"><div class="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent"></div><div class="absolute bottom-6 left-6"><p class="text-xs uppercase tracking-[0.25em] text-pink-300">${escapeHtml(video.category)}</p><h1 class="mt-2 text-4xl font-black">${escapeHtml(video.title)}</h1></div></div><div class="p-6"><div id="video-access-banner" class="rounded-[1.5rem] border border-white/10 bg-neutral-950/70 p-5 text-neutral-300">Checking access...</div><div id="video-player-shell" class="mt-6 rounded-[1.5rem] border border-white/10 bg-black/20 p-5"></div><div id="video-description-shell" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-5"><p class="text-xs uppercase tracking-[0.25em] text-neutral-500">Description</p><p class="mt-3 text-neutral-200">${escapeHtml(video.description || 'No description added yet.')}</p></div><div id="video-external-file-shell" class="mt-4 hidden rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-5"><p class="text-xs uppercase tracking-[0.25em] text-neutral-500">External file link</p><div id="video-external-file-link" class="mt-3"></div></div></div></section><aside class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><p class="text-xs uppercase tracking-[0.25em] text-pink-300">Access details</p><div class="mt-5 space-y-4"><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Category</p><p class="mt-1 text-lg font-semibold text-white">${escapeHtml(video.category)}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Unlock tier</p><p class="mt-1 text-lg font-semibold text-white">${video.access === 'vip' ? 'VIP / Admin' : `${video.points} pts or above`}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Role access</p><p class="mt-1 text-lg font-semibold text-white">Guest: purchased titles unlock playback · VIP: full access + downloads · Admin: all access</p></div></div><div class="mt-6 flex flex-col gap-3"><a id="video-action-button" href="#" class="rounded-2xl bg-pink-500 px-6 py-3 text-center font-semibold text-white transition hover:bg-pink-400">Loading...</a><a href="points-store.html" class="rounded-2xl border border-white/15 px-6 py-3 text-center font-semibold text-white transition hover:bg-white/5">Get more points</a></div></aside></div></main>` + shellFooter();
       bindCommonUi();
       const state = await getState();
       const actionButton = document.getElementById('video-action-button');
       const banner = document.getElementById('video-access-banner');
       const player = document.getElementById('video-player-shell');
+      const externalFileShell = document.getElementById('video-external-file-shell');
+      const externalFileLink = document.getElementById('video-external-file-link');
       const accessible = canAccessVideo(state.role, video);
       const purchasedIds = new Set(await getPurchasedVideoIds(state));
       const unlocked = state.role === 'admin' || state.role === 'vip' || purchasedIds.has(String(video.id)) || storage.isUnlockedForUser(state.email, video.id);
-      const canWatchGuestPreview = accessible && (state.role === 'guest' ? unlocked : true);
+      const hasPlaybackAccess = accessible && (state.role === 'guest' ? unlocked : true);
+      const canRevealExternalFile = !!video.externalFileUrl && hasPlaybackAccess;
+      if (externalFileShell) {
+        externalFileShell.classList.toggle('hidden', !canRevealExternalFile);
+      }
+      if (externalFileLink && canRevealExternalFile) {
+        externalFileLink.innerHTML = `<a href="${escapeHtml(video.externalFileUrl)}" target="_blank" rel="noopener noreferrer" class="break-all text-pink-300 transition hover:text-pink-200">${escapeHtml(video.externalFileUrl)}</a>`;
+      }
       if (!accessible) {
         banner.innerHTML = '<p class="text-sm uppercase tracking-[0.2em] text-pink-300">VIP Required</p><h3 class="mt-2 text-2xl font-bold text-white">This title is locked behind VIP access</h3><p class="mt-3 text-neutral-300">Guest accounts cannot open this video.</p>';
         player.innerHTML = '<p class="text-neutral-400">Upgrade to VIP to access this title.</p>';
@@ -1003,11 +1033,7 @@ window.HiddenGemsApp = (() => {
       }
       const source = getVideoSource(video);
       banner.innerHTML = `<p class="text-sm uppercase tracking-[0.2em] ${state.role === 'guest' ? 'text-pink-300' : 'text-emerald-300'}">${state.role === 'guest' ? 'Guest preview access' : 'Access granted'}</p><h3 class="mt-2 text-2xl font-bold text-white">${state.role === 'guest' ? 'Protected preview enabled' : 'You can open this video'}</h3><p class="mt-3 text-neutral-300">${state.role === 'guest' ? 'Guest purchases show a protected still preview on-site. Full playback and downloads stay locked.' : 'VIP and admin can watch with full access. Download appears when a direct file is available.'}</p>`;
-      if (canWatchGuestPreview && state.role === 'guest') {
-        const previewImage = await resolveStillPreviewImage(video);
-        player.innerHTML = renderStillPreviewShell(previewImage, video.title, 'Guest purchases unlock a protected still preview on-site. Full playback and downloads stay reserved for higher access levels.');
-        actionButton.textContent = 'Preview unlocked'; actionButton.href = '#video-player-shell'; actionButton.target = '_self'; actionButton.rel = ''; actionButton.onclick = null;
-      } else if (source.type === 'file' && canWatchGuestPreview) {
+      if (source.type === 'file' && hasPlaybackAccess) {
         let playableSrc = source.value;
         if (!playableSrc && video.videoStoragePath) {
           try { playableSrc = await createSignedVideoUrl(video.videoStoragePath); } catch (error) { console.error(error); }
@@ -1025,15 +1051,19 @@ window.HiddenGemsApp = (() => {
           player.innerHTML = '<p class="text-neutral-400">This uploaded video file could not be loaded. Re-save the file from the admin page.</p>';
         }
         actionButton.textContent = 'Watching video'; actionButton.href = '#video-player-shell'; actionButton.target = '_self'; actionButton.rel = ''; actionButton.onclick = null;
-      } else if (source.type === 'link') {
-        if (state.role === 'guest') {
-          const previewImage = await resolveStillPreviewImage(video);
-          player.innerHTML = renderStillPreviewShell(previewImage, video.title, 'This purchase currently opens as a still preview on-site. Use the external file link below when one is provided.');
-          actionButton.textContent = 'Preview unlocked'; actionButton.href = '#video-player-shell'; actionButton.target = '_self'; actionButton.rel = ''; actionButton.onclick = null;
+      } else if (source.type === 'link' && hasPlaybackAccess) {
+        const directVideoLink = /\.(mp4|webm|mov)(\?.*)?$/i.test(String(source.value || ''));
+        if (directVideoLink) {
+          player.innerHTML = `<div class="space-y-4"><div class="relative overflow-hidden rounded-2xl border border-white/10 bg-black"><video controls playsinline preload="metadata" class="w-full rounded-2xl bg-black"><source src="${escapeHtml(source.value)}" type="video/mp4" />Your browser does not support embedded video playback for this link.</video></div><p class="text-sm text-neutral-500 break-all">${escapeHtml(source.value)}</p></div>`;
+          actionButton.textContent = 'Watching video'; actionButton.href = '#video-player-shell'; actionButton.target = '_self'; actionButton.rel = ''; actionButton.onclick = null;
         } else {
-          player.innerHTML = `<div class="space-y-4"><p class="text-neutral-300">Video destination:</p><a href="${escapeHtml(source.value)}" target="_blank" rel="noopener noreferrer" class="inline-flex rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Open Video Link</a><p class="text-sm text-neutral-500 break-all">${escapeHtml(source.value)}</p></div>`;
+          player.innerHTML = `<div class="space-y-4"><p class="text-neutral-300">This title uses an external video destination.</p><a href="${escapeHtml(source.value)}" target="_blank" rel="noopener noreferrer" class="inline-flex rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Open Video Link</a><p class="text-sm text-neutral-500 break-all">${escapeHtml(source.value)}</p></div>`;
           actionButton.textContent = 'Open Video Link'; actionButton.href = source.value; actionButton.target = '_blank'; actionButton.rel = 'noopener noreferrer'; actionButton.onclick = null;
         }
+      } else if (state.role === 'guest' && unlocked) {
+        const previewImage = await resolveStillPreviewImage(video);
+        player.innerHTML = renderStillPreviewShell(previewImage, video.title, 'This purchase was unlocked, but the current source cannot be played directly on-site. Use the external file link below when one is provided.');
+        actionButton.textContent = 'Purchased'; actionButton.href = '#video-player-shell'; actionButton.target = '_self'; actionButton.rel = ''; actionButton.onclick = null;
       } else {
         player.innerHTML = '<p class="text-neutral-400">No video source has been added yet. Add one from the admin portal.</p>';
         actionButton.textContent = 'Back to Library'; actionButton.href = 'my-library.html'; actionButton.target = '_self'; actionButton.rel = ''; actionButton.onclick = null;
