@@ -118,3 +118,51 @@ set source_type = case
   else coalesce(nullif(source_type, ''), 'link')
 end
 where source_type is null or source_type = '';
+
+
+alter table public.hg_videos
+add column if not exists preview_image_enabled boolean default true;
+
+alter table public.hg_videos
+add column if not exists preview_video_enabled boolean default false;
+
+alter table public.hg_videos
+add column if not exists preview_image_url text;
+
+alter table public.hg_videos
+add column if not exists preview_video_url text;
+
+alter table public.hg_videos
+add column if not exists external_file_url text;
+
+create table if not exists public.hg_video_purchases (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  video_id text not null,
+  role_at_purchase text,
+  title_snapshot text,
+  points_spent integer default 0,
+  created_at timestamptz default now(),
+  primary key (user_id, video_id)
+);
+
+alter table public.hg_video_purchases enable row level security;
+
+do $$ begin
+  create policy "hg_video_purchases_select_own" on public.hg_video_purchases
+    for select using (auth.uid() = user_id);
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create policy "hg_video_purchases_insert_own" on public.hg_video_purchases
+    for insert with check (auth.uid() = user_id);
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create policy "hg_video_purchases_update_own" on public.hg_video_purchases
+    for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create policy "hg_video_purchases_delete_own" on public.hg_video_purchases
+    for delete using (auth.uid() = user_id);
+exception when duplicate_object then null; end $$;
