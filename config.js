@@ -3,12 +3,10 @@ window.GEMS_HIDDEN_CONFIG = {
   brandShort: 'GH',
   siteUrl: 'https://YOUR-DOMAIN.com',
   supportEmail: 'support@YOUR-DOMAIN.com',
-  stripePaymentLinks: {
-    vip: 'https://buy.stripe.com/REPLACE_WITH_YOUR_REAL_VIP_LINK',
-    starter: '',
-    silver: '',
-    gold: '',
-    reserve: ''
+  paypalLinks: {
+    default: 'https://www.paypal.com/ncp/payment/TH74PFXUPCR2N',
+    vip: 'https://www.paypal.com/ncp/payment/TH74PFXUPCR2N',
+    points: 'https://www.paypal.com/ncp/payment/TH74PFXUPCR2N'
   },
   adminEmails: ['hayzerxsloth@gmail.com'],
   auth: {

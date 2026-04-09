@@ -16,10 +16,7 @@
     const cfg = window.GEMS_HIDDEN_CONFIG || {};
     const brand = cfg.brandName || 'Hidden Gems';
 
-    const stripeLink = cfg.stripePaymentLinks?.points || '#';
-    const paypalLink = cfg.paypalLinks?.points || 'https://www.paypal.com/ncp/payment/TH74PFXUPCR2N';
-
-    const stripePlaceholder = !stripeLink || String(stripeLink).includes('REPLACE_WITH');
+    const paypalLink = cfg.paypalLinks?.points || cfg.paypalLinks?.default || 'https://www.paypal.com/ncp/payment/TH74PFXUPCR2N';
     const paypalPlaceholder = !paypalLink || String(paypalLink).includes('REPLACE_WITH');
 
     document.body.innerHTML = HiddenGemsApp.shellHeader() + `
@@ -29,11 +26,11 @@
             <img src="./assets/hidden-gems-logo.png" alt="${brand} logo" class="h-14 w-14 rounded-2xl object-contain" />
             <div>
               <h1 class="text-3xl font-black text-pink-400">${brand} Points Store</h1>
-              <p class="text-neutral-400">Buy points fast and redeem them inside your account.</p>
+              <p class="text-neutral-400">Choose a live PayPal checkout option for your account wallet.</p>
             </div>
           </div>
 
-          <p class="mt-6 max-w-2xl text-neutral-300">Choose your preferred checkout option below. PayPal is live now, and Stripe is ready for your real payment link whenever you add it in <span class="font-semibold text-white">config.js</span>.</p>
+          <p class="mt-6 max-w-2xl text-neutral-300">Choose a points package below. All wallet purchases are routed through your live PayPal checkout link in <span class="font-semibold text-white">config.js</span>.</p>
 
           <div class="mt-8 grid gap-5 md:grid-cols-3">
             <div class="rounded-2xl border border-white/10 bg-black/30 p-5">
@@ -41,8 +38,7 @@
               <h2 class="mt-2 text-2xl font-black">500 Points</h2>
               <p class="mt-1 text-sm text-neutral-400">Entry bundle for smaller unlocks.</p>
               <div class="mt-5 flex flex-col gap-3">
-                <a href="${paypalLink}" target="_blank" rel="noopener noreferrer" ${paypalPlaceholder ? `onclick="event.preventDefault();alert('Add your real PayPal link in config.js first.')"` : ''} class="inline-block rounded-2xl border border-blue-400/40 bg-blue-500/10 px-5 py-3 text-center font-semibold text-blue-100 transition hover:bg-blue-500/20">PayPal</a>
-                <a href="${stripeLink}" target="_blank" rel="noopener noreferrer" ${stripePlaceholder ? `onclick="event.preventDefault();alert('Add your real Stripe points link in config.js first.')"` : ''} class="inline-block rounded-2xl bg-pink-500 px-5 py-3 text-center font-semibold text-white transition hover:bg-pink-400">Stripe</a>
+                <a href="${paypalLink}" target="_blank" rel="noopener noreferrer" ${paypalPlaceholder ? `onclick="event.preventDefault();alert('Add your real PayPal link in config.js first.')"` : ''} class="inline-block rounded-2xl bg-pink-500 px-5 py-3 text-center font-semibold text-white transition hover:bg-pink-400">Buy with PayPal</a>
               </div>
             </div>
 
@@ -51,8 +47,7 @@
               <h2 class="mt-2 text-2xl font-black">1,500 Points</h2>
               <p class="mt-1 text-sm text-neutral-400">Best middle-tier option for regular buyers.</p>
               <div class="mt-5 flex flex-col gap-3">
-                <a href="${paypalLink}" target="_blank" rel="noopener noreferrer" ${paypalPlaceholder ? `onclick="event.preventDefault();alert('Add your real PayPal link in config.js first.')"` : ''} class="inline-block rounded-2xl border border-blue-400/40 bg-blue-500/10 px-5 py-3 text-center font-semibold text-blue-100 transition hover:bg-blue-500/20">PayPal</a>
-                <a href="${stripeLink}" target="_blank" rel="noopener noreferrer" ${stripePlaceholder ? `onclick="event.preventDefault();alert('Add your real Stripe points link in config.js first.')"` : ''} class="inline-block rounded-2xl bg-pink-500 px-5 py-3 text-center font-semibold text-white transition hover:bg-pink-400">Stripe</a>
+                <a href="${paypalLink}" target="_blank" rel="noopener noreferrer" ${paypalPlaceholder ? `onclick="event.preventDefault();alert('Add your real PayPal link in config.js first.')"` : ''} class="inline-block rounded-2xl bg-pink-500 px-5 py-3 text-center font-semibold text-white transition hover:bg-pink-400">Buy with PayPal</a>
               </div>
             </div>
 
@@ -61,8 +56,7 @@
               <h2 class="mt-2 text-2xl font-black">5,000 Points</h2>
               <p class="mt-1 text-sm text-neutral-400">Big bundle for heavy point usage.</p>
               <div class="mt-5 flex flex-col gap-3">
-                <a href="${paypalLink}" target="_blank" rel="noopener noreferrer" ${paypalPlaceholder ? `onclick="event.preventDefault();alert('Add your real PayPal link in config.js first.')"` : ''} class="inline-block rounded-2xl border border-blue-400/40 bg-blue-500/10 px-5 py-3 text-center font-semibold text-blue-100 transition hover:bg-blue-500/20">PayPal</a>
-                <a href="${stripeLink}" target="_blank" rel="noopener noreferrer" ${stripePlaceholder ? `onclick="event.preventDefault();alert('Add your real Stripe points link in config.js first.')"` : ''} class="inline-block rounded-2xl bg-pink-500 px-5 py-3 text-center font-semibold text-white transition hover:bg-pink-400">Stripe</a>
+                <a href="${paypalLink}" target="_blank" rel="noopener noreferrer" ${paypalPlaceholder ? `onclick="event.preventDefault();alert('Add your real PayPal link in config.js first.')"` : ''} class="inline-block rounded-2xl bg-pink-500 px-5 py-3 text-center font-semibold text-white transition hover:bg-pink-400">Buy with PayPal</a>
               </div>
             </div>
           </div>
@@ -70,10 +64,8 @@
           <div class="mt-8 rounded-2xl border border-white/10 bg-black/30 p-5">
             <p class="font-semibold text-white">config.js keys to use</p>
             <pre class="mt-3 overflow-x-auto rounded-xl bg-black/40 p-4 text-sm text-neutral-300"><code>window.GEMS_HIDDEN_CONFIG = {
-  stripePaymentLinks: {
-    points: 'REPLACE_WITH_YOUR_REAL_STRIPE_POINTS_LINK'
-  },
   paypalLinks: {
+    default: 'https://www.paypal.com/ncp/payment/TH74PFXUPCR2N',
     points: 'https://www.paypal.com/ncp/payment/TH74PFXUPCR2N'
   }
 };</code></pre>

@@ -10,6 +10,8 @@ window.HiddenGemsApp = (() => {
   const SUPABASE_URL = AUTH_CONFIG.supabaseUrl || '';
   const SUPABASE_PUBLISHABLE_KEY = AUTH_CONFIG.supabaseAnonKey || '';
   const ADMIN_EMAILS = (APP_CONFIG.adminEmails || []).map((email) => String(email).trim().toLowerCase()).filter(Boolean);
+  const PAYPAL_POINTS_URL = (APP_CONFIG.paypalLinks && (APP_CONFIG.paypalLinks.points || APP_CONFIG.paypalLinks.default)) || 'https://www.paypal.com/ncp/payment/TH74PFXUPCR2N';
+  const PAYPAL_VIP_URL = (APP_CONFIG.paypalLinks && (APP_CONFIG.paypalLinks.vip || APP_CONFIG.paypalLinks.default || APP_CONFIG.paypalLinks.points)) || 'https://www.paypal.com/ncp/payment/TH74PFXUPCR2N';
 
   const KEYS = {
     points: 'hg_points',
@@ -241,6 +243,100 @@ window.HiddenGemsApp = (() => {
     return getVideoSource(video).type === 'file';
   }
 
+  function getVideoPreviewConfig(video) {
+    const override = storage.getVideoOverrides ? (storage.getVideoOverrides()[String(video?.id || '')] || {}) : {};
+    return {
+      imageEnabled: override.previewImageEnabled !== false,
+      videoEnabled: !!override.previewVideoEnabled,
+      imageUrl: String(override.previewImage || override.previewImageUrl || '').trim(),
+      videoUrl: String(override.previewVideo || override.previewVideoUrl || '').trim(),
+      generatedFrame: String(override.generatedPreviewFrame || '').trim()
+    };
+  }
+
+  function captureVideoFrame(url, seekRatio = 0.35) {
+    return new Promise((resolve, reject) => {
+      if (!url) return reject(new Error('Missing video URL for preview capture.'));
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      video.muted = true;
+      video.playsInline = true;
+      video.crossOrigin = 'anonymous';
+      const cleanup = () => {
+        video.pause();
+        video.removeAttribute('src');
+        try { video.load(); } catch (error) {}
+      };
+      video.onloadedmetadata = () => {
+        const duration = Number(video.duration || 0);
+        const safeRatio = Math.min(0.8, Math.max(0.1, Number(seekRatio) || 0.35));
+        const target = duration > 0 ? Math.max(0.1, duration * safeRatio) : 0.1;
+        try { video.currentTime = target; } catch (error) { video.currentTime = 0.1; }
+      };
+      video.onseeked = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = video.videoWidth || 1280;
+          canvas.height = video.videoHeight || 720;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+          cleanup();
+          resolve(dataUrl);
+        } catch (error) {
+          cleanup();
+          reject(error);
+        }
+      };
+      video.onerror = () => {
+        cleanup();
+        reject(new Error('Unable to create a video frame preview.'));
+      };
+      video.src = url;
+    });
+  }
+
+  async function resolveStillPreviewImage(video) {
+    const preview = getVideoPreviewConfig(video);
+    if (preview.imageUrl) return preview.imageUrl;
+    if (preview.generatedFrame) return preview.generatedFrame;
+    const source = getVideoSource(video);
+    try {
+      let playableSrc = '';
+      if (source.type === 'file' && source.storagePath) playableSrc = await createSignedVideoUrl(source.storagePath);
+      else if (source.type === 'file' && source.ref) {
+        const blob = await getVideoBlob(source.ref);
+        if (blob) playableSrc = URL.createObjectURL(blob);
+      } else if (source.type === 'link') {
+        playableSrc = source.value;
+      }
+      if (playableSrc) {
+        const frame = await captureVideoFrame(playableSrc, 0.37);
+        if (frame && storage.setVideoOverride) storage.setVideoOverride(video.id, { generatedPreviewFrame: frame });
+        if (source.type === 'file' && source.ref && playableSrc.startsWith('blob:')) {
+          try { URL.revokeObjectURL(playableSrc); } catch (error) {}
+        }
+        if (frame) return frame;
+      }
+    } catch (error) {
+      console.error(error);
+    }
+    return video.image || './assets/hidden-gems-logo.png';
+  }
+
+  function renderStillPreviewShell(image, title, caption = '') {
+    return `<div class="space-y-4"><div class="relative overflow-hidden rounded-2xl border border-white/10 bg-black"><img src="${escapeHtml(image || './assets/hidden-gems-logo.png')}" alt="${escapeHtml(title || 'Preview image')}" class="h-[420px] w-full object-cover" /><div class="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent"></div><div class="pointer-events-none absolute inset-0 flex items-center justify-center"><img src="./assets/hidden-gems-logo.png" alt="Hidden Gems watermark" class="max-h-32 w-auto opacity-20 select-none" /></div><div class="absolute bottom-4 left-4 rounded-full border border-white/10 bg-black/60 px-3 py-1 text-xs uppercase tracking-[0.2em] text-pink-200">Still Preview</div></div>${caption ? `<p class="text-sm text-neutral-400">${caption}</p>` : ''}</div>`;
+  }
+
+  function redirectToPayPal(url = PAYPAL_POINTS_URL) {
+    const target = String(url || '').trim();
+    if (!target || target.includes('REPLACE_WITH')) {
+      toast('Add your live PayPal link in config.js before using checkout.', 'error');
+      return false;
+    }
+    window.open(target, '_blank', 'noopener,noreferrer');
+    return true;
+  }
 
   function toast(message, type = 'info') {
     const colors = {
@@ -523,14 +619,20 @@ window.HiddenGemsApp = (() => {
 
   function allVideos() {
     const catalog = allCategories();
-    return uniqueVideos(Object.entries(catalog).flatMap(([slug, category]) => (category.videos || []).map((video) => ({
-      ...normalizeVideoItem(video),
-      category: categoryDisplayName(video.categorySlug || slug, category.title),
-      categoryTitle: categoryDisplayName(video.categorySlug || slug, category.title),
-      categorySlug: video.categorySlug || slug,
-      access: video.access === 'vip' ? 'vip' : 'guest',
-      vip: video.access === 'vip'
-    }))));
+    const overrides = storage.getVideoOverrides ? storage.getVideoOverrides() : {};
+    return uniqueVideos(Object.entries(catalog).flatMap(([slug, category]) => (category.videos || []).map((video) => {
+      const override = overrides[String(video.id)] || {};
+      const merged = { ...video, ...override };
+      return {
+        ...normalizeVideoItem(merged),
+        ...override,
+        category: categoryDisplayName(merged.categorySlug || slug, merged.categoryTitle || category.title),
+        categoryTitle: categoryDisplayName(merged.categorySlug || slug, merged.categoryTitle || category.title),
+        categorySlug: merged.categorySlug || slug,
+        access: merged.access === 'vip' ? 'vip' : 'guest',
+        vip: merged.access === 'vip'
+      };
+    })));
   }
 
   function getCategory(slug) { const catalog = allCategories(); return catalog[slug] ? { ...catalog[slug], slug, title: categoryDisplayName(slug, catalog[slug].title), videos: allVideos().filter((video) => video.categorySlug === slug) } : null; }
@@ -845,37 +947,40 @@ window.HiddenGemsApp = (() => {
 
   function renderPointsStore() {
     const packs = [
-      { label: 'Starter Cache', points: 300, price: '$3.00', copy: 'Perfect for one quick unlock' },
-      { label: 'Silver Stash', points: 550, price: '$5.00', copy: 'Best value for a medium unlock' },
-      { label: 'Gold Vault', points: 800, price: '$7.00', copy: 'Built for premium unlocks' },
-      { label: 'Gem Reserve', points: 1700, price: '$14.00', copy: 'Best for repeat unlocks' }
+      { points: 500, price: '$5', label: 'Starter Pack', copy: 'A quick top-up for smaller unlocks' },
+      { points: 1200, price: '$10', label: 'Silver Pack', copy: 'A balanced option for regular purchases' },
+      { points: 2500, price: '$20', label: 'Gold Pack', copy: 'Better value for building your library' },
+      { points: 6000, price: '$40', label: 'Vault Pack', copy: 'Best value for heavy unlocks' }
     ];
     applyBg();
-    document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-7xl px-6 py-14"><div class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Points Store</p><h1 class="mt-3 text-4xl font-black">Stock your wallet</h1><p class="mt-4 max-w-2xl text-neutral-300">Guest users can spend points on standard videos. VIP and admin can already open everything in their access tier.</p></div><div id="points-wallet-banner" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300">Loading wallet...</div><div id="points-store-note" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300"></div><div class="mt-10 grid gap-6 md:grid-cols-2 xl:grid-cols-4">${packs.map((pack) => `<div class="rounded-[2rem] border border-white/10 bg-white/5 p-8 text-center shadow-xl shadow-black/20"><p class="text-sm uppercase tracking-[0.25em] text-neutral-400">${pack.label}</p><p class="mt-4 text-5xl font-black">${pack.points}</p><p class="mt-2 text-neutral-400">Points included</p><p class="mt-6 text-3xl font-bold text-pink-300">${pack.price}</p><p class="mt-2 text-sm text-neutral-500">${pack.copy}</p><button data-pack="${pack.points}" data-pack-label="${pack.label}" class="mt-8 block w-full rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Add to Wallet</button></div>`).join('')}</div></main>` + shellFooter();
+    document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-7xl px-6 py-14"><div class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Points Store</p><h1 class="mt-3 text-4xl font-black">Fund your wallet with PayPal</h1><p class="mt-4 max-w-2xl text-neutral-300">Choose a points package below. Guest and VIP accounts are sent to PayPal for checkout, while admins can issue manual credits for support and moderation.</p></div><div id="points-wallet-banner" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300">Loading wallet...</div><div id="points-store-note" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300"></div><div class="mt-10 grid gap-6 md:grid-cols-2 xl:grid-cols-4">${packs.map((pack) => `<div class="rounded-[2rem] border border-white/10 bg-white/5 p-8 text-center shadow-xl shadow-black/20"><p class="text-sm uppercase tracking-[0.25em] text-neutral-400">${pack.label}</p><p class="mt-4 text-5xl font-black">${pack.points}</p><p class="mt-2 text-neutral-400">Points included</p><p class="mt-6 text-3xl font-bold text-pink-300">${pack.price}</p><p class="mt-2 text-sm text-neutral-500">${pack.copy}</p><button data-pack="${pack.points}" data-pack-label="${pack.label}" class="mt-8 block w-full rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Continue</button></div>`).join('')}</div></main>` + shellFooter();
     bindCommonUi();
     const mount = async () => {
       const state = await getState();
       document.getElementById('points-wallet-banner').innerHTML = `Signed in: <span class="font-bold text-white">${state.email || 'No'}</span> · Role: <span class="font-bold text-pink-300">${state.role}</span> · Wallet balance: <span class="font-bold text-white">${state.localPoints} points</span>`;
       const note = document.getElementById('points-store-note');
-      if (state.role === 'admin') {
-        note.innerHTML = 'Admin mode: these buttons can manually grant test points for moderation and support.';
-      } else {
-        note.innerHTML = 'Manual point grants are disabled for guest and VIP accounts. Points should only be added through your real payment flow.';
-      }
+      if (state.role === 'admin') note.innerHTML = 'Admin wallet controls stay available here for support, refunds, and manual account adjustments.';
+      else note.innerHTML = 'All point purchases are handled through PayPal. Your wallet updates after your live payment flow completes.';
       document.querySelectorAll('[data-pack]').forEach((button) => {
+        button.disabled = false;
         if (state.role === 'admin') {
-          button.disabled = false;
           button.textContent = `Grant ${button.dataset.pack} points`;
           button.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-neutral-700');
           button.classList.add('bg-pink-500');
         } else {
-          button.disabled = true;
-          button.textContent = 'Payment flow only';
-          button.classList.add('opacity-50', 'cursor-not-allowed', 'bg-neutral-700');
+          button.textContent = 'Buy with PayPal';
+          button.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-neutral-700');
+          button.classList.add('bg-pink-500');
         }
       });
     };
-    mount(); document.querySelectorAll('[data-pack]').forEach((button) => button.addEventListener('click', async () => { if (button.disabled) return; await addPoints(Number(button.dataset.pack), button.dataset.packLabel); })); window.addEventListener('hg:state-changed', mount);
+    mount();
+    document.querySelectorAll('[data-pack]').forEach((button) => button.addEventListener('click', async () => {
+      const state = await getState();
+      if (state.role === 'admin') await addPoints(Number(button.dataset.pack), button.dataset.packLabel);
+      else redirectToPayPal(PAYPAL_POINTS_URL);
+    }));
+    window.addEventListener('hg:state-changed', mount);
   }
 
   function renderLibraryPage() {
@@ -943,7 +1048,7 @@ window.HiddenGemsApp = (() => {
       const gate = document.getElementById('admin-gate');
       if (state.role !== 'admin') { gate.innerHTML = `<div class="rounded-[2rem] border border-amber-400/30 bg-amber-500/10 p-8"><p class="text-sm uppercase tracking-[0.25em] text-amber-200">Admin only</p><h1 class="mt-3 text-4xl font-black">Access denied</h1><p class="mt-4 max-w-2xl text-neutral-200">Only accounts marked admin in your profile or listed in config.js can open this page.</p><a href="index.html" class="mt-6 inline-flex rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Back to Home</a></div>`; return; }
       const categories = Object.entries(allCategories()).map(([slug, category]) => `<option value="${slug}">${escapeHtml(category.title)}</option>`).join('');
-      gate.innerHTML = `<section class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Admin Portal</p><h1 class="mt-3 text-4xl font-black">Manage videos, pricing, files, and user roles</h1><p class="mt-4 max-w-3xl text-neutral-300">Guest and VIP access types are saved directly per video. Uploaded video files take priority over links, and uploaded thumbnail images are stored with each saved record in this browser.</p><p class="mt-3 text-sm text-amber-200">Uploaded files now try shared Supabase Storage first, with browser fallback only if storage is unavailable.</p></section><section class="mt-8 grid gap-8 xl:grid-cols-[1.05fr_0.95fr]"><div class="space-y-8"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><div class="flex flex-wrap items-center justify-between gap-3"><div><h2 class="text-2xl font-bold">Add or edit video</h2><p class="mt-2 text-sm text-neutral-400">Use either a direct video file upload or a video link. If a file is uploaded, it becomes the main source.</p></div><span id="admin-form-mode" class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.25em] text-neutral-300">Add mode</span></div><form id="admin-video-form" class="mt-6 grid gap-4 md:grid-cols-2"><input type="hidden" name="videoId" /><input type="hidden" name="isCustom" value="true" /><div class="md:col-span-2"><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Title</label><input required name="title" placeholder="Video title" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div class="md:col-span-2"><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Description</label><textarea required name="description" placeholder="Description" class="min-h-[120px] w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"></textarea></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Access type</label><select name="access" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"><option value="guest">Guest video</option><option value="vip">VIP video</option></select></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Points price</label><input required type="number" min="0" name="points" placeholder="Points price" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Category</label><select name="categorySlug" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white">${categories}</select></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Custom category title</label><input name="categoryTitle" placeholder="Optional custom category title" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div class="md:col-span-2 flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3"><input id="video-published" type="checkbox" name="isPublished" checked class="h-4 w-4 rounded border-white/20 bg-black/40 text-pink-500" /><label for="video-published" class="text-sm text-neutral-300">Published on site</label></div><div class="md:col-span-2 rounded-[1.5rem] border border-white/10 bg-black/20 p-4"><div class="grid gap-4 md:grid-cols-2"><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Thumbnail upload</label><input type="file" name="thumbnailFile" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Thumbnail URL fallback</label><input name="image" placeholder="Optional image URL" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div></div><div id="admin-thumbnail-preview" class="mt-4 hidden overflow-hidden rounded-2xl border border-white/10 bg-black/30"><img src="" alt="Thumbnail preview" class="h-48 w-full object-cover" /></div></div><div class="md:col-span-2 rounded-[1.5rem] border border-white/10 bg-black/20 p-4"><div class="grid gap-4 md:grid-cols-2"><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Video link</label><input name="videoUrl" placeholder="https://..." class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Video file upload</label><input type="file" name="videoFile" accept=".mp4,.webm,.mov,video/mp4,video/webm,video/quicktime" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div></div><p class="mt-3 text-sm text-neutral-400">Source priority: uploaded video file first, then video link.</p><div id="admin-video-source-note" class="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-neutral-300">No source selected yet.</div></div><div class="md:col-span-2 flex flex-wrap gap-3"><button class="rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Save video</button><button type="button" id="admin-form-reset" class="rounded-2xl border border-white/15 px-6 py-3 font-semibold text-white">Clear form</button></div></form></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><div class="flex items-center justify-between gap-4"><div><h2 class="text-2xl font-bold">Manage saved videos</h2><p class="mt-2 text-sm text-neutral-400">Every saved video shows its access label, thumbnail preview, and edit/delete actions.</p></div><a href="index.html" class="rounded-xl border border-white/15 px-4 py-2 text-sm text-white">Back to site</a></div><div id="admin-video-list" class="mt-6 space-y-4"></div></div></div><div class="space-y-8"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">Role manager</h2><p class="mt-2 text-sm text-neutral-400">Use this to mark a user as guest, VIP, or admin on this site.</p><form id="admin-role-form" class="mt-6 space-y-4"><input required type="email" name="email" placeholder="user@example.com" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><select name="role" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"><option value="guest">Guest</option><option value="vip">VIP</option><option value="admin">Admin</option></select><button class="w-full rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Save role</button></form><div id="admin-role-list" class="mt-6 space-y-3"></div></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">Category manager</h2><p class="mt-2 text-sm text-neutral-400">Rename the front-end category labels without breaking the category slugs or links.</p><form id="admin-category-form" class="mt-6 space-y-4"></form></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">VIP quick actions</h2><p class="mt-2 text-sm text-neutral-400">If your Stripe flow is still placeholder-based, you can activate VIP on the current signed-in account from the VIP page.</p><a href="vip-checkout.html" class="mt-4 inline-flex rounded-2xl border border-white/15 px-5 py-3 text-white">Open VIP Checkout Page</a></div></div></section>`;
+      gate.innerHTML = `<section class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Admin Portal</p><h1 class="mt-3 text-4xl font-black">Manage videos, pricing, files, and user roles</h1><p class="mt-4 max-w-3xl text-neutral-300">Manage live catalog content, assign access levels, and control the preview experience guests see after a purchase.</p><p class="mt-3 text-sm text-amber-200">Uploaded files use your configured storage path when available, with your existing workflow kept intact.</p></section><section class="mt-8 grid gap-8 xl:grid-cols-[1.05fr_0.95fr]"><div class="space-y-8"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><div class="flex flex-wrap items-center justify-between gap-3"><div><h2 class="text-2xl font-bold">Add or edit video</h2><p class="mt-2 text-sm text-neutral-400">Use a direct video file or a video link, then choose how restricted previews should appear for guests.</p></div><span id="admin-form-mode" class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.25em] text-neutral-300">Add mode</span></div><form id="admin-video-form" class="mt-6 grid gap-4 md:grid-cols-2"><input type="hidden" name="videoId" /><input type="hidden" name="isCustom" value="true" /><div class="md:col-span-2"><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Title</label><input required name="title" placeholder="Video title" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div class="md:col-span-2"><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Description</label><textarea required name="description" placeholder="Description" class="min-h-[120px] w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"></textarea></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Access type</label><select name="access" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"><option value="guest">Guest video</option><option value="vip">VIP video</option></select></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Points price</label><input required type="number" min="0" name="points" placeholder="Points price" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Category</label><select name="categorySlug" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white">${categories}</select></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Custom category title</label><input name="categoryTitle" placeholder="Optional custom category title" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div class="md:col-span-2 flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3"><input id="video-published" type="checkbox" name="isPublished" checked class="h-4 w-4 rounded border-white/20 bg-black/40 text-pink-500" /><label for="video-published" class="text-sm text-neutral-300">Published on site</label></div><div class="md:col-span-2 rounded-[1.5rem] border border-white/10 bg-black/20 p-4"><div class="grid gap-4 md:grid-cols-2"><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Thumbnail upload</label><input type="file" name="thumbnailFile" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Thumbnail URL fallback</label><input name="image" placeholder="Optional image URL" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div></div><div id="admin-thumbnail-preview" class="mt-4 hidden overflow-hidden rounded-2xl border border-white/10 bg-black/30"><img src="" alt="Thumbnail preview" class="h-48 w-full object-cover" /></div></div><div class="md:col-span-2 rounded-[1.5rem] border border-white/10 bg-black/20 p-4"><div class="grid gap-4 md:grid-cols-2"><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Video link</label><input name="videoUrl" placeholder="https://..." class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Video file upload</label><input type="file" name="videoFile" accept=".mp4,.webm,.mov,video/mp4,video/webm,video/quicktime" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div></div><p class="mt-3 text-sm text-neutral-400">Source priority: uploaded video file first, then video link.</p><div id="admin-video-source-note" class="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-neutral-300">No source selected yet.</div></div><div class="md:col-span-2 rounded-[1.5rem] border border-white/10 bg-black/20 p-4"><div class="flex flex-wrap items-center gap-6"><label class="flex items-center gap-3 text-sm text-neutral-300"><input id="preview-image-enabled" type="checkbox" name="previewImageEnabled" checked class="h-4 w-4 rounded border-white/20 bg-black/40 text-pink-500" />Enable image preview</label><label class="flex items-center gap-3 text-sm text-neutral-300"><input id="preview-video-enabled" type="checkbox" name="previewVideoEnabled" class="h-4 w-4 rounded border-white/20 bg-black/40 text-pink-500" />Enable video preview assets</label></div><p class="mt-3 text-sm text-neutral-400">Guest purchases always show a still preview on-site. Use these fields to control the preview assets shown across restricted views.</p><div id="admin-preview-settings" class="mt-4 grid gap-4 md:grid-cols-2"><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Preview image upload</label><input type="file" name="previewImageFile" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Preview image URL</label><input name="previewImageUrl" placeholder="Optional preview image URL" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Preview video upload</label><input type="file" name="previewVideoFile" accept=".mp4,.webm,.mov,video/mp4,video/webm,video/quicktime" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Preview video URL</label><input name="previewVideoUrl" placeholder="Optional preview video URL" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div></div><div id="admin-preview-note" class="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-neutral-300">Guests currently fall back to a generated still preview when no custom preview asset is provided.</div></div><div class="md:col-span-2 flex flex-wrap gap-3"><button class="rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Save video</button><button type="button" id="admin-form-reset" class="rounded-2xl border border-white/15 px-6 py-3 font-semibold text-white">Clear form</button></div></form></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><div class="flex items-center justify-between gap-4"><div><h2 class="text-2xl font-bold">Manage saved videos</h2><p class="mt-2 text-sm text-neutral-400">Every saved video shows its access label, thumbnail preview, and edit/delete actions.</p></div><a href="index.html" class="rounded-xl border border-white/15 px-4 py-2 text-sm text-white">Back to site</a></div><div id="admin-video-list" class="mt-6 space-y-4"></div></div></div><div class="space-y-8"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">Role manager</h2><p class="mt-2 text-sm text-neutral-400">Use this to mark a user as guest, VIP, or admin on this site.</p><form id="admin-role-form" class="mt-6 space-y-4"><input required type="email" name="email" placeholder="user@example.com" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><select name="role" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"><option value="guest">Guest</option><option value="vip">VIP</option><option value="admin">Admin</option></select><button class="w-full rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Save role</button></form><div id="admin-role-list" class="mt-6 space-y-3"></div></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">Category manager</h2><p class="mt-2 text-sm text-neutral-400">Rename the front-end category labels without breaking the category slugs or links.</p><form id="admin-category-form" class="mt-6 space-y-4"></form></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">VIP quick actions</h2><p class="mt-2 text-sm text-neutral-400">Open the live VIP checkout page to confirm your customer-facing membership flow.</p><a href="vip-checkout.html" class="mt-4 inline-flex rounded-2xl border border-white/15 px-5 py-3 text-white">Open VIP Checkout Page</a></div></div></section>`;
 
       const form = document.getElementById('admin-video-form');
       const modeBadge = document.getElementById('admin-form-mode');
@@ -957,6 +1062,22 @@ window.HiddenGemsApp = (() => {
       let videoMimeType = '';
       let videoFileName = '';
       let videoFileRef = '';
+      let previewImageData = '';
+      let previewVideoData = '';
+      let previewVideoMimeType = '';
+      let previewVideoFileName = '';
+
+      const updatePreviewNote = () => {
+        const imageEnabled = !!form.elements.previewImageEnabled?.checked;
+        const videoEnabled = !!form.elements.previewVideoEnabled?.checked;
+        const imageUrl = String(form.elements.previewImageUrl?.value || '').trim();
+        const videoUrl = String(form.elements.previewVideoUrl?.value || '').trim();
+        const note = document.getElementById('admin-preview-note');
+        if (!note) return;
+        if (imageEnabled && (previewImageData || imageUrl)) note.innerHTML = '<span class="font-semibold text-emerald-300">Custom image preview ready</span> · Guests will see this still image after purchase.';
+        else if (videoEnabled && (previewVideoData || videoUrl)) note.innerHTML = '<span class="font-semibold text-pink-300">Preview video asset saved</span> · Stored for future restricted preview use while guest playback stays disabled.';
+        else note.textContent = 'Guests currently fall back to a generated still preview when no custom preview asset is provided.';
+      };
 
       const setThumbnailPreview = (value) => {
         thumbnailData = value || '';
@@ -997,8 +1118,19 @@ window.HiddenGemsApp = (() => {
         videoFileRef = video.videoFileRef || '';
         if (form.elements.thumbnailFile) form.elements.thumbnailFile.value = '';
         if (form.elements.videoFile) form.elements.videoFile.value = '';
+        if (form.elements.previewImageEnabled) form.elements.previewImageEnabled.checked = video.previewImageEnabled !== false;
+        if (form.elements.previewVideoEnabled) form.elements.previewVideoEnabled.checked = !!video.previewVideoEnabled;
+        if (form.elements.previewImageUrl) form.elements.previewImageUrl.value = video.previewImageUrl || video.previewImage || '';
+        if (form.elements.previewVideoUrl) form.elements.previewVideoUrl.value = video.previewVideoUrl || video.previewVideo || '';
+        if (form.elements.previewImageFile) form.elements.previewImageFile.value = '';
+        if (form.elements.previewVideoFile) form.elements.previewVideoFile.value = '';
+        previewImageData = video.previewImage || '';
+        previewVideoData = video.previewVideo || '';
+        previewVideoMimeType = video.previewVideoMimeType || '';
+        previewVideoFileName = video.previewVideoFileName || '';
         setThumbnailPreview(video.image || '');
         updateSourceNote();
+        updatePreviewNote();
         modeBadge.textContent = `Edit mode · ${video.access === 'vip' ? 'VIP' : 'Guest'}`;
         form.scrollIntoView({ behavior: 'smooth', block: 'start' });
       };
@@ -1015,10 +1147,38 @@ window.HiddenGemsApp = (() => {
         videoMimeType = '';
         videoFileName = '';
         videoFileRef = '';
+        previewImageData = '';
+        previewVideoData = '';
+        previewVideoMimeType = '';
+        previewVideoFileName = '';
+        if (form.elements.previewImageEnabled) form.elements.previewImageEnabled.checked = true;
+        if (form.elements.previewVideoEnabled) form.elements.previewVideoEnabled.checked = false;
+        if (form.elements.previewImageUrl) form.elements.previewImageUrl.value = '';
+        if (form.elements.previewVideoUrl) form.elements.previewVideoUrl.value = '';
         setThumbnailPreview('');
         updateSourceNote();
+        updatePreviewNote();
         modeBadge.textContent = 'Add mode';
       };
+
+      form.elements.previewImageUrl?.addEventListener('input', updatePreviewNote);
+      form.elements.previewVideoUrl?.addEventListener('input', updatePreviewNote);
+      form.elements.previewImageEnabled?.addEventListener('change', updatePreviewNote);
+      form.elements.previewVideoEnabled?.addEventListener('change', updatePreviewNote);
+      form.elements.previewImageFile?.addEventListener('change', async () => {
+        const file = form.elements.previewImageFile.files?.[0];
+        if (!file) { previewImageData = ''; updatePreviewNote(); return; }
+        previewImageData = await fileToDataUrl(file);
+        updatePreviewNote();
+      });
+      form.elements.previewVideoFile?.addEventListener('change', async () => {
+        const file = form.elements.previewVideoFile.files?.[0];
+        if (!file) { previewVideoData = ''; previewVideoMimeType = ''; previewVideoFileName = ''; updatePreviewNote(); return; }
+        previewVideoData = await fileToDataUrl(file);
+        previewVideoMimeType = file.type || 'video/mp4';
+        previewVideoFileName = file.name || '';
+        updatePreviewNote();
+      });
 
       const renderRoleList = () => {
         const map = storage.getRoleOverrides(); const entries = Object.entries(map);
@@ -1059,7 +1219,7 @@ window.HiddenGemsApp = (() => {
           const source = getVideoSource(video);
           const accessClass = video.access === 'vip' ? 'border-pink-400/30 bg-pink-500/10 text-pink-200' : 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200';
           const publishClass = video.isPublished === false ? 'border-amber-400/30 bg-amber-500/10 text-amber-200' : 'border-sky-400/30 bg-sky-500/10 text-sky-200';
-          return `<div class="rounded-[1.75rem] border border-white/10 bg-neutral-900/80 p-4"><div class="grid gap-4 md:grid-cols-[180px_1fr]"><div class="overflow-hidden rounded-2xl border border-white/10 bg-black/30">${video.image ? `<img src="${escapeHtml(video.image)}" alt="${escapeHtml(video.title)}" class="h-40 w-full object-cover" />` : '<div class="flex h-40 items-center justify-center text-sm text-neutral-500">No thumbnail</div>'}</div><div><div class="flex flex-wrap items-start justify-between gap-3"><div><div class="flex flex-wrap items-center gap-2"><p class="text-lg font-semibold text-white">${escapeHtml(video.title)}</p><span class="rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${accessClass}">${video.access}</span><span class="rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${publishClass}">${video.isPublished === false ? 'draft' : 'published'}</span>${video.isCustom ? '<span class="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-300">Custom</span>' : '<span class="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400">Catalog</span>'}</div><p class="mt-2 text-sm text-neutral-400">${escapeHtml(video.category)} · ${video.points} pts</p></div><div class="text-sm text-neutral-400">${source.type === 'file' ? 'Uploaded file' : source.type === 'link' ? 'Video link' : 'No source'}</div></div><p class="mt-3 text-sm text-neutral-300">${escapeHtml(video.description || 'No description added yet.')}</p><div class="mt-4 flex flex-wrap gap-3"><button data-edit-video="${video.id}" class="rounded-xl bg-pink-500 px-4 py-2 text-sm font-semibold text-white">Edit</button><button data-delete-video="${video.id}" class="rounded-xl border border-rose-400/20 bg-rose-500/10 px-4 py-2 text-sm text-rose-200">Delete</button></div></div></div></div>`;
+          return `<div class="rounded-[1.75rem] border border-white/10 bg-neutral-900/80 p-4"><div class="grid gap-4 md:grid-cols-[180px_1fr]"><div class="overflow-hidden rounded-2xl border border-white/10 bg-black/30">${video.image ? `<img src="${escapeHtml(video.image)}" alt="${escapeHtml(video.title)}" class="h-40 w-full object-cover" />` : '<div class="flex h-40 items-center justify-center text-sm text-neutral-500">No thumbnail</div>'}</div><div><div class="flex flex-wrap items-start justify-between gap-3"><div><div class="flex flex-wrap items-center gap-2"><p class="text-lg font-semibold text-white">${escapeHtml(video.title)}</p><span class="rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${accessClass}">${video.access}</span><span class="rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${publishClass}">${video.isPublished === false ? 'draft' : 'published'}</span>${video.isCustom ? '<span class=\"rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-300\">Custom</span>' : '<span class=\"rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400\">Catalog</span>'}${video.previewImageEnabled !== false ? '<span class=\"rounded-full border border-sky-400/20 bg-sky-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-sky-200\">Image preview</span>' : ''}${video.previewVideoEnabled ? '<span class=\"rounded-full border border-fuchsia-400/20 bg-fuchsia-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-fuchsia-200\">Video preview asset</span>' : ''}</div><p class="mt-2 text-sm text-neutral-400">${escapeHtml(video.category)} · ${video.points} pts</p></div><div class="text-sm text-neutral-400">${source.type === 'file' ? 'Uploaded file' : source.type === 'link' ? 'Video link' : 'No source'}</div></div><p class="mt-3 text-sm text-neutral-300">${escapeHtml(video.description || 'No description added yet.')}</p><div class="mt-4 flex flex-wrap gap-3"><button data-edit-video="${video.id}" class="rounded-xl bg-pink-500 px-4 py-2 text-sm font-semibold text-white">Edit</button><button data-delete-video="${video.id}" class="rounded-xl border border-rose-400/20 bg-rose-500/10 px-4 py-2 text-sm text-rose-200">Delete</button></div></div></div></div>`;
         }).join('') : '<div class="rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-6 text-neutral-300">No videos found.</div>';
 
         document.querySelectorAll('[data-edit-video]').forEach((button) => button.addEventListener('click', () => {
@@ -1145,7 +1305,15 @@ window.HiddenGemsApp = (() => {
           access: String(data.get('access') || 'guest').trim(),
           points: Number(data.get('points') || 0),
           isPublished: !!form.elements.isPublished?.checked,
-          isCustom
+          isCustom,
+          previewImageEnabled: !!form.elements.previewImageEnabled?.checked,
+          previewVideoEnabled: !!form.elements.previewVideoEnabled?.checked,
+          previewImage: previewImageData || String(data.get('previewImageUrl') || '').trim(),
+          previewImageUrl: String(data.get('previewImageUrl') || '').trim(),
+          previewVideo: previewVideoData || String(data.get('previewVideoUrl') || '').trim(),
+          previewVideoUrl: String(data.get('previewVideoUrl') || '').trim(),
+          previewVideoMimeType,
+          previewVideoFileName
         });
 
         if (!item.title || !item.description) { toast('Title and description are required.', 'error'); if (submitButton) { submitButton.disabled = false; submitButton.textContent = 'Save video'; } return; }
@@ -1191,7 +1359,7 @@ window.HiddenGemsApp = (() => {
 
           if (savedToSupabase) {
             storage.setCustomVideos(storage.getCustomVideos().filter((video) => video.id !== id));
-            storage.removeVideoOverride(id);
+            storage.setVideoOverride(id, { previewImageEnabled: item.previewImageEnabled, previewVideoEnabled: item.previewVideoEnabled, previewImage: item.previewImage, previewImageUrl: item.previewImageUrl, previewVideo: item.previewVideo, previewVideoUrl: item.previewVideoUrl, previewVideoMimeType: item.previewVideoMimeType, previewVideoFileName: item.previewVideoFileName });
           } else if (!hasSharedBackend && isCustom) {
             const items = storage.getCustomVideos().filter((video) => video.id !== id);
             items.push(item);
@@ -1211,7 +1379,15 @@ window.HiddenGemsApp = (() => {
               categorySlug: item.categorySlug,
               categoryTitle: item.categoryTitle,
               access: item.access,
-              points: item.points
+              points: item.points,
+              previewImageEnabled: item.previewImageEnabled,
+              previewVideoEnabled: item.previewVideoEnabled,
+              previewImage: item.previewImage,
+              previewImageUrl: item.previewImageUrl,
+              previewVideo: item.previewVideo,
+              previewVideoUrl: item.previewVideoUrl,
+              previewVideoMimeType: item.previewVideoMimeType,
+              previewVideoFileName: item.previewVideoFileName
             });
             storage.setVideoPoints(id, item.points);
             storage.setVideoLink(id, item.videoUrl);
@@ -1252,7 +1428,7 @@ window.HiddenGemsApp = (() => {
 
   function renderSimplePage(title, eyebrow, copy) { applyBg(); document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-5xl px-6 py-14"><div class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">${eyebrow}</p><h1 class="mt-3 text-4xl font-black">${title}</h1><div class="mt-6 max-w-none space-y-4 text-neutral-300">${copy}</div></div></main>` + shellFooter(); bindCommonUi(); }
   function initHomePage() { refreshSupabaseVideos(true).then(() => getState().then(updateHomeStateUi)); window.addEventListener('hg:state-changed', async () => { await refreshSupabaseVideos(true); updateHomeStateUi(await getState()); }); }
-  function initVipCheckoutPage() { const activateButton = document.getElementById('demo-activate-vip'); if (!activateButton) return; activateButton.addEventListener('click', async () => { const state = await getState(); if (!state.email) { toast('Log in first so VIP can be attached to your account.', 'error'); window.location.href = 'login.html'; return; } await syncVipForCurrentUser(true); storage.setRoleOverride(state.email, 'vip'); toast('VIP activated for this account.', 'success'); setTimeout(() => window.location.href = 'index.html', 700); }); }
+  function initVipCheckoutPage() { const activateButton = document.getElementById('demo-activate-vip'); if (!activateButton) return; activateButton.addEventListener('click', async () => { const state = await getState(); if (state.role !== 'admin') { toast('Manual VIP activation is reserved for admins.', 'error'); return; } const email = window.prompt('Enter the email address to activate VIP for:'); if (!email) return; storage.setRoleOverride(String(email).trim().toLowerCase(), 'vip'); toast('VIP role updated.', 'success'); }); }
 
   function initPage() {
     const key = currentPageKey();
@@ -1265,8 +1441,8 @@ window.HiddenGemsApp = (() => {
     if (key === 'admin') { renderAdminPage(); return; }
     if (key === 'about') { renderSimplePage('About Hidden Gems', 'About', '<p>Hidden Gems is structured around three access tiers: guest, VIP, and admin.</p><p>Guests unlock standard videos with points. VIP opens VIP videos and everything below. Admin can manage the site and access every title.</p>'); return; }
     if (key === 'contact') { renderSimplePage('Contact', 'Support', `<p>Email support at <a class="text-pink-300" href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a>.</p>`); return; }
-    if (key === 'privacy') { renderSimplePage('Privacy Policy', 'Privacy', '<p>This static site stores demo wallet, role overrides, and admin-managed catalog changes in local storage for front-end functionality.</p>'); return; }
-    if (key === 'terms') { renderSimplePage('Terms', 'Terms', '<p>Purchases, video access, and admin tools should be backed by a real backend before you use this in production.</p>'); return; }
+    if (key === 'privacy') { renderSimplePage('Privacy Policy', 'Privacy', '<p>This site stores account and catalog settings needed to power wallet, access, and admin management features.</p>'); return; }
+    if (key === 'terms') { renderSimplePage('Terms', 'Terms', '<p>Purchases, video access, and admin tools are intended to run against your configured live backend and payment flow.</p>'); return; }
     if (key === 'refund-policy') { renderSimplePage('Refund Policy', 'Refunds', '<p>Set your refund terms here before launch.</p>'); return; }
     bindCommonUi();
   }
