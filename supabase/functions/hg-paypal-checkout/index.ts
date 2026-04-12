@@ -1,0 +1,200 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+const POINTS_PACKS: Record<string, { points: number; amount: string; label: string }> = {
+  starter: { points: 500, amount: "5.00", label: "Starter Pack" },
+  silver: { points: 1200, amount: "10.00", label: "Silver Pack" },
+  gold: { points: 2500, amount: "20.00", label: "Gold Pack" },
+  vault: { points: 6000, amount: "40.00", label: "Vault Pack" },
+};
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+async function getPaypalAccessToken() {
+  const clientId = Deno.env.get("PAYPAL_CLIENT_ID") || "";
+  const secret = Deno.env.get("PAYPAL_CLIENT_SECRET") || "";
+  const baseUrl = (Deno.env.get("PAYPAL_BASE_URL") || "https://api-m.paypal.com").replace(/\/$/, "");
+  if (!clientId || !secret) throw new Error("Missing PAYPAL_CLIENT_ID or PAYPAL_CLIENT_SECRET in Supabase Edge Function secrets.");
+  const auth = btoa(`${clientId}:${secret}`);
+  const response = await fetch(`${baseUrl}/v1/oauth2/token`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${auth}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: "grant_type=client_credentials",
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error_description || "Unable to get PayPal access token.");
+  return { accessToken: data.access_token as string, baseUrl };
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || "";
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    if (!supabaseUrl || !anonKey || !serviceRoleKey) throw new Error("Missing Supabase environment variables.");
+
+    const authHeader = req.headers.get("Authorization") || "";
+    const authClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: userData, error: userError } = await authClient.auth.getUser();
+    if (userError || !userData.user) return json({ error: "You must be signed in before checkout." }, 401);
+    const user = userData.user;
+
+    const adminClient = createClient(supabaseUrl, serviceRoleKey);
+    const body = await req.json().catch(() => ({}));
+    const action = String(body?.action || "").trim();
+    const kind = String(body?.kind || "").trim();
+    const packId = String(body?.packId || "").trim();
+    const siteUrl = (Deno.env.get("SITE_URL") || `${new URL(req.url).origin}`).replace(/\/$/, "");
+    const { accessToken, baseUrl } = await getPaypalAccessToken();
+
+    if (action === "create") {
+      const isVip = kind === "vip";
+      const pack = isVip ? null : POINTS_PACKS[packId];
+      if (!isVip && !pack) return json({ error: "Unknown points package." }, 400);
+      const amount = isVip ? "20.00" : pack!.amount;
+      const description = isVip ? "Hidden Gems VIP Membership" : `${pack!.label} - ${pack!.points} points`;
+      const customId = JSON.stringify({ user_id: user.id, email: user.email, kind, pack_id: packId || null });
+      const returnUrl = isVip
+        ? `${siteUrl}/success.html?kind=vip`
+        : `${siteUrl}/success.html?kind=points&pack=${encodeURIComponent(packId)}`;
+      const cancelUrl = `${siteUrl}/cancel.html?kind=${encodeURIComponent(kind || "payment")}`;
+
+      const orderResponse = await fetch(`${baseUrl}/v2/checkout/orders`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          intent: "CAPTURE",
+          purchase_units: [
+            {
+              description,
+              custom_id: customId,
+              amount: { currency_code: "USD", value: amount },
+            },
+          ],
+          application_context: {
+            brand_name: "Hidden Gems",
+            user_action: "PAY_NOW",
+            return_url: returnUrl,
+            cancel_url: cancelUrl,
+          },
+        }),
+      });
+      const orderData = await orderResponse.json();
+      if (!orderResponse.ok) return json({ error: orderData?.message || "Unable to create PayPal order.", details: orderData }, 400);
+      const approvalUrl = (orderData?.links || []).find((link: any) => link.rel === "approve")?.href;
+      return json({ approvalUrl, orderId: orderData.id, kind, packId });
+    }
+
+    if (action === "capture") {
+      const orderId = String(body?.orderId || "").trim();
+      if (!orderId) return json({ error: "Missing PayPal order ID." }, 400);
+
+      const existing = await adminClient
+        .from("hg_payment_transactions")
+        .select("order_id, points_awarded, vip_granted, payment_kind")
+        .eq("order_id", orderId)
+        .maybeSingle();
+      if (existing.data) {
+        const profileResult = await adminClient
+          .from("profiles")
+          .select("points_balance, is_vip, role")
+          .eq("id", user.id)
+          .maybeSingle();
+        return json({
+          status: "already_captured",
+          orderId,
+          pointsAwarded: existing.data.points_awarded || 0,
+          vipGranted: !!existing.data.vip_granted,
+          walletPoints: Number(profileResult.data?.points_balance || 0),
+          role: profileResult.data?.role || "guest",
+        });
+      }
+
+      const captureResponse = await fetch(`${baseUrl}/v2/checkout/orders/${orderId}/capture`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+      });
+      const captureData = await captureResponse.json();
+      if (!captureResponse.ok) return json({ error: captureData?.message || "Unable to capture PayPal order.", details: captureData }, 400);
+
+      const purchaseUnit = captureData?.purchase_units?.[0] || {};
+      let custom = {} as any;
+      try { custom = JSON.parse(String(purchaseUnit?.payments?.captures?.[0]?.custom_id || purchaseUnit?.custom_id || "{}")); } catch (_) {}
+      if (!custom?.user_id || custom.user_id !== user.id) return json({ error: "This payment approval does not belong to the current signed-in user." }, 403);
+
+      const isVip = custom.kind === "vip";
+      const pack = isVip ? null : POINTS_PACKS[String(custom.pack_id || "")];
+      const pointsAwarded = isVip ? 0 : Number(pack?.points || 0);
+      const amountValue = String(purchaseUnit?.payments?.captures?.[0]?.amount?.value || purchaseUnit?.amount?.value || "0");
+      const amountCents = Math.round(Number(amountValue) * 100);
+
+      const profileResult = await adminClient
+        .from("profiles")
+        .select("points_balance, is_vip, role, email")
+        .eq("id", user.id)
+        .maybeSingle();
+      const currentProfile = profileResult.data || { points_balance: 0, is_vip: false, role: "guest", email: user.email };
+      const updatedProfile = {
+        id: user.id,
+        email: user.email,
+        points_balance: Number(currentProfile.points_balance || 0) + pointsAwarded,
+        is_vip: isVip ? true : !!currentProfile.is_vip,
+        role: currentProfile.role === "admin" ? "admin" : (isVip || currentProfile.is_vip ? "vip" : "guest"),
+      };
+
+      const upsertProfile = await adminClient.from("profiles").upsert(updatedProfile).select("points_balance, is_vip, role").single();
+      if (upsertProfile.error) return json({ error: upsertProfile.error.message }, 400);
+
+      const insertTx = await adminClient.from("hg_payment_transactions").insert({
+        provider: "paypal",
+        order_id: orderId,
+        user_id: user.id,
+        email: user.email,
+        payment_kind: isVip ? "vip" : "points",
+        pack_id: isVip ? null : String(custom.pack_id || ""),
+        amount_cents: amountCents,
+        currency: String(purchaseUnit?.payments?.captures?.[0]?.amount?.currency_code || purchaseUnit?.amount?.currency_code || "USD"),
+        points_awarded: pointsAwarded,
+        vip_granted: isVip,
+        status: "captured",
+        raw_payload: captureData,
+      });
+      if (insertTx.error) return json({ error: insertTx.error.message }, 400);
+
+      return json({
+        status: "captured",
+        orderId,
+        pointsAwarded,
+        vipGranted: isVip,
+        walletPoints: Number(upsertProfile.data?.points_balance || 0),
+        role: upsertProfile.data?.role || "guest",
+      });
+    }
+
+    return json({ error: "Unsupported action." }, 400);
+  } catch (error) {
+    return json({ error: error instanceof Error ? error.message : "Unexpected checkout error." }, 500);
+  }
+});

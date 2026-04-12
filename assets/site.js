@@ -12,6 +12,26 @@ window.HiddenGemsApp = (() => {
   const ADMIN_EMAILS = (APP_CONFIG.adminEmails || []).map((email) => String(email).trim().toLowerCase()).filter(Boolean);
   const PAYPAL_POINTS_URL = (APP_CONFIG.paypalLinks && (APP_CONFIG.paypalLinks.points || APP_CONFIG.paypalLinks.default)) || 'https://www.paypal.com/ncp/payment/TH74PFXUPCR2N';
   const PAYPAL_VIP_URL = (APP_CONFIG.paypalLinks && (APP_CONFIG.paypalLinks.vip || APP_CONFIG.paypalLinks.default || APP_CONFIG.paypalLinks.points)) || 'https://www.paypal.com/ncp/payment/TH74PFXUPCR2N';
+  const PAYMENT_CONFIG = APP_CONFIG.payment || {};
+  const SITE_URL = String(APP_CONFIG.siteUrl || window.location.origin || '').replace(/\/$/, '');
+  const PAYPAL_FUNCTION_URL = String(PAYMENT_CONFIG.edgeFunctionUrl || (SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/hg-paypal-checkout` : '')).trim();
+  const PAYPAL_PACKAGE_LINKS = (APP_CONFIG.paypalLinks && APP_CONFIG.paypalLinks.pointsPackages) || {};
+  const DEFAULT_POINTS_PACKS = [
+    { id: 'starter', points: 500, price: '$5', amount: '5.00', label: 'Starter Pack', copy: 'A quick top-up for smaller unlocks' },
+    { id: 'silver', points: 1200, price: '$10', amount: '10.00', label: 'Silver Pack', copy: 'A balanced option for regular purchases' },
+    { id: 'gold', points: 2500, price: '$20', amount: '20.00', label: 'Gold Pack', copy: 'Better value for building your library' },
+    { id: 'vault', points: 6000, price: '$40', amount: '40.00', label: 'Vault Pack', copy: 'Best value for heavy unlocks' }
+  ];
+  const POINTS_PACKS = Array.isArray(APP_CONFIG.pointsPackages) && APP_CONFIG.pointsPackages.length
+    ? APP_CONFIG.pointsPackages.map((pack, index) => ({
+        id: String(pack.id || DEFAULT_POINTS_PACKS[index]?.id || `pack-${index + 1}`),
+        points: Number(pack.points || 0),
+        price: String(pack.price || DEFAULT_POINTS_PACKS[index]?.price || '$0'),
+        amount: String(pack.amount || DEFAULT_POINTS_PACKS[index]?.amount || '0.00'),
+        label: String(pack.label || DEFAULT_POINTS_PACKS[index]?.label || `Pack ${index + 1}`),
+        copy: String(pack.copy || DEFAULT_POINTS_PACKS[index]?.copy || '')
+      }))
+    : DEFAULT_POINTS_PACKS;
 
   const KEYS = {
     points: 'hg_points',
@@ -653,7 +673,138 @@ window.HiddenGemsApp = (() => {
     const profile = await getProfile();
     const email = profile.email || user?.email || '';
     const role = getRoleForEmail(email, profile);
-    return { user, profile: { ...profile, email }, email, role, localPoints: storage.getPoints(), unlocked: storage.getUnlocked(), totalPoints: storage.getPoints() + Number(profile.points_balance || 0) };
+    const walletPoints = user ? Number(profile.points_balance || 0) : storage.getPoints();
+    return { user, profile: { ...profile, email }, email, role, localPoints: walletPoints, unlocked: storage.getUnlocked(), totalPoints: walletPoints, legacyLocalPoints: storage.getPoints() };
+  }
+
+
+  function getPointPackById(packId) {
+    return POINTS_PACKS.find((pack) => String(pack.id) === String(packId)) || null;
+  }
+
+  function hasConfiguredPaymentFunction() {
+    return !!PAYPAL_FUNCTION_URL && !PAYPAL_FUNCTION_URL.includes('REPLACE_WITH');
+  }
+
+  async function getSupabaseAccessToken() {
+    const supabase = getSupabaseClient();
+    if (!supabase?.auth?.getSession) return '';
+    try {
+      const result = await supabase.auth.getSession();
+      return result?.data?.session?.access_token || '';
+    } catch (error) {
+      return '';
+    }
+  }
+
+  async function updateCurrentUserProfile(patch = {}) {
+    const user = await getSessionUser();
+    if (!user?.id || !user?.email) throw new Error('Please sign in before purchasing points or VIP.');
+    const email = String(user.email || '').trim().toLowerCase();
+    const cached = storage.getCachedProfile(email) || { email, points_balance: 0, is_vip: false, role: 'guest' };
+    const next = { ...cached, ...patch, email };
+    if (typeof next.points_balance !== 'undefined') next.points_balance = Math.max(0, Number(next.points_balance) || 0);
+    if (typeof next.is_vip !== 'undefined' && next.role !== 'admin') next.role = next.is_vip ? 'vip' : 'guest';
+    storage.cacheProfile(email, next);
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      const payload = {
+        id: user.id,
+        email,
+        points_balance: Math.max(0, Number(next.points_balance || 0)),
+        is_vip: !!next.is_vip,
+        role: next.role || (next.is_vip ? 'vip' : 'guest')
+      };
+      const result = await supabase.from('profiles').upsert(payload).select('email, is_vip, points_balance, role').single();
+      if (result?.error) throw result.error;
+      const merged = { ...next, ...(result.data || {}), email };
+      storage.cacheProfile(email, merged);
+      window.dispatchEvent(new CustomEvent('hg:state-changed'));
+      return merged;
+    }
+    window.dispatchEvent(new CustomEvent('hg:state-changed'));
+    return next;
+  }
+
+  async function deductWalletPointsForState(state, amount, label = 'Video unlock') {
+    const spend = Math.max(0, Number(amount) || 0);
+    const currentState = state || await getState();
+    if (currentState.user?.id && currentState.email) {
+      const current = Number(currentState.profile?.points_balance || 0);
+      if (current < spend) throw new Error(`You need ${spend - current} more points.`);
+      const updated = await updateCurrentUserProfile({ points_balance: current - spend });
+      storage.addTransaction({ type: 'unlock', label, amount: -spend, email: currentState.email || '', balance_after: Number(updated.points_balance || 0) });
+      return Number(updated.points_balance || 0);
+    }
+    const current = storage.getPoints();
+    if (current < spend) throw new Error(`You need ${spend - current} more points.`);
+    storage.setPoints(current - spend);
+    storage.addTransaction({ type: 'unlock', label, amount: -spend, email: currentState.email || '', balance_after: storage.getPoints() });
+    window.dispatchEvent(new CustomEvent('hg:state-changed'));
+    return storage.getPoints();
+  }
+
+  async function callPaypalPaymentFunction(payload) {
+    if (!hasConfiguredPaymentFunction()) throw new Error('PayPal payment function is not configured in config.js.');
+    const accessToken = await getSupabaseAccessToken();
+    const response = await fetch(PAYPAL_FUNCTION_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
+      },
+      body: JSON.stringify(payload)
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data?.error || 'Unable to contact the PayPal checkout service.');
+    return data;
+  }
+
+  async function startPointsCheckout(packId) {
+    const pack = getPointPackById(packId);
+    if (!pack) throw new Error('That points package is not configured correctly.');
+    const state = await getState();
+    if (!state.user?.id || !state.email) throw new Error('Please sign in before buying points so the wallet can be credited to the right account.');
+    if (hasConfiguredPaymentFunction()) {
+      const result = await callPaypalPaymentFunction({ action: 'create', kind: 'points', packId: pack.id, siteUrl: SITE_URL || window.location.origin });
+      if (!result?.approvalUrl) throw new Error('PayPal did not return an approval URL for this package.');
+      window.location.href = result.approvalUrl;
+      return true;
+    }
+    const packageLink = PAYPAL_PACKAGE_LINKS[pack.id] || PAYPAL_POINTS_URL;
+    const target = String(packageLink || '').trim();
+    if (!target || target.includes('REPLACE_WITH')) throw new Error(`Add a real PayPal link for the ${pack.label} package in config.js.`);
+    window.open(target, '_blank', 'noopener,noreferrer');
+    return true;
+  }
+
+  async function startVipCheckout() {
+    const state = await getState();
+    if (!state.user?.id || !state.email) throw new Error('Please sign in before buying VIP so the upgrade is applied to the right account.');
+    if (hasConfiguredPaymentFunction()) {
+      const result = await callPaypalPaymentFunction({ action: 'create', kind: 'vip', siteUrl: SITE_URL || window.location.origin });
+      if (!result?.approvalUrl) throw new Error('PayPal did not return an approval URL for VIP checkout.');
+      window.location.href = result.approvalUrl;
+      return true;
+    }
+    const target = String(PAYPAL_VIP_URL || '').trim();
+    if (!target || target.includes('REPLACE_WITH')) throw new Error('Add your real VIP PayPal link in config.js.');
+    window.open(target, '_blank', 'noopener,noreferrer');
+    return true;
+  }
+
+  async function finalizeCheckoutFromUrl() {
+    const query = new URLSearchParams(window.location.search || '');
+    const token = String(query.get('token') || '').trim();
+    const kind = String(query.get('kind') || '').trim();
+    const packId = String(query.get('pack') || '').trim();
+    if (!token) return { status: 'idle' };
+    if (!hasConfiguredPaymentFunction()) {
+      throw new Error('The PayPal capture function is not configured yet, so automatic point/VIP fulfillment cannot complete.');
+    }
+    const result = await callPaypalPaymentFunction({ action: 'capture', orderId: token, kind, packId });
+    const state = await getState();
+    return { ...result, walletPoints: state.totalPoints, role: state.role };
   }
 
   async function syncVipForCurrentUser(isVip) {
@@ -931,14 +1082,16 @@ window.HiddenGemsApp = (() => {
       const purchasedIds = new Set(await getPurchasedVideoIds(state));
       if (state.role === 'vip' || state.role === 'admin') { await unlockVideoForState(state, video); window.dispatchEvent(new CustomEvent('hg:state-changed')); location.href = `video.html?id=${encodeURIComponent(video.id)}`; return; }
       if (purchasedIds.has(String(video.id)) || storage.isUnlockedForUser(state.email, video.id)) { location.href = `video.html?id=${encodeURIComponent(video.id)}`; return; }
-      const local = storage.getPoints();
-      if (local < video.points) { toast(`You need ${video.points - local} more points.`, 'error'); return; }
-      storage.setPoints(local - video.points);
-      await unlockVideoForState(state, video);
-      storage.addTransaction({ type: 'unlock', label: video.title, amount: -video.points, id: video.id, email: state.email || '' });
-      toast(`${video.title} added to your library.`, 'success');
-      window.dispatchEvent(new CustomEvent('hg:state-changed'));
-      setTimeout(() => location.href = 'my-library.html', 350);
+      if (state.totalPoints < video.points) { toast(`You need ${video.points - state.totalPoints} more points.`, 'error'); return; }
+      try {
+        await deductWalletPointsForState(state, video.points, video.title);
+        await unlockVideoForState(state, video);
+        toast(`${video.title} added to your library.`, 'success');
+        window.dispatchEvent(new CustomEvent('hg:state-changed'));
+        setTimeout(() => location.href = 'my-library.html', 350);
+      } catch (error) {
+        toast(extractErrorMessage(error, 'Unable to unlock this video right now.'), 'error');
+      }
     });
   }
 
@@ -1073,41 +1226,61 @@ window.HiddenGemsApp = (() => {
   }
 
   function renderPointsStore() {
-    const packs = [
-      { points: 500, price: '$5', label: 'Starter Pack', copy: 'A quick top-up for smaller unlocks' },
-      { points: 1200, price: '$10', label: 'Silver Pack', copy: 'A balanced option for regular purchases' },
-      { points: 2500, price: '$20', label: 'Gold Pack', copy: 'Better value for building your library' },
-      { points: 6000, price: '$40', label: 'Vault Pack', copy: 'Best value for heavy unlocks' }
-    ];
+    const packs = POINTS_PACKS;
     applyBg();
-    document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-7xl px-6 py-14"><div class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Points Store</p><h1 class="mt-3 text-4xl font-black">Fund your wallet with PayPal</h1><p class="mt-4 max-w-2xl text-neutral-300">Choose a points package below. Guest and VIP accounts are sent to PayPal for checkout, while admins can issue manual credits for support and moderation.</p></div><div id="points-wallet-banner" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300">Loading wallet...</div><div id="points-store-note" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300"></div><div class="mt-10 grid gap-6 md:grid-cols-2 xl:grid-cols-4">${packs.map((pack) => `<div class="rounded-[2rem] border border-white/10 bg-white/5 p-8 text-center shadow-xl shadow-black/20"><p class="text-sm uppercase tracking-[0.25em] text-neutral-400">${pack.label}</p><p class="mt-4 text-5xl font-black">${pack.points}</p><p class="mt-2 text-neutral-400">Points included</p><p class="mt-6 text-3xl font-bold text-pink-300">${pack.price}</p><p class="mt-2 text-sm text-neutral-500">${pack.copy}</p><button data-pack="${pack.points}" data-pack-label="${pack.label}" class="mt-8 block w-full rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Continue</button></div>`).join('')}</div></main>` + shellFooter();
+    document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-7xl px-6 py-14"><div class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Points Store</p><h1 class="mt-3 text-4xl font-black">Fund your wallet with PayPal</h1><p class="mt-4 max-w-2xl text-neutral-300">Choose a points package below. Signed-in guest and VIP users are sent through live PayPal checkout and the confirmed purchase is written straight into their account wallet.</p></div><div id="points-wallet-banner" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300">Loading wallet...</div><div id="points-store-note" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300"></div><div class="mt-10 grid gap-6 md:grid-cols-2 xl:grid-cols-4">${packs.map((pack) => `<div class="rounded-[2rem] border border-white/10 bg-white/5 p-8 text-center shadow-xl shadow-black/20"><p class="text-sm uppercase tracking-[0.25em] text-neutral-400">${pack.label}</p><p class="mt-4 text-5xl font-black">${pack.points}</p><p class="mt-2 text-neutral-400">Points included</p><p class="mt-6 text-3xl font-bold text-pink-300">${pack.price}</p><p class="mt-2 text-sm text-neutral-500">${pack.copy}</p><button data-pack-id="${pack.id}" data-pack="${pack.points}" data-pack-label="${pack.label}" class="mt-8 block w-full rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Continue</button></div>`).join('')}</div></main>` + shellFooter();
     bindCommonUi();
     const mount = async () => {
       const state = await getState();
-      document.getElementById('points-wallet-banner').innerHTML = `Signed in: <span class="font-bold text-white">${state.email || 'No'}</span> · Role: <span class="font-bold text-pink-300">${state.role}</span> · Wallet balance: <span class="font-bold text-white">${state.localPoints} points</span>`;
+      document.getElementById('points-wallet-banner').innerHTML = `Signed in: <span class="font-bold text-white">${state.email || 'No'}</span> · Role: <span class="font-bold text-pink-300">${state.role}</span> · Wallet balance: <span class="font-bold text-white">${state.totalPoints} points</span>`;
       const note = document.getElementById('points-store-note');
-      if (state.role === 'admin') note.innerHTML = 'Admin wallet controls stay available here for support, refunds, and manual account adjustments.';
-      else note.innerHTML = 'All point purchases are handled through PayPal. Your wallet updates after your live payment flow completes.';
-      document.querySelectorAll('[data-pack]').forEach((button) => {
+      if (state.role === 'admin') {
+        note.innerHTML = 'Admin wallet controls stay available here for support and testing. Real customer purchases should use the live PayPal checkout path.';
+      } else if (!state.user?.id) {
+        note.innerHTML = 'Sign in before buying points so the confirmed PayPal order can be attached to the correct Hidden Gems account.';
+      } else if (hasConfiguredPaymentFunction()) {
+        note.innerHTML = 'Live PayPal capture is enabled. Once PayPal sends the customer back to success.html, the confirmed order is captured server-side and the wallet balance updates immediately.';
+      } else {
+        note.innerHTML = 'Package-specific PayPal links can still open, but automatic wallet fulfillment requires the Supabase Edge Function from the handoff files to be deployed.';
+      }
+      document.querySelectorAll('[data-pack-id]').forEach((button) => {
         button.disabled = false;
-        if (state.role === 'admin') {
-          button.textContent = `Grant ${button.dataset.pack} points`;
-          button.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-neutral-700');
-          button.classList.add('bg-pink-500');
-        } else {
-          button.textContent = 'Buy with PayPal';
-          button.classList.remove('opacity-50', 'cursor-not-allowed', 'bg-neutral-700');
-          button.classList.add('bg-pink-500');
-        }
+        button.textContent = state.role === 'admin' ? `Grant ${button.dataset.pack} points` : 'Buy with PayPal';
       });
     };
     mount();
-    document.querySelectorAll('[data-pack]').forEach((button) => button.addEventListener('click', async () => {
+    document.querySelectorAll('[data-pack-id]').forEach((button) => button.addEventListener('click', async () => {
       const state = await getState();
-      if (state.role === 'admin') await addPoints(Number(button.dataset.pack), button.dataset.packLabel);
-      else redirectToPayPal(PAYPAL_POINTS_URL);
+      try {
+        if (state.role === 'admin') await addPoints(Number(button.dataset.pack), button.dataset.packLabel);
+        else await startPointsCheckout(button.dataset.packId);
+      } catch (error) {
+        toast(extractErrorMessage(error, 'Unable to start PayPal checkout right now.'), 'error');
+      }
     }));
     window.addEventListener('hg:state-changed', mount);
+  }
+
+  function renderVipCheckoutPage() {
+    applyBg();
+    document.body.innerHTML = shellHeader() + `<main class="mx-auto flex min-h-[75vh] max-w-3xl items-center px-6 py-16"><div class="w-full rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8 shadow-xl shadow-black/20"><div class="flex items-center gap-4"><img src="./assets/hidden-gems-logo.png" alt="${BRAND_NAME} logo" class="h-14 w-14 rounded-2xl object-contain" /><div><h1 class="text-3xl font-black text-pink-400">${BRAND_NAME} VIP</h1><p class="text-neutral-400">$20 deal — was $40</p></div></div><p class="mt-6 text-neutral-300">Use the secure checkout below to activate VIP access for your account right after the PayPal payment is captured.</p><div id="vip-checkout-note" class="mt-8 rounded-2xl border border-white/10 bg-black/30 p-5 text-sm text-neutral-300">Checking VIP checkout status...</div><div class="mt-8 rounded-2xl border border-white/10 bg-black/30 p-5"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Secure checkout</p><div class="mt-4 flex flex-col gap-3 sm:flex-row"><button id="vip-checkout-button" class="inline-block rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white transition hover:bg-pink-400 text-center">Pay with PayPal</button></div></div><div class="mt-8 grid gap-4 md:grid-cols-2"><div class="rounded-2xl bg-white/5 p-4"><p class="font-semibold">VIP-only vault</p><p class="mt-1 text-sm text-neutral-400">Special titles reserved for VIP members.</p></div><div class="rounded-2xl bg-white/5 p-4"><p class="font-semibold">Download rights</p><p class="mt-1 text-sm text-neutral-400">VIP remains the only tier with downloads.</p></div></div><a href="index.html" class="mt-6 inline-block text-sm text-neutral-400 hover:text-white">← Back to ${BRAND_NAME}</a></div></main>` + shellFooter();
+    bindCommonUi();
+    const note = document.getElementById('vip-checkout-note');
+    const button = document.getElementById('vip-checkout-button');
+    getState().then((state) => {
+      if (state.role === 'admin') note.textContent = 'Admin account detected. VIP purchases are intended for customer/member accounts, but the checkout button is still available for testing.';
+      else if (state.role === 'vip') note.textContent = 'This account already has VIP access. You can still use checkout again if you are testing the flow.';
+      else if (!state.user?.id) note.textContent = 'Sign in before buying VIP so the successful PayPal capture can upgrade the correct Hidden Gems account immediately.';
+      else if (hasConfiguredPaymentFunction()) note.textContent = 'Live PayPal capture is enabled. After a successful payment, success.html will capture the approved order and switch this account to VIP immediately.';
+      else note.textContent = 'The fallback VIP PayPal link can still open, but automatic VIP activation requires the Supabase Edge Function from the handoff files to be deployed.';
+    });
+    button.addEventListener('click', async () => {
+      try {
+        await startVipCheckout();
+      } catch (error) {
+        toast(extractErrorMessage(error, 'Unable to start VIP checkout right now.'), 'error');
+      }
+    });
   }
 
   function renderLibraryPage() {
@@ -1565,7 +1738,7 @@ window.HiddenGemsApp = (() => {
 
   function renderSimplePage(title, eyebrow, copy) { applyBg(); document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-5xl px-6 py-14"><div class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">${eyebrow}</p><h1 class="mt-3 text-4xl font-black">${title}</h1><div class="mt-6 max-w-none space-y-4 text-neutral-300">${copy}</div></div></main>` + shellFooter(); bindCommonUi(); }
   function initHomePage() { refreshSupabaseVideos(true).then(() => getState().then(updateHomeStateUi)); window.addEventListener('hg:state-changed', async () => { await refreshSupabaseVideos(true); updateHomeStateUi(await getState()); }); }
-  function initVipCheckoutPage() { const activateButton = document.getElementById('demo-activate-vip'); if (!activateButton) return; activateButton.addEventListener('click', async () => { const state = await getState(); if (state.role !== 'admin') { toast('Manual VIP activation is reserved for admins.', 'error'); return; } const email = window.prompt('Enter the email address to activate VIP for:'); if (!email) return; storage.setRoleOverride(String(email).trim().toLowerCase(), 'vip'); toast('VIP role updated.', 'success'); }); }
+  function initVipCheckoutPage() { renderVipCheckoutPage(); }
 
   function initPage() {
     const key = currentPageKey();
@@ -1573,6 +1746,7 @@ window.HiddenGemsApp = (() => {
     if (['new-releases', 'most-popular', 'behind-the-scenes', 'live-sessions', 'short-films', 'creator-picks', 'vip-exclusives'].includes(key)) { renderCategoryPage(key); return; }
     if (key === 'video') { renderVideoPage(); return; }
     if (key === 'points-store') { renderPointsStore(); return; }
+    if (key === 'vip-checkout') { renderVipCheckoutPage(); return; }
     if (key === 'my-library') { renderLibraryPage(); return; }
     if (key === 'all-videos') { renderAllVideosPage(); return; }
     if (key === 'admin') { renderAdminPage(); return; }
@@ -1605,5 +1779,5 @@ window.HiddenGemsApp = (() => {
   }
 
   bindRealtimeSync();
-  return { storage, getState, getVideo, getCategory, allVideos, renderCategoryPage, renderVideoPage, renderPointsStore, renderLibraryPage, renderAllVideosPage, renderSimplePage, shellHeader, shellFooter, bindCommonUi, addPoints, initialsFromEmail, mountSharedHeader, refreshHeaderUi, signOutUser, syncVipForCurrentUser, canAccessVideo, initVipCheckoutPage };
+  return { storage, getState, getVideo, getCategory, allVideos, renderCategoryPage, renderVideoPage, renderPointsStore, renderVipCheckoutPage, renderLibraryPage, renderAllVideosPage, renderSimplePage, shellHeader, shellFooter, bindCommonUi, addPoints, initialsFromEmail, mountSharedHeader, refreshHeaderUi, signOutUser, syncVipForCurrentUser, canAccessVideo, initVipCheckoutPage, startPointsCheckout, startVipCheckout, finalizeCheckoutFromUrl, updateCurrentUserProfile };
 })();
