@@ -1,21 +1,27 @@
-Hidden Gems launch handoff
+Hidden Gems launch checklist
 
-This package keeps the working session/UI fix version and adds the final live-ready pieces.
+Payment flow
+- Customer-facing points purchases and VIP checkout now go through the Supabase Edge Function and PayPal flow.
+- The points store no longer grants points directly on the storefront.
+- Manual point grants are separated into the admin portal for the real admin account only.
 
-1) Open config.js
-2) Replace siteUrl with your real domain
-3) Replace supportEmail with your real business email
-4) Paste your real Stripe VIP link into stripePaymentLinks.vip
-5) Optional: paste point-pack Stripe links into starter / silver / gold / reserve
-6) Keep the current Supabase values if they are already your real project
-7) In Supabase Auth, set your site URL and redirect URL to your live domain/account.html
-8) In Stripe, set success URL to your-domain/success.html
-9) In Stripe, set cancel URL to your-domain/cancel.html
-10) Replace the legal placeholder wording in privacy.html, terms.html, and refund-policy.html
-11) Upload every file in this folder to your host
+Before testing
+1. In Supabase Edge Function secrets, keep all PayPal values in the same environment:
+   - Sandbox testing: PAYPAL_BASE_URL=https://api-m.sandbox.paypal.com and sandbox Client ID/Secret
+   - Live launch: PAYPAL_BASE_URL=https://api-m.paypal.com and live Client ID/Secret
+2. Confirm SITE_URL matches your deployed domain.
+3. Confirm the hg-paypal-checkout function is deployed.
+4. Confirm config.js uses the publishable Supabase key, not the service role key.
 
-Notes:
-- If point-pack Stripe links are left blank, the Points Store keeps its current demo wallet behavior.
-- VIP checkout is centralized in config.js.
-- Branding is now Hidden Gems.
-- This package keeps the working sign-in / session UI behavior from your uploaded version.
+Recommended test order
+1. Sign in as a guest account and buy a points pack.
+2. Verify success.html returns to the site and wallet updates on that same user.
+3. Buy VIP and verify the account becomes VIP.
+4. Sign in as the admin account and confirm:
+   - the storefront still shows Buy with PayPal
+   - manual point grants only appear in admin.html
+   - admin can already open any video without buying it
+
+Launch switch
+- Stay on sandbox until all tests pass.
+- Switch to live only when the base URL, Client ID, and Secret are all changed together.
