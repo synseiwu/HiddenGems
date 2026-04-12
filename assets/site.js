@@ -747,16 +747,23 @@ window.HiddenGemsApp = (() => {
   async function callPaypalPaymentFunction(payload) {
     if (!hasConfiguredPaymentFunction()) throw new Error('PayPal payment function is not configured in config.js.');
     const accessToken = await getSupabaseAccessToken();
+    if (!accessToken) throw new Error('Please sign in again before checkout so Hidden Gems can connect the payment to your account.');
     const response = await fetch(PAYPAL_FUNCTION_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...(SUPABASE_ANON_KEY ? { apikey: SUPABASE_ANON_KEY } : {}),
         ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
       },
       body: JSON.stringify(payload)
     });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data?.error || 'Unable to contact the PayPal checkout service.');
+    const raw = await response.text().catch(() => '');
+    let data = {};
+    try { data = raw ? JSON.parse(raw) : {}; } catch (_) { data = { error: raw || '' }; }
+    if (!response.ok) {
+      const details = data && typeof data === 'object' ? (data.error || data.message || data.details || '') : '';
+      throw new Error(String(details || `PayPal checkout service error (${response.status}).`).trim());
+    }
     return data;
   }
 
