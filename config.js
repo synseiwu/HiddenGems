@@ -25,7 +25,7 @@
       provider: 'paypal',
       edgeFunctionUrl: 'https://netolzyxnifogojwwesq.supabase.co/functions/v1/hg-paypal-checkout'
     },
-    adminEmails: ['hayzerxsloth@gmail.com', 'hayzergod@gmail.com'],
+    adminEmails: ['hayzerxsloth@gmail.com'],
     auth: {
       provider: 'supabase',
       supabaseUrl: 'https://netolzyxnifogojwwesq.supabase.co',

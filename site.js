@@ -478,13 +478,13 @@ window.HiddenGemsApp = (() => {
     if (!user) return { email: '', is_vip: false, points_balance: 0, role: 'guest' };
     const email = user.email || '';
     const cached = storage.getCachedProfile(email) || {};
-    const profile = { email, is_vip: false, points_balance: 0, role: 'guest', ...cached };
+    const profile = { email, is_vip: false, points_balance: 0, role: 'guest', _fromDb: false, ...cached };
     const supabase = getSupabaseClient();
     if (!supabase) return profile;
     try {
       const result = await supabase.from('profiles').select('email, is_vip, points_balance, role').eq('id', user.id).maybeSingle();
       if (result?.data) {
-        const merged = { ...profile, ...result.data, email: result.data.email || email };
+        const merged = { ...profile, ...result.data, email: result.data.email || email, _fromDb: true };
         storage.cacheProfile(email, merged);
         return merged;
       }
@@ -658,13 +658,18 @@ window.HiddenGemsApp = (() => {
   function getRoleForEmail(email, profile) {
     const normalized = String(email || '').trim().toLowerCase();
     if (!normalized) return 'guest';
-    if (ADMIN_EMAILS.includes(normalized)) return 'admin';
+    const dbRole = profile?.role && ['guest','vip','admin'].includes(String(profile.role).toLowerCase())
+      ? String(profile.role).toLowerCase()
+      : '';
+    if (profile?._fromDb && dbRole) return dbRole;
+    if (profile?._fromDb && profile?.is_vip) return 'vip';
     const override = storage.getRoleOverride(normalized);
     if (override === 'admin') return 'admin';
     if (override === 'vip') return 'vip';
     if (override === 'guest') return 'guest';
-    if (profile?.role && ['guest','vip','admin'].includes(String(profile.role).toLowerCase())) return String(profile.role).toLowerCase();
+    if (dbRole) return dbRole;
     if (profile?.is_vip) return 'vip';
+    if (ADMIN_EMAILS.includes(normalized)) return 'admin';
     return 'guest';
   }
 
@@ -1242,7 +1247,7 @@ window.HiddenGemsApp = (() => {
       document.getElementById('points-wallet-banner').innerHTML = `Signed in: <span class="font-bold text-white">${state.email || 'No'}</span> · Role: <span class="font-bold text-pink-300">${state.role}</span> · Wallet balance: <span class="font-bold text-white">${state.totalPoints} points</span>`;
       const note = document.getElementById('points-store-note');
       if (state.role === 'admin') {
-        note.innerHTML = 'Admin wallet controls stay available here for support and testing. Real customer purchases should use the live PayPal checkout path.';
+        note.innerHTML = 'Admin account detected. This page now uses the same live PayPal checkout path customers use. Manual point grants should stay in the admin portal only.';
       } else if (!state.user?.id) {
         note.innerHTML = 'Sign in before buying points so the confirmed PayPal order can be attached to the correct Hidden Gems account.';
       } else if (hasConfiguredPaymentFunction()) {
@@ -1252,15 +1257,14 @@ window.HiddenGemsApp = (() => {
       }
       document.querySelectorAll('[data-pack-id]').forEach((button) => {
         button.disabled = false;
-        button.textContent = state.role === 'admin' ? `Grant ${button.dataset.pack} points` : 'Buy with PayPal';
+        button.textContent = 'Buy with PayPal';
       });
     };
     mount();
     document.querySelectorAll('[data-pack-id]').forEach((button) => button.addEventListener('click', async () => {
       const state = await getState();
       try {
-        if (state.role === 'admin') await addPoints(Number(button.dataset.pack), button.dataset.packLabel);
-        else await startPointsCheckout(button.dataset.packId);
+        await startPointsCheckout(button.dataset.packId);
       } catch (error) {
         toast(extractErrorMessage(error, 'Unable to start PayPal checkout right now.'), 'error');
       }
@@ -1275,7 +1279,7 @@ window.HiddenGemsApp = (() => {
     const note = document.getElementById('vip-checkout-note');
     const button = document.getElementById('vip-checkout-button');
     getState().then((state) => {
-      if (state.role === 'admin') note.textContent = 'Admin account detected. VIP purchases are intended for customer/member accounts, but the checkout button is still available for testing.';
+      if (state.role === 'admin') note.textContent = 'Admin account detected. This page still uses the same live VIP checkout flow customers use, and VIP is only granted after confirmed payment.';
       else if (state.role === 'vip') note.textContent = 'This account already has VIP access. You can still use checkout again if you are testing the flow.';
       else if (!state.user?.id) note.textContent = 'Sign in before buying VIP so the successful PayPal capture can upgrade the correct Hidden Gems account immediately.';
       else if (hasConfiguredPaymentFunction()) note.textContent = 'Live PayPal capture is enabled. After a successful payment, success.html will capture the approved order and switch this account to VIP immediately.';
