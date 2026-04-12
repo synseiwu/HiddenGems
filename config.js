@@ -1,8 +1,8 @@
 window.GEMS_HIDDEN_CONFIG = {
   brandName: 'Hidden Gems',
   brandShort: 'HG',
-  siteUrl: 'https://YOUR-DOMAIN.com',
-  supportEmail: 'support@YOUR-DOMAIN.com',
+  siteUrl: 'https://hiddengems.space',
+  supportEmail: 'hayzerxsloth@gmail.com',
   paypalLinks: {
     default: 'https://www.paypal.com/ncp/payment/TH74PFXUPCR2N',
     vip: 'https://www.paypal.com/ncp/payment/TH74PFXUPCR2N',
