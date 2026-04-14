@@ -433,9 +433,42 @@ window.HiddenGemsApp = (() => {
     document.body.style.background = 'radial-gradient(circle at top right, rgba(236,72,153,0.22), transparent 30%),radial-gradient(circle at left, rgba(217,70,239,0.14), transparent 24%),#000';
   }
 
+  let supabaseClient = null;
+
   function getSupabaseClient() {
+    if (supabaseClient) return supabaseClient;
     if (!window.supabase || typeof window.supabase.createClient !== 'function' || !SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) return null;
-    return window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      }
+    });
+    return supabaseClient;
+  }
+
+  async function resetSupabaseSession(reason = '') {
+    const supabase = getSupabaseClient();
+    if (!supabase?.auth) return null;
+    try { await supabase.auth.signOut({ scope: 'local' }); } catch (error) {}
+    try {
+      Object.keys(window.localStorage || {}).filter((key) => /supabase|sb-|auth-token/i.test(key)).forEach((key) => {
+        try { window.localStorage.removeItem(key); } catch (error) {}
+      });
+    } catch (error) {}
+    try {
+      Object.keys(window.sessionStorage || {}).filter((key) => /supabase|sb-|auth-token/i.test(key)).forEach((key) => {
+        try { window.sessionStorage.removeItem(key); } catch (error) {}
+      });
+    } catch (error) {}
+    if (reason) console.warn('Supabase session reset:', reason);
+    return null;
+  }
+
+  function isInvalidJwtError(error) {
+    const message = extractErrorMessage(error, '').toLowerCase();
+    return /invalid jwt|jwt expired|missing sub|bad jwt|auth session missing/i.test(message);
   }
 
   async function getSessionUser() {
@@ -444,12 +477,11 @@ window.HiddenGemsApp = (() => {
     try {
       const result = await supabase.auth.getSession();
       const session = result?.data?.session || null;
-      if (session?.user && session?.access_token) {
-        return session.user;
-      }
+      if (session?.user && session?.access_token) return session.user;
       const userResult = await supabase.auth.getUser();
       return userResult?.data?.user || null;
     } catch (error) {
+      if (isInvalidJwtError(error)) await resetSupabaseSession(extractErrorMessage(error, 'Invalid JWT'));
       return null;
     }
   }
@@ -673,6 +705,7 @@ window.HiddenGemsApp = (() => {
       }
       return session?.access_token || '';
     } catch (error) {
+      if (isInvalidJwtError(error)) await resetSupabaseSession(extractErrorMessage(error, 'Invalid JWT'));
       return '';
     }
   }
