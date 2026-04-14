@@ -384,7 +384,11 @@ window.HiddenGemsApp = (() => {
         const result = await supabase.from('hg_video_purchases').select('video_id').eq('user_id', user.id);
         (Array.isArray(result?.data) ? result.data : []).forEach((row) => { if (row?.video_id) merged.add(String(row.video_id)); });
       } catch (error) {
-        console.error('Failed to load purchases', error);
+        if (isInvalidJwtError(error)) {
+          await resetSupabaseSession(extractErrorMessage(error, 'Invalid JWT'));
+        } else {
+          console.error('Failed to load purchases', error);
+        }
       }
     }
     return [...merged];
@@ -410,7 +414,11 @@ window.HiddenGemsApp = (() => {
         const result = await supabase.from('hg_video_purchases').upsert(payload, { onConflict: 'user_id,video_id' });
         if (result?.error) throw result.error;
       } catch (error) {
-        console.error('Failed to sync purchase', error);
+        if (isInvalidJwtError(error)) {
+          await resetSupabaseSession(extractErrorMessage(error, 'Invalid JWT'));
+        } else {
+          console.error('Failed to sync purchase', error);
+        }
       }
     }
     return true;
@@ -441,9 +449,42 @@ window.HiddenGemsApp = (() => {
     document.body.style.background = 'radial-gradient(circle at top right, rgba(236,72,153,0.22), transparent 30%),radial-gradient(circle at left, rgba(217,70,239,0.14), transparent 24%),#000';
   }
 
+  let supabaseClient = null;
+
   function getSupabaseClient() {
+    if (supabaseClient) return supabaseClient;
     if (!window.supabase || typeof window.supabase.createClient !== 'function' || !SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) return null;
-    return window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: false
+      }
+    });
+    return supabaseClient;
+  }
+
+  async function resetSupabaseSession(reason = '') {
+    const supabase = getSupabaseClient();
+    if (!supabase?.auth) return null;
+    try { await supabase.auth.signOut({ scope: 'local' }); } catch (error) {}
+    try {
+      Object.keys(window.localStorage || {}).filter((key) => /supabase|sb-|auth-token/i.test(key)).forEach((key) => {
+        try { window.localStorage.removeItem(key); } catch (error) {}
+      });
+    } catch (error) {}
+    try {
+      Object.keys(window.sessionStorage || {}).filter((key) => /supabase|sb-|auth-token/i.test(key)).forEach((key) => {
+        try { window.sessionStorage.removeItem(key); } catch (error) {}
+      });
+    } catch (error) {}
+    if (reason) console.warn('Supabase session reset:', reason);
+    return null;
+  }
+
+  function isInvalidJwtError(error) {
+    const message = extractErrorMessage(error, '').toLowerCase();
+    return /invalid jwt|jwt expired|missing sub|bad jwt|auth session missing/i.test(message);
   }
 
   async function getSessionUser() {
@@ -452,12 +493,11 @@ window.HiddenGemsApp = (() => {
     try {
       const result = await supabase.auth.getSession();
       const session = result?.data?.session || null;
-      if (session?.user && session?.access_token) {
-        return session.user;
-      }
+      if (session?.user && session?.access_token) return session.user;
       const userResult = await supabase.auth.getUser();
       return userResult?.data?.user || null;
     } catch (error) {
+      if (isInvalidJwtError(error)) await resetSupabaseSession(extractErrorMessage(error, 'Invalid JWT'));
       return null;
     }
   }
@@ -681,6 +721,7 @@ window.HiddenGemsApp = (() => {
       }
       return session?.access_token || '';
     } catch (error) {
+      if (isInvalidJwtError(error)) await resetSupabaseSession(extractErrorMessage(error, 'Invalid JWT'));
       return '';
     }
   }
@@ -1197,7 +1238,7 @@ window.HiddenGemsApp = (() => {
 
   function renderPointsStore() {
     applyBg();
-    document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-7xl px-6 py-14"><div class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Pricing & Access</p><h1 class="mt-3 text-4xl font-black">Buy videos directly with PayPal</h1><p class="mt-4 max-w-3xl text-neutral-300">Hidden Gems now uses direct purchases instead of stored credits. Standard videos unlock one-by-one at $3, $5, or $7. VIP stays separate at $20 and still unlocks the VIP vault plus download access.</p></div><div id="pricing-access-banner" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300">Loading account status...</div><div class="mt-10 grid gap-6 md:grid-cols-3"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-neutral-400">Standard unlock</p><p class="mt-4 text-5xl font-black">$3</p><p class="mt-3 text-neutral-300">Fast access for entry-priced videos.</p></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-neutral-400">Standard unlock</p><p class="mt-4 text-5xl font-black">$5</p><p class="mt-3 text-neutral-300">Core tier for most regular purchases.</p></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-neutral-400">Premium unlock</p><p class="mt-4 text-5xl font-black">$7</p><p class="mt-3 text-neutral-300">Top-shelf direct access for premium titles.</p></div></div><div class="mt-10 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">How it works</p><ol class="mt-5 space-y-4 text-neutral-300"><li>1. Sign in to your Hidden Gems account.</li><li>2. Open any guest-access video and click <span class="font-semibold text-white">Buy Access</span>.</li><li>3. Complete PayPal checkout.</li><li>4. Hidden Gems unlocks that video for the same signed-in account after successful capture.</li></ol><div class="mt-6 flex flex-wrap gap-3"><a href="all-videos.html" class="rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white transition hover:bg-pink-400">Browse all videos</a><a href="vip-checkout.html" class="rounded-2xl border border-white/15 px-6 py-3 font-semibold text-white transition hover:bg-white/5">VIP checkout</a></div></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">VIP stays separate</p><p class="mt-4 text-neutral-300">VIP is still the only tier with VIP exclusives and download access. Direct video purchases do not include downloads.</p><a href="vip-checkout.html" class="mt-6 inline-flex rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Buy VIP for $20</a></div></div></main>` + shellFooter();
+    document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-7xl px-6 py-14"><div class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Pricing & Access</p><h1 class="mt-3 text-4xl font-black">Buy videos directly with PayPal</h1><p class="mt-4 max-w-3xl text-neutral-300">Hidden Gems now uses direct purchases instead of stored credits. Standard videos unlock one-by-one at $3, $5, or $7. VIP stays separate at $20 and still unlocks the VIP vault plus download access.</p></div><div id="pricing-access-banner" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300">Loading account status...</div><div class="mt-10 rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Direct pricing</p><p class="mt-4 max-w-3xl text-neutral-300">Standard titles are priced individually inside the catalog. Customers only see the real video price on each listing instead of old package cards.</p></div><div class="mt-10 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">How it works</p><ol class="mt-5 space-y-4 text-neutral-300"><li>1. Sign in to your Hidden Gems account.</li><li>2. Open any guest-access video and click <span class="font-semibold text-white">Buy Access</span>.</li><li>3. Complete PayPal checkout.</li><li>4. Hidden Gems unlocks that video for the same signed-in account after successful capture.</li></ol><div class="mt-6 flex flex-wrap gap-3"><a href="all-videos.html" class="rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white transition hover:bg-pink-400">Browse all videos</a><a href="vip-checkout.html" class="rounded-2xl border border-white/15 px-6 py-3 font-semibold text-white transition hover:bg-white/5">VIP checkout</a></div></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">VIP stays separate</p><p class="mt-4 text-neutral-300">VIP is still the only tier with VIP exclusives and download access. Direct video purchases do not include downloads.</p><a href="vip-checkout.html" class="mt-6 inline-flex rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Buy VIP for $20</a></div></div></main>` + shellFooter();
     bindCommonUi();
     const mount = async () => {
       const state = await getState();
@@ -1729,5 +1770,5 @@ window.HiddenGemsApp = (() => {
   }
 
   bindRealtimeSync();
-  return { storage, getState, getVideo, getCategory, allVideos, renderCategoryPage, renderVideoPage, renderPointsStore, renderVipCheckoutPage, renderLibraryPage, renderAllVideosPage, renderSimplePage, shellHeader, shellFooter, bindCommonUi, initialsFromEmail, mountSharedHeader, refreshHeaderUi, signOutUser, syncVipForCurrentUser, canAccessVideo, initVipCheckoutPage, startVipCheckout, startVideoCheckout, finalizeCheckoutFromUrl, updateCurrentUserProfile };
+  return { storage, getState, getVideo, getCategory, allVideos, renderCategoryPage, renderVideoPage, renderPointsStore, renderVipCheckoutPage, renderLibraryPage, renderAllVideosPage, renderSimplePage, shellHeader, shellFooter, bindCommonUi, initialsFromEmail, mountSharedHeader, refreshHeaderUi, signOutUser, syncVipForCurrentUser, canAccessVideo, initVipCheckoutPage, startVipCheckout, startVideoCheckout, finalizeCheckoutFromUrl, updateCurrentUserProfile, getSupabaseClient, resetSupabaseSession, getSessionUser };
 })();

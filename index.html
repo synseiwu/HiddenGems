@@ -350,10 +350,6 @@
   </footer>
 
   <script>
-    const SUPABASE_URL = 'https://netolzyxnifogojwwesq.supabase.co';
-    const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_UP52ijiwCiMghxs8OOEmIQ_V0GJR8Hi';
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
-
     const loggedOutActions = document.getElementById('logged-out-actions');
     const loggedInActions = document.getElementById('logged-in-actions');
     const accountMenuButton = document.getElementById('account-menu-button');
@@ -414,40 +410,22 @@
       applyVipLocks(false);
     }
 
-
-    async function clearBrokenSession() {
-      try { await supabase.auth.signOut({ scope: 'local' }); } catch (error) {}
-      try {
-        Object.keys(localStorage || {}).filter((key) => /supabase|sb-|auth-token/i.test(key)).forEach((key) => localStorage.removeItem(key));
-      } catch (error) {}
-      try {
-        Object.keys(sessionStorage || {}).filter((key) => /supabase|sb-|auth-token/i.test(key)).forEach((key) => sessionStorage.removeItem(key));
-      } catch (error) {}
-    }
-
-    function isInvalidJwtMessage(error) {
-      const message = String(error && (error.message || error.code || error.name) ? (error.message || error.code || error.name) : error || '').toLowerCase();
-      return /invalid jwt|jwt expired|missing sub|bad jwt/.test(message);
-    }
-
     function setLoggedInView(profile) {
       loggedOutActions.classList.add('hidden');
       loggedInActions.classList.remove('hidden');
-
       const email = profile.email || '';
       accountEmailShort.textContent = email;
       accountEmailFull.textContent = email;
       accountAvatar.textContent = initialsFromEmail(email);
-
-      const vipText = profile.is_vip ? 'VIP' : 'Standard';
+      const normalizedRole = String(profile.role || (profile.is_vip ? 'vip' : 'guest')).toLowerCase();
+      const vipText = normalizedRole === 'admin' ? 'Admin' : (profile.is_vip ? 'VIP' : 'Guest');
       heroVipStatus.textContent = vipText;
-      heroAccessText.textContent = profile.is_vip ? 'VIP / Download' : 'View / VIP';
+      heroAccessText.textContent = profile.is_vip || normalizedRole === 'admin' ? 'VIP / Download' : 'View / VIP';
       heroPricingText.textContent = '$3 / $5 / $7';
       dashboardVipStatus.textContent = vipText;
-      dashboardDownloadAccess.textContent = profile.is_vip ? 'Enabled' : 'VIP only';
+      dashboardDownloadAccess.textContent = profile.is_vip || normalizedRole === 'admin' ? 'Enabled' : 'VIP only';
       dashboardPurchaseModel.textContent = 'Direct';
-
-      applyVipLocks(!!profile.is_vip);
+      applyVipLocks(!!profile.is_vip || normalizedRole === 'admin');
     }
 
     if (accountMenuButton) {
@@ -464,93 +442,38 @@
 
     if (logoutButton) {
       logoutButton.addEventListener('click', async () => {
-        await supabase.auth.signOut();
-        window.location.href = 'index.html';
+        try {
+          await window.HiddenGemsApp?.signOutUser?.();
+        } catch (_) {
+          window.location.href = 'index.html';
+        }
       });
     }
 
-    async function loadSession() {
-      let data;
-      let error;
+    async function syncHeaderState() {
       try {
-        ({ data, error } = await supabase.auth.getSession());
-      } catch (err) {
-        error = err;
-      }
-      if (error && isInvalidJwtMessage(error)) {
-        await clearBrokenSession();
-        setLoggedOutView();
-        return;
-      }
-      if (error || !data || !data.session || !data.session.user) {
-        setLoggedOutView();
-        return;
-      }
-
-      const user = data.session.user;
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('email, is_vip, role')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      if (profileError && isInvalidJwtMessage(profileError)) {
-        await clearBrokenSession();
-        setLoggedOutView();
-        return;
-      }
-
-      if (profileError || !profile) {
+        const app = window.HiddenGemsApp;
+        if (!app || typeof app.getState !== 'function') {
+          setLoggedOutView();
+          return;
+        }
+        const state = await app.getState();
+        if (!state?.user?.id) {
+          setLoggedOutView();
+          return;
+        }
         setLoggedInView({
-          email: user.email || '',
-          is_vip: false,
-          role: 'guest'
+          email: state.email || state.user.email || '',
+          is_vip: state.role === 'vip' || state.role === 'admin' || !!state.profile?.is_vip,
+          role: state.role || state.profile?.role || 'guest'
         });
-        return;
+      } catch (error) {
+        setLoggedOutView();
       }
-
-      setLoggedInView({
-        email: profile.email || user.email || '',
-        is_vip: !!profile.is_vip,
-        role: profile.role || (profile.is_vip ? 'vip' : 'guest')
-      });
     }
 
-    supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (!session || !session.user) {
-        setLoggedOutView();
-        return;
-      }
-
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('email, is_vip, role')
-        .eq('id', session.user.id)
-        .maybeSingle();
-
-      if (profileError && isInvalidJwtMessage(profileError)) {
-        await clearBrokenSession();
-        setLoggedOutView();
-        return;
-      }
-
-      if (!profile) {
-        setLoggedInView({
-          email: session.user.email || '',
-          is_vip: false,
-          role: 'guest'
-        });
-        return;
-      }
-
-      setLoggedInView({
-        email: profile.email || session.user.email || '',
-        is_vip: !!profile.is_vip,
-        role: profile.role || (profile.is_vip ? 'vip' : 'guest')
-      });
-    });
-
-    loadSession();
-  </script>
+    window.addEventListener('hg:state-changed', syncHeaderState);
+    syncHeaderState();
+  </script>  </script>
 </body>
 </html>

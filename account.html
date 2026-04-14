@@ -212,8 +212,8 @@
           return;
         }
 
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
-        const clearBrokenSession = async (reason) => { try { await supabase.auth.signOut({ scope: 'local' }); } catch (_) {} return reason; };
+        const supabase = (window.HiddenGemsApp && typeof HiddenGemsApp.getSupabaseClient === 'function' ? HiddenGemsApp.getSupabaseClient() : window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false } }));
+        const clearBrokenSession = async (reason) => { if (window.HiddenGemsApp && typeof HiddenGemsApp.resetSupabaseSession === 'function') return HiddenGemsApp.resetSupabaseSession(reason); try { await supabase.auth.signOut({ scope: 'local' }); } catch (_) {} return reason; };
         let sessionResult;
         try { sessionResult = await withTimeout(supabase.auth.getSession(), 'Checking your session'); } catch (error) {
           const message = String(error && error.message ? error.message : error || '');
