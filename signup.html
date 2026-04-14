@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Hidden Gems | Sign Up</title>
+  <title>Hidden Gems | Log In</title>
   <link rel="icon" href="./assets/hidden-gems-logo.png" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.tailwindcss.com"></script>
@@ -18,33 +18,33 @@
 
   <main class="mx-auto grid max-w-7xl gap-8 px-6 py-14 lg:grid-cols-[1fr_0.95fr]">
     <section class="rounded-[2rem] border border-white/10 bg-white/5 p-8 shadow-xl shadow-black/20 backdrop-blur">
-      <span class="inline-flex rounded-full border border-pink-400/30 bg-pink-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] text-pink-300">Create Account</span>
+      <span class="inline-flex rounded-full border border-pink-400/30 bg-pink-500/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.25em] text-pink-300">Log In</span>
       <h2 class="mt-6 text-5xl font-black leading-tight">
-        Start your <span class="text-pink-400">Hidden Gems</span> account
+        Welcome back to <span class="text-pink-400">Hidden Gems</span>
       </h2>
       <p class="mt-5 max-w-xl text-lg text-neutral-300">
-        Create an account now so you can hold direct purchases, VIP status, unlocked videos, and premium access in one place.
+        Log in to access your dashboard, purchased videos, VIP status, and account access.
       </p>
 
       <div class="mt-10 space-y-4">
         <div class="rounded-[1.5rem] border border-white/10 bg-black/20 p-5">
           <p class="text-xl font-bold text-white">Built for direct purchases and VIP</p>
-          <p class="mt-2 text-neutral-400">This auth setup is the base for tracking purchases, VIP status, and locked content.</p>
+          <p class="mt-2 text-neutral-400">This login page connects to your Supabase auth so you can attach direct purchases, VIP access, and unlock history.</p>
         </div>
         <div class="rounded-[1.5rem] border border-white/10 bg-black/20 p-5">
-          <p class="text-xl font-bold text-white">VIP will stay separate from normal purchases</p>
-          <p class="mt-2 text-neutral-400">Regular unlocks can stay view-only while VIP later controls downloads and special videos.</p>
+          <p class="text-xl font-bold text-white">VIP stays separate from normal purchases</p>
+          <p class="mt-2 text-neutral-400">Your account can later distinguish view-only purchases from VIP download rights.</p>
         </div>
         <div class="rounded-[1.5rem] border border-white/10 bg-black/20 p-5">
-          <p class="text-xl font-bold text-white">Ready for category pages and dashboards</p>
-          <p class="mt-2 text-neutral-400">Once users can sign in, you can connect their account to dashboards and unlock pages.</p>
+          <p class="text-xl font-bold text-white">Built for your future dashboard</p>
+          <p class="mt-2 text-neutral-400">Once logged in, users can be routed into a members area with category access, purchases, and account info.</p>
         </div>
       </div>
     </section>
 
     <section class="rounded-[2rem] border border-white/10 bg-white/5 p-7 shadow-xl shadow-black/20 backdrop-blur">
-      <h3 class="text-4xl font-black">Create your account</h3>
-      <p class="mt-3 text-neutral-300">Use email and password to sign up.</p>
+      <h3 class="text-4xl font-black">Log in to your account</h3>
+      <p class="mt-3 text-neutral-300">Use the email and password you created when signing up.</p>
 
       <div class="mt-7 rounded-[1.5rem] border border-pink-400/30 bg-gradient-to-r from-pink-500/15 via-fuchsia-500/10 to-transparent p-5">
         <p class="text-xs font-semibold uppercase tracking-[0.25em] text-pink-300">VIP Special</p>
@@ -55,7 +55,7 @@
         <p class="mt-1 text-lg font-semibold text-pink-300">Deal leaving soon</p>
       </div>
 
-      <form id="signup-form" class="mt-8 space-y-5">
+      <form id="login-form" class="mt-8 space-y-5">
         <div>
           <label for="email" class="mb-2 block text-sm font-medium text-neutral-200">Email address</label>
           <input id="email" type="email" required class="w-full rounded-2xl border border-pink-400/20 bg-black/50 px-4 py-4 text-white outline-none transition focus:border-pink-400" placeholder="you@example.com" />
@@ -63,26 +63,21 @@
 
         <div>
           <label for="password" class="mb-2 block text-sm font-medium text-neutral-200">Password</label>
-          <input id="password" type="password" required minlength="6" class="w-full rounded-2xl border border-pink-400/20 bg-black/50 px-4 py-4 text-white outline-none transition focus:border-pink-400" placeholder="Create a password" />
-        </div>
-
-        <div>
-          <label for="confirm-password" class="mb-2 block text-sm font-medium text-neutral-200">Confirm password</label>
-          <input id="confirm-password" type="password" required minlength="6" class="w-full rounded-2xl border border-pink-400/20 bg-black/50 px-4 py-4 text-white outline-none transition focus:border-pink-400" placeholder="Confirm your password" />
+          <input id="password" type="password" required minlength="6" class="w-full rounded-2xl border border-pink-400/20 bg-black/50 px-4 py-4 text-white outline-none transition focus:border-pink-400" placeholder="Enter your password" />
         </div>
 
         <div id="message" class="hidden rounded-2xl border px-4 py-3 text-sm"></div>
 
         <button id="submit-btn" type="submit" class="w-full rounded-2xl bg-pink-500 px-6 py-4 font-semibold text-white shadow-xl shadow-pink-500/20 transition hover:bg-pink-400">
-          Create account
+          Log in
         </button>
 
-        <a href="login.html" class="block w-full rounded-2xl border border-white/15 px-6 py-4 text-center font-semibold text-white transition hover:bg-white/5">
-          Already have an account?
+        <a href="signup.html" class="block w-full rounded-2xl border border-white/15 px-6 py-4 text-center font-semibold text-white transition hover:bg-white/5">
+          Need an account?
         </a>
 
-        <p class="text-sm text-neutral-400">Use a strong password like <span class="font-semibold text-neutral-200">HiddenGems123!</span> for testing.</p>
-        <p class="text-sm text-neutral-400">Already registered? <a href="login.html" class="font-semibold text-pink-300 hover:text-pink-200">Log in here.</a></p>
+        <p class="text-sm text-neutral-400">Use the same email and password you used on signup.</p>
+        <p class="text-sm text-neutral-400">New here? <a href="signup.html" class="font-semibold text-pink-300 hover:text-pink-200">Create an account.</a></p>
       </form>
     </section>
   </main>
@@ -92,7 +87,7 @@
     const AUTH_CONFIG = APP_CONFIG.auth || {};
     const SUPABASE_URL = AUTH_CONFIG.supabaseUrl || 'https://netolzyxnifogojwwesq.supabase.co';
     const SUPABASE_PUBLISHABLE_KEY = AUTH_CONFIG.supabaseAnonKey || 'sb_publishable_UP52ijiwCiMghxs8OOEmIQ_V0GJR8Hi';
-    const REDIRECT_AFTER_SIGNUP = AUTH_CONFIG.redirectAfterSignup || 'login.html';
+    const REDIRECT_AFTER_LOGIN = AUTH_CONFIG.redirectAfterLogin || 'index.html';
 
     function showMessage(text, type = 'info') {
       const message = document.getElementById('message');
@@ -110,97 +105,87 @@
       showMessage(message, 'error');
     }
 
-    window.addEventListener('DOMContentLoaded', () => { try { if (window.HiddenGemsApp && typeof HiddenGemsApp.mountSharedHeader === 'function') { HiddenGemsApp.mountSharedHeader(); } } catch (err) { console.warn('Header failed to mount on signup page:', err); }
-      const form = document.getElementById('signup-form');
+    async function handleLoginSubmit(event) {
+      if (event) event.preventDefault();
+
+      const form = document.getElementById('login-form');
       const emailInput = document.getElementById('email');
       const passwordInput = document.getElementById('password');
-      const confirmPasswordInput = document.getElementById('confirm-password');
       const submitBtn = document.getElementById('submit-btn');
+
+      if (!form || !emailInput || !passwordInput || !submitBtn) {
+        setupError('Login form is missing required elements.');
+        return;
+      }
 
       if (!window.supabase || typeof window.supabase.createClient !== 'function') {
         setupError('Supabase library failed to load. Turn off browser shields/extensions for this page and refresh.');
         return;
       }
 
-      if (!form || !emailInput || !passwordInput || !confirmPasswordInput || !submitBtn) {
-        setupError('Signup form is missing required elements.');
+      if (submitBtn.disabled) return;
+
+      const email = emailInput.value.trim();
+      const password = passwordInput.value;
+
+      if (!email) {
+        showMessage('Please enter an email address.', 'error');
         return;
       }
 
-      const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+      if (password.length < 6) {
+        showMessage('Password must be at least 6 characters.', 'error');
+        return;
+      }
 
-      form.addEventListener('submit', async (event) => {
-        event.preventDefault();
+      const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Logging in...';
+      showMessage('Logging in...', 'info');
 
-        const email = emailInput.value.trim();
-        const password = passwordInput.value;
-        const confirmPassword = confirmPasswordInput.value;
+      try {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
 
-        if (!email) {
-          showMessage('Please enter an email address.', 'error');
-          return;
-        }
-
-        if (password.length < 6) {
-          showMessage('Password must be at least 6 characters.', 'error');
-          return;
-        }
-
-        if (password !== confirmPassword) {
-          showMessage('Passwords do not match.', 'error');
-          return;
-        }
-
-        submitBtn.disabled = true;
-        submitBtn.textContent = 'Creating account...';
-        showMessage('Creating account...', 'info');
-
-        try {
-          const { data, error } = await supabase.auth.signUp({
-            email,
-            password,
-            options: { data: { role: 'guest' } }
-          });
-
-          console.log('SIGNUP RESULT:', { data, error, email });
-
-          if (error) {
-            showMessage(error.message, 'error');
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Create account';
-            return;
-          }
-
-          const user = data?.user || data?.session?.user;
-
-          if (user) {
-            const { error: profileError } = await supabase.from('profiles').upsert({
-              id: user.id,
-              email: user.email,
-              is_vip: false,
-              role: 'guest'
-            });
-
-            console.log('PROFILE UPSERT RESULT:', { profileError });
-
-            if (profileError) {
-              showMessage(profileError.message, 'error');
-              submitBtn.disabled = false;
-              submitBtn.textContent = 'Create account';
-              return;
-            }
-          }
-
-          showMessage('Account created successfully. Redirecting to login...', 'success');
-
-          setTimeout(() => {
-            window.location.href = REDIRECT_AFTER_SIGNUP;
-          }, 1200);
-        } catch (err) {
-          console.error('SIGNUP UNEXPECTED ERROR:', err);
-          showMessage(err && err.message ? err.message : 'Unexpected signup error.', 'error');
+        if (error) {
+          showMessage(error.message, 'error');
           submitBtn.disabled = false;
-          submitBtn.textContent = 'Create account';
+          submitBtn.textContent = 'Log in';
+          return;
+        }
+
+        showMessage('Login successful. Redirecting...', 'success');
+        setTimeout(() => {
+          window.location.href = REDIRECT_AFTER_LOGIN;
+        }, 800);
+      } catch (err) {
+        console.error('LOGIN UNEXPECTED ERROR:', err);
+        showMessage(err && err.message ? err.message : 'Unexpected login error.', 'error');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Log in';
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      try {
+        if (window.HiddenGemsApp && typeof HiddenGemsApp.mountSharedHeader === 'function') {
+          HiddenGemsApp.mountSharedHeader();
+        }
+      } catch (err) {
+        console.warn('Header failed to mount on login page:', err);
+      }
+
+      const form = document.getElementById('login-form');
+      const submitBtn = document.getElementById('submit-btn');
+
+      if (!form || !submitBtn) {
+        setupError('Login form is missing required elements.');
+        return;
+      }
+
+      form.addEventListener('submit', handleLoginSubmit);
+      submitBtn.addEventListener('click', (event) => {
+        if (submitBtn.type !== 'submit') {
+          handleLoginSubmit(event);
         }
       });
     });
