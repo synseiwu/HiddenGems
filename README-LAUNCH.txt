@@ -1,27 +1,32 @@
-Hidden Gems launch checklist
+Hidden Gems launch notes
 
-Payment flow
-- Customer-facing points purchases and VIP checkout now go through the Supabase Edge Function and PayPal flow.
-- The points store no longer grants points directly on the storefront.
-- Manual point grants are separated into the admin portal for the real admin account only.
+Current payment model
+- Standard guest videos are sold as direct one-time purchases at $3, $5, or $7.
+- VIP stays separate at $20 and unlocks VIP content plus download access.
+- The old wallet/points flow is no longer the customer path.
 
-Before testing
-1. In Supabase Edge Function secrets, keep all PayPal values in the same environment:
-   - Sandbox testing: PAYPAL_BASE_URL=https://api-m.sandbox.paypal.com and sandbox Client ID/Secret
-   - Live launch: PAYPAL_BASE_URL=https://api-m.paypal.com and live Client ID/Secret
-2. Confirm SITE_URL matches your deployed domain.
-3. Confirm the hg-paypal-checkout function is deployed.
-4. Confirm config.js uses the publishable Supabase key, not the service role key.
+What must be live in Supabase
+1. The hg-paypal-checkout Edge Function must be redeployed from supabase/functions/hg-paypal-checkout/index.ts
+2. Secrets must match the current PayPal mode:
+   - PAYPAL_CLIENT_ID
+   - PAYPAL_CLIENT_SECRET
+   - PAYPAL_BASE_URL
+   - SITE_URL
+3. The hg_video_purchases table must already exist from the video SQL setup.
 
-Recommended test order
-1. Sign in as a guest account and buy a points pack.
-2. Verify success.html returns to the site and wallet updates on that same user.
-3. Buy VIP and verify the account becomes VIP.
-4. Sign in as the admin account and confirm:
-   - the storefront still shows Buy with PayPal
-   - manual point grants only appear in admin.html
-   - admin can already open any video without buying it
+Testing order
+1. Sign in with a guest account.
+2. Open a guest video.
+3. Click Buy Access and complete PayPal checkout.
+4. success.html should capture the order and redirect back to the unlocked video.
+5. Confirm the title appears in My Library.
+6. Test VIP checkout separately.
 
-Launch switch
-- Stay on sandbox until all tests pass.
-- Switch to live only when the base URL, Client ID, and Secret are all changed together.
+Sandbox vs live
+- Sandbox: https://api-m.sandbox.paypal.com with sandbox app credentials
+- Live: https://api-m.paypal.com with live app credentials
+- Do not mix sandbox keys with the live base URL.
+
+Admin behavior
+- Admin still bypasses paywalls and can open all videos.
+- Guests should never receive free customer unlocks through the old wallet path.

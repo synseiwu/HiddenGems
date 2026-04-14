@@ -16,8 +16,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const shell = window.HiddenGemsApp;
   const query = new URLSearchParams(window.location.search || '');
   const kind = query.get('kind') || 'payment';
-  const pack = query.get('pack') || '';
-  const title = kind === 'vip' ? 'VIP activation' : 'Points purchase';
+  const videoId = query.get('id') || '';
+  const title = kind === 'vip' ? 'VIP activation' : kind === 'video' ? 'video purchase' : 'payment';
   document.body.innerHTML = shell.shellHeader() + `
     <main class="mx-auto flex min-h-[75vh] max-w-3xl items-center px-6 py-16">
       <div class="w-full rounded-[2rem] border border-emerald-400/20 bg-gradient-to-br from-emerald-500/10 via-pink-500/10 to-transparent p-8 shadow-xl shadow-black/20">
@@ -28,7 +28,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         <div class="mt-8 flex flex-wrap gap-4">
           <a href="account.html" class="rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white transition hover:bg-pink-400">Go to account</a>
           <a href="my-library.html" class="rounded-2xl border border-white/15 px-6 py-3 font-semibold text-white transition hover:bg-white/5">Open library</a>
-          <a href="points-store.html" class="rounded-2xl border border-white/15 px-6 py-3 font-semibold text-white transition hover:bg-white/5">Back to points store</a>
+          <a href="all-videos.html" class="rounded-2xl border border-white/15 px-6 py-3 font-semibold text-white transition hover:bg-white/5">Browse videos</a>
         </div>
       </div>
     </main>` + shell.shellFooter();
@@ -42,13 +42,24 @@ document.addEventListener('DOMContentLoaded', async () => {
       status.textContent = 'Open this page from the real PayPal success redirect so Hidden Gems can capture the approved order.';
       return;
     }
-    const grantedPoints = Number(result.pointsAwarded || 0);
     const vipGranted = !!result.vipGranted;
-    const parts = [];
-    if (grantedPoints > 0) parts.push(`${grantedPoints} points were added to your wallet`);
-    if (vipGranted) parts.push('VIP access is now active on your account');
-    copy.textContent = parts.length ? `${parts.join(' and ')}.` : 'Your approved PayPal payment was captured successfully.';
-    status.innerHTML = `Order captured successfully.<br><span class="text-white">Wallet:</span> ${Number(result.walletPoints || 0)} points${pack ? `<br><span class="text-white">Package:</span> ${pack}` : ''}${vipGranted ? `<br><span class="text-white">Access:</span> VIP active` : ''}`;
+    const videoUnlocked = !!result.videoUnlocked;
+    const purchasedTitle = result.title || '';
+    if (videoUnlocked) {
+      copy.textContent = purchasedTitle ? `${purchasedTitle} is now unlocked on this account.` : 'Your video purchase was captured and unlocked successfully.';
+      status.innerHTML = `Order captured successfully.<br><span class="text-white">Access:</span> direct purchase unlocked${videoId ? `<br><span class="text-white">Video ID:</span> ${videoId}` : ''}`;
+      if (videoId) {
+        setTimeout(() => { window.location.href = `video.html?id=${encodeURIComponent(videoId)}`; }, 1800);
+      }
+      return;
+    }
+    if (vipGranted) {
+      copy.textContent = 'VIP access is now active on your account.';
+      status.innerHTML = 'Order captured successfully.<br><span class="text-white">Access:</span> VIP active';
+      return;
+    }
+    copy.textContent = 'Your approved PayPal payment was captured successfully.';
+    status.textContent = 'The account update finished successfully.';
   } catch (error) {
     copy.textContent = 'Your PayPal payment may have succeeded, but Hidden Gems could not finish the account update automatically yet.';
     status.textContent = error && error.message ? error.message : 'Automatic fulfillment failed.';
