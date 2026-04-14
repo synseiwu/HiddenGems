@@ -151,10 +151,18 @@ window.HiddenGemsApp = (() => {
     return parts.slice(0, 2).map((part) => part[0].toUpperCase()).join('');
   }
 
-  function moneyFromCents(cents) { return '$' + (Number(cents || 0) / 100).toFixed(2).replace('.00', ''); }
-  function moneyLabelFromVideo(video) { return moneyFromCents(Number((video?.priceCents ?? video?.points) || 0)); }
+  function normalizePriceCents(value) {
+    const amount = Number(value);
+    return Number.isFinite(amount) && amount > 0 ? Math.round(amount) : 0;
+  }
+  function moneyFromCents(cents) { return '$' + (normalizePriceCents(cents) / 100).toFixed(2).replace('.00', ''); }
+  function moneyLabelFromVideo(video) { return moneyFromCents(video?.priceCents); }
   function qs(name) { return new URLSearchParams(window.location.search).get(name); }
   function currentPageKey() { const page = (location.pathname.split('/').pop() || 'index.html').toLowerCase(); return !page || page === 'index.html' ? 'home' : page.replace(/\.html$/, ''); }
+  function categoryPageHref(slug) {
+    const safeSlug = String(slug || '').trim().toLowerCase();
+    return CATEGORY_ORDER.includes(safeSlug) ? `${safeSlug}.html` : 'all-videos.html';
+  }
   function escapeHtml(value) { return String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]); }
   const CATEGORY_ORDER = ['new-releases', 'most-popular', 'behind-the-scenes', 'live-sessions', 'short-films', 'creator-picks', 'vip-exclusives'];
   const TEMP_CATEGORY_LABELS = {
@@ -242,7 +250,7 @@ window.HiddenGemsApp = (() => {
       categoryTitle: String(base.categoryTitle || '').trim(),
       category: String(base.category || base.categoryTitle || '').trim(),
       access: String(base.access || 'guest').trim().toLowerCase() === 'vip' ? 'vip' : 'guest',
-      priceCents: Math.max(0, Number((base.priceCents ?? base.points) || 0)),
+      priceCents: normalizePriceCents(base.priceCents),
       previewImageEnabled: base.previewImageEnabled !== false,
       previewVideoEnabled: !!base.previewVideoEnabled,
       previewImage: String(base.previewImage || '').trim(),
@@ -396,7 +404,7 @@ window.HiddenGemsApp = (() => {
           video_id: String(video.id),
           role_at_purchase: currentState?.role || 'guest',
           title_snapshot: video.title || '',
-          amount_paid_cents: Number((video.priceCents ?? video.points) || 0),
+          amount_paid_cents: normalizePriceCents(video.priceCents),
           created_at: new Date().toISOString()
         };
         const result = await supabase.from('hg_video_purchases').upsert(payload, { onConflict: 'user_id,video_id' });
@@ -510,7 +518,7 @@ window.HiddenGemsApp = (() => {
       categoryTitle,
       category: categoryTitle,
       access: String(row.access_type || row.access || 'guest').toLowerCase() === 'vip' ? 'vip' : 'guest',
-      priceCents: Number(row.price_cents ?? row.points ?? row.sort_order ?? 0),
+      priceCents: normalizePriceCents(row.price_cents),
       isPublished: published,
       isCustom: true,
       videoStoragePath: row.video_storage_path || '',
@@ -618,7 +626,7 @@ window.HiddenGemsApp = (() => {
       category_slug: item.categorySlug,
       category_title: resolvedCategoryTitle,
       access_type: item.access,
-      price_cents: Number((item.priceCents ?? item.points) || 0),
+      price_cents: normalizePriceCents(item.priceCents),
       video_storage_path: item.videoStoragePath || null,
       preview_image_enabled: item.previewImageEnabled !== false,
       preview_video_enabled: !!item.previewVideoEnabled,
@@ -1010,10 +1018,10 @@ window.HiddenGemsApp = (() => {
   function updateHomeStateUi(state) {
     syncLegacyHomeHeader(state);
     const access = document.getElementById('hero-access-text');
-    const points = document.getElementById('hero-pricing-text');
+    const pricingText = document.getElementById('hero-pricing-text');
     const status = document.getElementById('hero-vip-status');
     if (access) access.textContent = state.role === 'admin' ? 'Admin / All Access' : (state.role === 'vip' ? 'Guest + VIP' : 'Guest Access');
-    if (points) points.textContent = '$3 / $5 / $7';
+    if (pricingText) pricingText.textContent = '$3 / $5 / $7';
     if (status) status.textContent = state.role.charAt(0).toUpperCase() + state.role.slice(1);
 
     const categories = allCategories();
@@ -1046,7 +1054,7 @@ window.HiddenGemsApp = (() => {
       kind: 'video',
       videoId: String(video.id),
       title: String(video.title || 'Video access'),
-      amountCents: Number((video.priceCents ?? video.points) || 0),
+      amountCents: normalizePriceCents(video.priceCents),
       siteUrl: SITE_URL || window.location.origin
     });
     if (!result?.approvalUrl) throw new Error('PayPal did not return an approval URL for this video.');
@@ -1115,7 +1123,7 @@ window.HiddenGemsApp = (() => {
         bindCommonUi();
         return;
       }
-      document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-6xl px-6 py-14"><a href="${video.categorySlug}.html" class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-300 transition hover:bg-white/10">← Back</a><div class="mt-8 grid gap-8 lg:grid-cols-[1.15fr_0.85fr]"><section class="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 shadow-xl shadow-black/20"><div class="relative"><img src="${escapeHtml(video.image)}" class="h-[420px] w-full object-cover" alt="${escapeHtml(video.title)}"><div class="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent"></div><div class="absolute bottom-6 left-6"><p class="text-xs uppercase tracking-[0.25em] text-pink-300">${escapeHtml(video.category)}</p><h1 class="mt-2 text-4xl font-black">${escapeHtml(video.title)}</h1></div></div><div class="p-6"><div id="video-access-banner" class="rounded-[1.5rem] border border-white/10 bg-neutral-950/70 p-5 text-neutral-300">Checking access...</div><div id="video-player-shell" class="mt-6 rounded-[1.5rem] border border-white/10 bg-black/20 p-5"></div><div id="video-description-shell" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-5"><p class="text-xs uppercase tracking-[0.25em] text-neutral-500">Description</p><p class="mt-3 text-neutral-200">${escapeHtml(video.description || 'No description added yet.')}</p></div><div id="video-external-file-shell" class="mt-4 hidden rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-5"><p class="text-xs uppercase tracking-[0.25em] text-neutral-500">External file link</p><div id="video-external-file-link" class="mt-3"></div></div></div></section><aside class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><p class="text-xs uppercase tracking-[0.25em] text-pink-300">Access details</p><div class="mt-5 space-y-4"><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Category</p><p class="mt-1 text-lg font-semibold text-white">${escapeHtml(video.category)}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Purchase tier</p><p class="mt-1 text-lg font-semibold text-white">${video.access === 'vip' ? 'VIP / Admin' : `${moneyLabelFromVideo(video)} one-time access`}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Role access</p><p class="mt-1 text-lg font-semibold text-white">Guest: purchased titles unlock playback · VIP: full access + downloads · Admin: all access</p></div></div><div class="mt-6 flex flex-col gap-3"><a id="video-action-button" href="#" class="rounded-2xl bg-pink-500 px-6 py-3 text-center font-semibold text-white transition hover:bg-pink-400">Loading...</a><a href="points-store.html" class="rounded-2xl border border-white/15 px-6 py-3 text-center font-semibold text-white transition hover:bg-white/5">View pricing</a></div></aside></div></main>` + shellFooter();
+      document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-6xl px-6 py-14"><a href="${categoryPageHref(video.categorySlug)}" class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-300 transition hover:bg-white/10">← Back</a><div class="mt-8 grid gap-8 lg:grid-cols-[1.15fr_0.85fr]"><section class="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 shadow-xl shadow-black/20"><div class="relative"><img src="${escapeHtml(video.image)}" class="h-[420px] w-full object-cover" alt="${escapeHtml(video.title)}"><div class="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent"></div><div class="absolute bottom-6 left-6"><p class="text-xs uppercase tracking-[0.25em] text-pink-300">${escapeHtml(video.category)}</p><h1 class="mt-2 text-4xl font-black">${escapeHtml(video.title)}</h1></div></div><div class="p-6"><div id="video-access-banner" class="rounded-[1.5rem] border border-white/10 bg-neutral-950/70 p-5 text-neutral-300">Checking access...</div><div id="video-player-shell" class="mt-6 rounded-[1.5rem] border border-white/10 bg-black/20 p-5"></div><div id="video-description-shell" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-5"><p class="text-xs uppercase tracking-[0.25em] text-neutral-500">Description</p><p class="mt-3 text-neutral-200">${escapeHtml(video.description || 'No description added yet.')}</p></div><div id="video-external-file-shell" class="mt-4 hidden rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-5"><p class="text-xs uppercase tracking-[0.25em] text-neutral-500">External file link</p><div id="video-external-file-link" class="mt-3"></div></div></div></section><aside class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><p class="text-xs uppercase tracking-[0.25em] text-pink-300">Access details</p><div class="mt-5 space-y-4"><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Category</p><p class="mt-1 text-lg font-semibold text-white">${escapeHtml(video.category)}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Purchase tier</p><p class="mt-1 text-lg font-semibold text-white">${video.access === 'vip' ? 'VIP / Admin' : `${moneyLabelFromVideo(video)} one-time access`}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Role access</p><p class="mt-1 text-lg font-semibold text-white">Guest: purchased titles unlock playback · VIP: full access + downloads · Admin: all access</p></div></div><div class="mt-6 flex flex-col gap-3"><a id="video-action-button" href="#" class="rounded-2xl bg-pink-500 px-6 py-3 text-center font-semibold text-white transition hover:bg-pink-400">Loading...</a><a href="points-store.html" class="rounded-2xl border border-white/15 px-6 py-3 text-center font-semibold text-white transition hover:bg-white/5">View pricing</a></div></aside></div></main>` + shellFooter();
       bindCommonUi();
       const state = await getState();
       const actionButton = document.getElementById('video-action-button');
@@ -1272,8 +1280,8 @@ window.HiddenGemsApp = (() => {
         visible.sort((a, b) => {
           if (sort === 'oldest') return String(a.id).localeCompare(String(b.id));
           if (sort === 'title') return a.title.localeCompare(b.title);
-          if (sort === 'price-low') return Number((a.priceCents ?? a.points) || 0) - Number((b.priceCents ?? b.points) || 0);
-          if (sort === 'price-high') return Number((b.priceCents ?? b.points) || 0) - Number((a.priceCents ?? a.points) || 0);
+          if (sort === 'price-low') return normalizePriceCents(a.priceCents) - normalizePriceCents(b.priceCents);
+          if (sort === 'price-high') return normalizePriceCents(b.priceCents) - normalizePriceCents(a.priceCents);
           return String(b.id).localeCompare(String(a.id));
         });
         document.getElementById('all-videos-summary').innerHTML = `Role: <span class="font-bold text-pink-300">${state.role}</span> · Visible videos: <span class="font-bold text-white">${visible.length}</span> · Categories: <span class="font-bold text-white">${categories.length}</span>`;
@@ -1354,7 +1362,7 @@ window.HiddenGemsApp = (() => {
         form.elements.title.value = video.title || '';
         form.elements.description.value = video.description || '';
         form.elements.access.value = video.access === 'vip' ? 'vip' : 'guest';
-        form.elements.priceCents.value = Number((video.priceCents ?? video.points) || 0);
+        form.elements.priceCents.value = normalizePriceCents(video.priceCents);
         form.elements.categorySlug.value = video.categorySlug || 'creator-picks';
         form.elements.categoryTitle.value = video.categoryTitle || '';
         form.elements.image.value = video.image || '';

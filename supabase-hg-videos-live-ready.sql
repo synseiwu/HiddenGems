@@ -38,8 +38,13 @@ set image = coalesce(nullif(image, ''), thumbnail_url, '')
 where coalesce(image, '') = '';
 
 update public.hg_videos
-set price_cents = coalesce(price_cents, points, sort_order, 0)
-where price_cents is null;
+set price_cents = case
+  when price_cents is not null and price_cents > 0 then price_cents
+  when points in (300, 500, 700) then points
+  when sort_order in (300, 500, 700) then sort_order
+  else 0
+end
+where price_cents is null or price_cents <= 0;
 
 alter table public.hg_videos
   alter column category_slug set default 'creator-picks',
