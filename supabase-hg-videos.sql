@@ -12,7 +12,7 @@ alter table if exists public.hg_videos
   add column if not exists created_by uuid,
   add column if not exists category_slug text,
   add column if not exists category_title text,
-  add column if not exists points integer,
+  add column if not exists price_cents integer,
   add column if not exists deleted_at timestamptz,
   add column if not exists updated_at timestamptz not null default now();
 
@@ -38,13 +38,13 @@ set image = coalesce(nullif(image, ''), thumbnail_url, '')
 where coalesce(image, '') = '';
 
 update public.hg_videos
-set points = coalesce(points, sort_order, 0)
-where points is null;
+set price_cents = coalesce(price_cents, points, sort_order, 0)
+where price_cents is null;
 
 alter table public.hg_videos
   alter column category_slug set default 'creator-picks',
   alter column category_title set default 'Category 6',
-  alter column points set default 0,
+  alter column price_cents set default 0,
   alter column source_type set default 'link';
 
 create index if not exists hg_videos_category_slug_idx on public.hg_videos(category_slug);
@@ -140,7 +140,7 @@ create table if not exists public.hg_video_purchases (
   video_id text not null,
   role_at_purchase text,
   title_snapshot text,
-  points_spent integer default 0,
+  amount_paid_cents integer default 0,
   created_at timestamptz default now(),
   primary key (user_id, video_id)
 );

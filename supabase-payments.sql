@@ -2,7 +2,6 @@
 -- Run this in the Supabase SQL editor before deploying the Edge Function.
 
 alter table if exists public.profiles
-  add column if not exists points_balance integer not null default 0,
   add column if not exists is_vip boolean not null default false,
   add column if not exists role text not null default 'guest';
 
@@ -16,7 +15,6 @@ create table if not exists public.hg_payment_transactions (
   pack_id text,
   amount_cents integer not null default 0,
   currency text not null default 'USD',
-  points_awarded integer not null default 0,
   vip_granted boolean not null default false,
   status text not null default 'captured',
   raw_payload jsonb,

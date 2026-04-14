@@ -3,7 +3,7 @@ Hidden Gems launch notes
 Current payment model
 - Standard guest videos are sold as direct one-time purchases at $3, $5, or $7.
 - VIP stays separate at $20 and unlocks VIP content plus download access.
-- The old wallet/points flow is no longer the customer path.
+- The old legacy purchase flow is no longer the customer path.
 
 What must be live in Supabase
 1. The hg-paypal-checkout Edge Function must be redeployed from supabase/functions/hg-paypal-checkout/index.ts
@@ -29,4 +29,4 @@ Sandbox vs live
 
 Admin behavior
 - Admin still bypasses paywalls and can open all videos.
-- Guests should never receive free customer unlocks through the old wallet path.
+- Guests should never receive free customer unlocks through the old legacy purchase path.

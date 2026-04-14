@@ -10,38 +10,18 @@ window.HiddenGemsApp = (() => {
   const SUPABASE_URL = AUTH_CONFIG.supabaseUrl || '';
   const SUPABASE_PUBLISHABLE_KEY = AUTH_CONFIG.supabaseAnonKey || '';
   const ADMIN_EMAILS = (APP_CONFIG.adminEmails || []).map((email) => String(email).trim().toLowerCase()).filter(Boolean);
-  const PAYPAL_POINTS_URL = (APP_CONFIG.paypalLinks && (APP_CONFIG.paypalLinks.points || APP_CONFIG.paypalLinks.default)) || 'https://www.paypal.com/ncp/payment/TH74PFXUPCR2N';
-  const PAYPAL_VIP_URL = (APP_CONFIG.paypalLinks && (APP_CONFIG.paypalLinks.vip || APP_CONFIG.paypalLinks.default || APP_CONFIG.paypalLinks.points)) || 'https://www.paypal.com/ncp/payment/TH74PFXUPCR2N';
+  const PAYPAL_VIP_URL = (APP_CONFIG.paypalLinks && (APP_CONFIG.paypalLinks.vip || APP_CONFIG.paypalLinks.default)) || 'https://www.paypal.com/ncp/payment/TH74PFXUPCR2N';
+  const SITE_URL = APP_CONFIG.siteUrl || window.location.origin;
   const PAYMENT_CONFIG = APP_CONFIG.payment || {};
-  const SITE_URL = String(APP_CONFIG.siteUrl || window.location.origin || '').replace(/\/$/, '');
-  const PAYPAL_FUNCTION_URL = String(PAYMENT_CONFIG.edgeFunctionUrl || (SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/hg-paypal-checkout` : '')).trim();
-  const PAYPAL_PACKAGE_LINKS = (APP_CONFIG.paypalLinks && APP_CONFIG.paypalLinks.pointsPackages) || {};
-  const DEFAULT_POINTS_PACKS = [
-    { id: 'starter', points: 500, price: '$5', amount: '5.00', label: 'Starter Pack', copy: 'A quick top-up for smaller unlocks' },
-    { id: 'silver', points: 1200, price: '$10', amount: '10.00', label: 'Silver Pack', copy: 'A balanced option for regular purchases' },
-    { id: 'gold', points: 2500, price: '$20', amount: '20.00', label: 'Gold Pack', copy: 'Better value for building your library' },
-    { id: 'vault', points: 6000, price: '$40', amount: '40.00', label: 'Vault Pack', copy: 'Best value for heavy unlocks' }
-  ];
-  const POINTS_PACKS = Array.isArray(APP_CONFIG.pointsPackages) && APP_CONFIG.pointsPackages.length
-    ? APP_CONFIG.pointsPackages.map((pack, index) => ({
-        id: String(pack.id || DEFAULT_POINTS_PACKS[index]?.id || `pack-${index + 1}`),
-        points: Number(pack.points || 0),
-        price: String(pack.price || DEFAULT_POINTS_PACKS[index]?.price || '$0'),
-        amount: String(pack.amount || DEFAULT_POINTS_PACKS[index]?.amount || '0.00'),
-        label: String(pack.label || DEFAULT_POINTS_PACKS[index]?.label || `Pack ${index + 1}`),
-        copy: String(pack.copy || DEFAULT_POINTS_PACKS[index]?.copy || '')
-      }))
-    : DEFAULT_POINTS_PACKS;
+  const PAYPAL_FUNCTION_URL = String(PAYMENT_CONFIG.edgeFunctionUrl || '').trim();
 
   const KEYS = {
-    points: 'hg_points',
     unlocked: 'hg_unlocked',
     transactions: 'hg_transactions',
     customVideos: 'hg_custom_videos',
     hiddenVideos: 'hg_hidden_videos',
     roleOverrides: 'hg_role_overrides',
     profileCache: 'hg_profile_cache',
-    pointsOverrides: 'hg_points_overrides',
     linkOverrides: 'hg_link_overrides',
     videoOverrides: 'hg_video_overrides'
   };
@@ -109,9 +89,6 @@ window.HiddenGemsApp = (() => {
   }
 
   const storage = {
-    getPoints() { return Number(localStorage.getItem(KEYS.points) || '0'); },
-    setPoints(value) { localStorage.setItem(KEYS.points, String(Math.max(0, Number(value) || 0))); },
-    addPoints(amount) { const total = this.getPoints() + Math.max(0, Number(amount) || 0); this.setPoints(total); return total; },
     getUnlocked() { return readJson(KEYS.unlocked, []); },
     unlock(id) { const items = this.getUnlocked(); if (!items.includes(id)) { items.push(id); writeJson(KEYS.unlocked, items); } },
     isUnlocked(id) { return this.getUnlocked().includes(id); },
@@ -149,8 +126,6 @@ window.HiddenGemsApp = (() => {
       writeJson(KEYS.roleOverrides, map);
     },
     getRoleOverride(email) { return this.getRoleOverrides()[String(email || '').trim().toLowerCase()] || null; },
-    getPointsOverrides() { return readJson(KEYS.pointsOverrides, {}); },
-    setVideoPoints(id, points) { const map = this.getPointsOverrides(); map[id] = Number(points) || 0; writeJson(KEYS.pointsOverrides, map); },
     getLinkOverrides() { return readJson(KEYS.linkOverrides, {}); },
     setVideoLink(id, url) { const map = this.getLinkOverrides(); map[id] = String(url || '').trim(); writeJson(KEYS.linkOverrides, map); },
     getVideoOverrides() { return readJson(KEYS.videoOverrides, {}); },
@@ -176,8 +151,8 @@ window.HiddenGemsApp = (() => {
     return parts.slice(0, 2).map((part) => part[0].toUpperCase()).join('');
   }
 
-  function moneyFromPoints(points) { return '$' + (Number(points || 0) / 100).toFixed(2).replace('.00', ''); }
-  function moneyLabelFromVideo(video) { return moneyFromPoints(Number(video?.points || 0)); }
+  function moneyFromCents(cents) { return '$' + (Number(cents || 0) / 100).toFixed(2).replace('.00', ''); }
+  function moneyLabelFromVideo(video) { return moneyFromCents(Number((video?.priceCents ?? video?.points) || 0)); }
   function qs(name) { return new URLSearchParams(window.location.search).get(name); }
   function currentPageKey() { const page = (location.pathname.split('/').pop() || 'index.html').toLowerCase(); return !page || page === 'index.html' ? 'home' : page.replace(/\.html$/, ''); }
   function escapeHtml(value) { return String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]); }
@@ -238,7 +213,7 @@ window.HiddenGemsApp = (() => {
           id: item[0],
           title: item[1],
           description: item[2],
-          points: item[3],
+          priceCents: item[3],
           image: item[4],
           videoUrl: item[5] || '',
           access: item[6],
@@ -267,7 +242,7 @@ window.HiddenGemsApp = (() => {
       categoryTitle: String(base.categoryTitle || '').trim(),
       category: String(base.category || base.categoryTitle || '').trim(),
       access: String(base.access || 'guest').trim().toLowerCase() === 'vip' ? 'vip' : 'guest',
-      points: Math.max(0, Number(base.points) || 0),
+      priceCents: Math.max(0, Number((base.priceCents ?? base.points) || 0)),
       previewImageEnabled: base.previewImageEnabled !== false,
       previewVideoEnabled: !!base.previewVideoEnabled,
       previewImage: String(base.previewImage || '').trim(),
@@ -377,7 +352,7 @@ window.HiddenGemsApp = (() => {
     return `<div class="space-y-4"><div class="relative overflow-hidden rounded-2xl border border-white/10 bg-black"><img src="${escapeHtml(image || './assets/hidden-gems-logo.png')}" alt="${escapeHtml(title || 'Preview image')}" class="h-[420px] w-full object-cover" /><div class="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent"></div><div class="pointer-events-none absolute inset-0 flex items-center justify-center"><img src="./assets/hidden-gems-logo.png" alt="Hidden Gems watermark" class="max-h-32 w-auto opacity-20 select-none" /></div><div class="absolute bottom-4 left-4 rounded-full border border-white/10 bg-black/60 px-3 py-1 text-xs uppercase tracking-[0.2em] text-pink-200">Still Preview</div></div>${caption ? `<p class="text-sm text-neutral-400">${caption}</p>` : ''}</div>`;
   }
 
-  function redirectToPayPal(url = PAYPAL_POINTS_URL) {
+  function redirectToPayPal(url = PAYPAL_VIP_URL) {
     const target = String(url || '').trim();
     if (!target || target.includes('REPLACE_WITH')) {
       toast('Add your live PayPal link in config.js before using checkout.', 'error');
@@ -421,7 +396,7 @@ window.HiddenGemsApp = (() => {
           video_id: String(video.id),
           role_at_purchase: currentState?.role || 'guest',
           title_snapshot: video.title || '',
-          points_spent: Number(video.points || 0),
+          amount_paid_cents: Number((video.priceCents ?? video.points) || 0),
           created_at: new Date().toISOString()
         };
         const result = await supabase.from('hg_video_purchases').upsert(payload, { onConflict: 'user_id,video_id' });
@@ -481,14 +456,14 @@ window.HiddenGemsApp = (() => {
 
   async function getProfile() {
     const user = await getSessionUser();
-    if (!user) return { email: '', is_vip: false, points_balance: 0, role: 'guest' };
+    if (!user) return { email: '', is_vip: false, role: 'guest' };
     const email = user.email || '';
     const cached = storage.getCachedProfile(email) || {};
-    const profile = { email, is_vip: false, points_balance: 0, role: 'guest', ...cached };
+    const profile = { email, is_vip: false, role: 'guest', ...cached };
     const supabase = getSupabaseClient();
     if (!supabase) return profile;
     try {
-      const result = await supabase.from('profiles').select('email, is_vip, points_balance, role').eq('id', user.id).maybeSingle();
+      const result = await supabase.from('profiles').select('email, is_vip, role').eq('id', user.id).maybeSingle();
       if (result?.data) {
         const merged = { ...profile, ...result.data, email: result.data.email || email };
         storage.cacheProfile(email, merged);
@@ -535,7 +510,7 @@ window.HiddenGemsApp = (() => {
       categoryTitle,
       category: categoryTitle,
       access: String(row.access_type || row.access || 'guest').toLowerCase() === 'vip' ? 'vip' : 'guest',
-      points: Number(row.points ?? row.sort_order ?? 0),
+      priceCents: Number(row.price_cents ?? row.points ?? row.sort_order ?? 0),
       isPublished: published,
       isCustom: true,
       videoStoragePath: row.video_storage_path || '',
@@ -643,7 +618,7 @@ window.HiddenGemsApp = (() => {
       category_slug: item.categorySlug,
       category_title: resolvedCategoryTitle,
       access_type: item.access,
-      points: Number(item.points || 0),
+      price_cents: Number((item.priceCents ?? item.points) || 0),
       video_storage_path: item.videoStoragePath || null,
       preview_image_enabled: item.previewImageEnabled !== false,
       preview_video_enabled: !!item.previewVideoEnabled,
@@ -679,13 +654,7 @@ window.HiddenGemsApp = (() => {
     const profile = await getProfile();
     const email = profile.email || user?.email || '';
     const role = getRoleForEmail(email, profile);
-    const walletPoints = user ? Number(profile.points_balance || 0) : storage.getPoints();
-    return { user, profile: { ...profile, email }, email, role, localPoints: walletPoints, unlocked: storage.getUnlocked(), totalPoints: walletPoints, legacyLocalPoints: storage.getPoints() };
-  }
-
-
-  function getPointPackById(packId) {
-    return POINTS_PACKS.find((pack) => String(pack.id) === String(packId)) || null;
+    return { user, profile: { ...profile, email }, email, role, unlocked: storage.getUnlocked() };
   }
 
   function hasConfiguredPaymentFunction() {
@@ -710,23 +679,16 @@ window.HiddenGemsApp = (() => {
 
   async function updateCurrentUserProfile(patch = {}) {
     const user = await getSessionUser();
-    if (!user?.id || !user?.email) throw new Error('Please sign in before purchasing points or VIP.');
+    if (!user?.id || !user?.email) throw new Error('Please sign in before updating your account.');
     const email = String(user.email || '').trim().toLowerCase();
-    const cached = storage.getCachedProfile(email) || { email, points_balance: 0, is_vip: false, role: 'guest' };
+    const cached = storage.getCachedProfile(email) || { email, is_vip: false, role: 'guest' };
     const next = { ...cached, ...patch, email };
-    if (typeof next.points_balance !== 'undefined') next.points_balance = Math.max(0, Number(next.points_balance) || 0);
     if (typeof next.is_vip !== 'undefined' && next.role !== 'admin') next.role = next.is_vip ? 'vip' : 'guest';
     storage.cacheProfile(email, next);
     const supabase = getSupabaseClient();
     if (supabase) {
-      const payload = {
-        id: user.id,
-        email,
-        points_balance: Math.max(0, Number(next.points_balance || 0)),
-        is_vip: !!next.is_vip,
-        role: next.role || (next.is_vip ? 'vip' : 'guest')
-      };
-      const result = await supabase.from('profiles').upsert(payload).select('email, is_vip, points_balance, role').single();
+      const payload = { id: user.id, email, is_vip: !!next.is_vip, role: next.role || (next.is_vip ? 'vip' : 'guest') };
+      const result = await supabase.from('profiles').upsert(payload).select('email, is_vip, role').single();
       if (result?.error) throw result.error;
       const merged = { ...next, ...(result.data || {}), email };
       storage.cacheProfile(email, merged);
@@ -735,24 +697,6 @@ window.HiddenGemsApp = (() => {
     }
     window.dispatchEvent(new CustomEvent('hg:state-changed'));
     return next;
-  }
-
-  async function deductWalletPointsForState(state, amount, label = 'Video unlock') {
-    const spend = Math.max(0, Number(amount) || 0);
-    const currentState = state || await getState();
-    if (currentState.user?.id && currentState.email) {
-      const current = Number(currentState.profile?.points_balance || 0);
-      if (current < spend) throw new Error(`You need ${spend - current} more points.`);
-      const updated = await updateCurrentUserProfile({ points_balance: current - spend });
-      storage.addTransaction({ type: 'unlock', label, amount: -spend, email: currentState.email || '', balance_after: Number(updated.points_balance || 0) });
-      return Number(updated.points_balance || 0);
-    }
-    const current = storage.getPoints();
-    if (current < spend) throw new Error(`You need ${spend - current} more points.`);
-    storage.setPoints(current - spend);
-    storage.addTransaction({ type: 'unlock', label, amount: -spend, email: currentState.email || '', balance_after: storage.getPoints() });
-    window.dispatchEvent(new CustomEvent('hg:state-changed'));
-    return storage.getPoints();
   }
 
   async function callPaypalPaymentFunction(payload) {
@@ -795,25 +739,6 @@ window.HiddenGemsApp = (() => {
     }
     return data;
   }
-
-  async function startPointsCheckout(packId) {
-    const pack = getPointPackById(packId);
-    if (!pack) throw new Error('That points package is not configured correctly.');
-    const state = await getState();
-    if (!state.user?.id || !state.email) throw new Error('Please sign in before buying points so the wallet can be credited to the right account.');
-    if (hasConfiguredPaymentFunction()) {
-      const result = await callPaypalPaymentFunction({ action: 'create', kind: 'points', packId: pack.id, siteUrl: SITE_URL || window.location.origin });
-      if (!result?.approvalUrl) throw new Error('PayPal did not return an approval URL for this package.');
-      window.location.href = result.approvalUrl;
-      return true;
-    }
-    const packageLink = PAYPAL_PACKAGE_LINKS[pack.id] || PAYPAL_POINTS_URL;
-    const target = String(packageLink || '').trim();
-    if (!target || target.includes('REPLACE_WITH')) throw new Error(`Add a real PayPal link for the ${pack.label} package in config.js.`);
-    window.open(target, '_blank', 'noopener,noreferrer');
-    return true;
-  }
-
   async function startVipCheckout() {
     const state = await getState();
     if (!state.user?.id || !state.email) throw new Error('Please sign in before buying VIP so the upgrade is applied to the right account.');
@@ -836,22 +761,22 @@ window.HiddenGemsApp = (() => {
     const packId = String(query.get('pack') || '').trim();
     if (!token) return { status: 'idle' };
     if (!hasConfiguredPaymentFunction()) {
-      throw new Error('The PayPal capture function is not configured yet, so automatic point/VIP fulfillment cannot complete.');
+      throw new Error('The PayPal capture function is not configured yet, so automatic purchase/VIP fulfillment cannot complete.');
     }
     const result = await callPaypalPaymentFunction({ action: 'capture', orderId: token, kind, packId });
     const state = await getState();
-    return { ...result, walletPoints: state.totalPoints, role: state.role };
+    return { ...result, role: state.role };
   }
 
   async function syncVipForCurrentUser(isVip) {
     const user = await getSessionUser();
     if (!user?.email) return false;
     const email = user.email;
-    const cached = storage.getCachedProfile(email) || { email, points_balance: 0 };
+    const cached = storage.getCachedProfile(email) || { email, is_vip: false, role: 'guest' };
     storage.cacheProfile(email, { ...cached, email, is_vip: !!isVip });
     const supabase = getSupabaseClient();
     if (supabase) {
-      try { await supabase.from('profiles').upsert({ id: user.id, email, is_vip: !!isVip, points_balance: Number(cached.points_balance || 0), role: isVip ? 'vip' : (cached.role || 'guest') }); } catch (error) {}
+      try { await supabase.from('profiles').upsert({ id: user.id, email, is_vip: !!isVip, role: isVip ? 'vip' : (cached.role || 'guest') }); } catch (error) {}
     }
     window.dispatchEvent(new CustomEvent('hg:state-changed'));
     return true;
@@ -956,7 +881,7 @@ window.HiddenGemsApp = (() => {
           <nav class="hidden gap-6 text-sm text-neutral-300 md:flex">
             <a data-nav-link="home" href="index.html" class="transition hover:text-pink-300">Home</a>
             <a data-nav-link="new-releases" href="index.html#categories" class="transition hover:text-pink-300">Categories</a>
-            <a data-nav-link="points-store" href="points-store.html" class="transition hover:text-pink-300">Pricing</a>
+            <a data-nav-link="points-store" href="points-store.html" class="transition hover:text-pink-300">Pricing & Access</a>
             <a data-nav-link="vip-exclusives" href="vip-exclusives.html" class="transition hover:text-pink-300">VIP</a>
             <a data-nav-link="my-library" href="my-library.html" class="transition hover:text-pink-300">Library</a><a data-nav-link="all-videos" href="all-videos.html" class="transition hover:text-pink-300">All Videos</a>
           </nav>
@@ -969,7 +894,7 @@ window.HiddenGemsApp = (() => {
           <div class="flex flex-col gap-4 text-sm text-neutral-300">
             <a href="index.html">Home</a>
             <a href="index.html#categories">Categories</a>
-            <a href="points-store.html">Pricing</a>
+            <a href="points-store.html">Pricing & Access</a>
             <a href="vip-exclusives.html">VIP</a>
             <a href="my-library.html">Library</a><a href="all-videos.html">All Videos</a>
             <div id="mobile-auth-slot" class="mt-2 flex flex-col gap-3 border-t border-white/10 pt-4"></div>
@@ -985,7 +910,7 @@ window.HiddenGemsApp = (() => {
   function authButtonsMarkup() { return `<a href="login.html" class="rounded-xl border border-white/15 px-4 py-2 text-sm text-white transition hover:bg-white/5">Log In</a><a href="signup.html" class="rounded-xl bg-pink-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-pink-500/20 transition hover:bg-pink-400">Sign Up</a>`; }
 
   function desktopAccountMarkup(state) {
-    return `<a href="points-store.html" class="hidden rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-neutral-200 xl:inline-flex">Pricing</a><div class="relative"><button id="account-menu-button" class="flex items-center gap-3 rounded-full border border-white/10 bg-white/5 py-1.5 pl-1.5 pr-3 text-left text-white transition hover:border-pink-400/30 hover:bg-white/10"><span class="flex h-10 w-10 items-center justify-center rounded-full bg-pink-500/20 text-sm font-bold text-pink-300">${initialsFromEmail(state.email)}</span><span class="hidden max-w-[160px] truncate text-sm font-medium xl:block">${escapeHtml(state.email)}</span><svg class="h-4 w-4 text-neutral-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.512a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg></button><div id="account-menu-dropdown" class="hidden absolute right-0 top-[calc(100%+12px)] z-50 w-72 overflow-hidden rounded-[1.5rem] border border-white/10 bg-neutral-950/95 p-2 shadow-2xl shadow-black/60"><div class="rounded-[1.25rem] border border-white/5 bg-white/[0.03] p-4"><div class="flex items-start justify-between gap-3"><div><p class="truncate text-sm font-semibold text-white">${escapeHtml(state.email)}</p><p class="mt-1 text-xs text-neutral-400">Signed in to ${BRAND_NAME}</p></div>${roleBadge(state.role)}</div><div class="mt-4 grid grid-cols-2 gap-3 text-xs"><div class="rounded-2xl bg-white/[0.04] px-3 py-3"><p class="uppercase tracking-[0.2em] text-neutral-500">Account</p><p class="mt-1 text-base font-bold text-white">${state.email ? 'Active' : 'Guest'}</p></div><div class="rounded-2xl bg-white/[0.04] px-3 py-3"><p class="uppercase tracking-[0.2em] text-neutral-500">Access</p><p class="mt-1 text-base font-bold text-white">${state.role}</p></div></div></div><div class="mt-2 grid gap-1"><a href="index.html" class="rounded-xl px-4 py-3 text-sm text-neutral-200 transition hover:bg-white/5">Home</a><a href="account.html" class="rounded-xl px-4 py-3 text-sm text-neutral-200 transition hover:bg-white/5">Your Account</a><a href="my-library.html" class="rounded-xl px-4 py-3 text-sm text-neutral-200 transition hover:bg-white/5">My Library</a><a href="points-store.html" class="rounded-xl px-4 py-3 text-sm text-neutral-200 transition hover:bg-white/5">Pricing & Access</a><a href="vip-checkout.html" class="rounded-xl px-4 py-3 text-sm text-neutral-200 transition hover:bg-white/5">VIP Checkout</a>${state.role === 'admin' ? '<a href="admin.html" class="rounded-xl px-4 py-3 text-sm text-amber-200 transition hover:bg-amber-500/10">Admin Portal</a>' : ''}<button id="logout-button-menu" class="rounded-xl px-4 py-3 text-left text-sm text-rose-200 transition hover:bg-rose-500/10">Log Out</button></div></div></div>`;
+    return `<a href="points-store.html" class="hidden rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-neutral-200 xl:inline-flex">Pricing & Access</a><div class="relative"><button id="account-menu-button" class="flex items-center gap-3 rounded-full border border-white/10 bg-white/5 py-1.5 pl-1.5 pr-3 text-left text-white transition hover:border-pink-400/30 hover:bg-white/10"><span class="flex h-10 w-10 items-center justify-center rounded-full bg-pink-500/20 text-sm font-bold text-pink-300">${initialsFromEmail(state.email)}</span><span class="hidden max-w-[160px] truncate text-sm font-medium xl:block">${escapeHtml(state.email)}</span><svg class="h-4 w-4 text-neutral-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.512a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg></button><div id="account-menu-dropdown" class="hidden absolute right-0 top-[calc(100%+12px)] z-50 w-72 overflow-hidden rounded-[1.5rem] border border-white/10 bg-neutral-950/95 p-2 shadow-2xl shadow-black/60"><div class="rounded-[1.25rem] border border-white/5 bg-white/[0.03] p-4"><div class="flex items-start justify-between gap-3"><div><p class="truncate text-sm font-semibold text-white">${escapeHtml(state.email)}</p><p class="mt-1 text-xs text-neutral-400">Signed in to ${BRAND_NAME}</p></div>${roleBadge(state.role)}</div><div class="mt-4 grid grid-cols-2 gap-3 text-xs"><div class="rounded-2xl bg-white/[0.04] px-3 py-3"><p class="uppercase tracking-[0.2em] text-neutral-500">Account</p><p class="mt-1 text-base font-bold text-white">${state.email ? 'Active' : 'Guest'}</p></div><div class="rounded-2xl bg-white/[0.04] px-3 py-3"><p class="uppercase tracking-[0.2em] text-neutral-500">Access</p><p class="mt-1 text-base font-bold text-white">${state.role}</p></div></div></div><div class="mt-2 grid gap-1"><a href="index.html" class="rounded-xl px-4 py-3 text-sm text-neutral-200 transition hover:bg-white/5">Home</a><a href="account.html" class="rounded-xl px-4 py-3 text-sm text-neutral-200 transition hover:bg-white/5">Your Account</a><a href="my-library.html" class="rounded-xl px-4 py-3 text-sm text-neutral-200 transition hover:bg-white/5">My Library</a><a href="points-store.html" class="rounded-xl px-4 py-3 text-sm text-neutral-200 transition hover:bg-white/5">Pricing & Access</a><a href="vip-checkout.html" class="rounded-xl px-4 py-3 text-sm text-neutral-200 transition hover:bg-white/5">VIP Checkout</a>${state.role === 'admin' ? '<a href="admin.html" class="rounded-xl px-4 py-3 text-sm text-amber-200 transition hover:bg-amber-500/10">Admin Portal</a>' : ''}<button id="logout-button-menu" class="rounded-xl px-4 py-3 text-left text-sm text-rose-200 transition hover:bg-rose-500/10">Log Out</button></div></div></div>`;
   }
 
   function mobileAccountMarkup(state) {
@@ -1085,10 +1010,10 @@ window.HiddenGemsApp = (() => {
   function updateHomeStateUi(state) {
     syncLegacyHomeHeader(state);
     const access = document.getElementById('hero-access-text');
-    const points = document.getElementById('hero-points-balance');
+    const points = document.getElementById('hero-pricing-text');
     const status = document.getElementById('hero-vip-status');
     if (access) access.textContent = state.role === 'admin' ? 'Admin / All Access' : (state.role === 'vip' ? 'Guest + VIP' : 'Guest Access');
-    if (points) points.textContent = state.role === 'vip' ? 'VIP' : 'Direct';
+    if (points) points.textContent = '$3 / $5 / $7';
     if (status) status.textContent = state.role.charAt(0).toUpperCase() + state.role.slice(1);
 
     const categories = allCategories();
@@ -1121,7 +1046,7 @@ window.HiddenGemsApp = (() => {
       kind: 'video',
       videoId: String(video.id),
       title: String(video.title || 'Video access'),
-      amountCents: Number(video.points || 0),
+      amountCents: Number((video.priceCents ?? video.points) || 0),
       siteUrl: SITE_URL || window.location.origin
     });
     if (!result?.approvalUrl) throw new Error('PayPal did not return an approval URL for this video.');
@@ -1144,19 +1069,7 @@ window.HiddenGemsApp = (() => {
     });
   }
 
-  async function addPoints(amount, label) {
-    const state = await getState();
-    if (state.role !== 'admin') {
-      toast('Only admins can manually grant points. Guest and VIP points should come from the payment flow.', 'error');
-      return false;
-    }
-    const total = storage.addPoints(amount);
-    storage.addTransaction({ type: 'points', label, amount, grantedBy: state.email || 'admin' });
-    toast(`${amount} points added. Wallet: ${total} pts`, 'success');
-    window.dispatchEvent(new CustomEvent('hg:state-changed'));
-    return true;
-  }
-
+  
   function videoPrimaryAction(state, video) {
     if (!canAccessVideo(state.role, video)) return { text: 'Join VIP', href: 'vip-checkout.html', kind: 'link' };
     if (state.role === 'admin' || state.role === 'vip' || storage.isUnlocked(video.id)) return { text: video.videoUrl ? 'Watch Now' : 'Open Video', href: `video.html?id=${video.id}`, kind: 'link' };
@@ -1178,14 +1091,14 @@ window.HiddenGemsApp = (() => {
 
   function renderCategoryPage(slug) {
     applyBg();
-    document.body.innerHTML = shellHeader() + `<main><section class="mx-auto max-w-7xl px-6 py-16"><a href="index.html" class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-300 transition hover:bg-white/10">← Back to Home</a><div id="category-hero" class="mt-8 rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"></div></section><section class="mx-auto max-w-7xl px-6 pb-20"><div id="wallet-summary" class="mb-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300">Loading wallet...</div><div id="category-grid" class="grid gap-6 md:grid-cols-2 xl:grid-cols-3"></div></section></main>` + shellFooter();
+    document.body.innerHTML = shellHeader() + `<main><section class="mx-auto max-w-7xl px-6 py-16"><a href="index.html" class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-300 transition hover:bg-white/10">← Back to Home</a><div id="category-hero" class="mt-8 rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"></div></section><section class="mx-auto max-w-7xl px-6 pb-20"><div id="access-summary" class="mb-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300">Loading access details...</div><div id="category-grid" class="grid gap-6 md:grid-cols-2 xl:grid-cols-3"></div></section></main>` + shellFooter();
     bindCommonUi();
     const mount = async () => {
       await refreshSupabaseVideos(true);
       const category = getCategory(slug); if (!category) return;
       document.getElementById('category-hero').innerHTML = `<div class="flex flex-wrap items-start justify-between gap-6"><div><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Category</p><h2 class="mt-3 text-4xl font-black">${escapeHtml(category.title)}</h2><p class="mt-4 max-w-2xl text-neutral-300">${escapeHtml(category.subtitle || 'Premium titles ready to unlock.')}</p></div><div class="rounded-2xl border border-white/10 bg-black/20 px-5 py-4 text-right"><p class="text-xs uppercase tracking-[0.25em] text-neutral-400">Access tier</p><p class="mt-2 text-2xl font-bold text-white">${category.vip ? 'VIP' : 'Guest'}</p><p class="mt-3 text-xs uppercase tracking-[0.25em] text-neutral-400">Videos in category</p><p class="mt-2 text-2xl font-bold text-white">${category.videos.length}</p><p class="text-sm text-neutral-400">Admin can access everything</p></div></div>`;
       const state = await getState();
-      document.getElementById('wallet-summary').innerHTML = `Role: <span class="font-bold text-pink-300">${state.role}</span> · Purchases unlock per video · Signed in: <span class="font-bold text-white">${state.email || 'No'}</span>`;
+      document.getElementById('access-summary').innerHTML = `Role: <span class="font-bold text-pink-300">${state.role}</span> · Purchases unlock per video · Signed in: <span class="font-bold text-white">${state.email || 'No'}</span>`;
       renderVideoCards(document.getElementById('category-grid'), category.videos, state);
     };
     mount(); window.addEventListener('hg:state-changed', mount);
@@ -1276,7 +1189,7 @@ window.HiddenGemsApp = (() => {
 
   function renderPointsStore() {
     applyBg();
-    document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-7xl px-6 py-14"><div class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Pricing & Access</p><h1 class="mt-3 text-4xl font-black">Buy videos directly with PayPal</h1><p class="mt-4 max-w-3xl text-neutral-300">Hidden Gems now uses direct purchases instead of wallet points. Standard videos unlock one-by-one at $3, $5, or $7. VIP stays separate at $20 and still unlocks the VIP vault plus download access.</p></div><div id="pricing-access-banner" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300">Loading account status...</div><div class="mt-10 grid gap-6 md:grid-cols-3"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-neutral-400">Standard unlock</p><p class="mt-4 text-5xl font-black">$3</p><p class="mt-3 text-neutral-300">Fast access for entry-priced videos.</p></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-neutral-400">Standard unlock</p><p class="mt-4 text-5xl font-black">$5</p><p class="mt-3 text-neutral-300">Core tier for most regular purchases.</p></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-neutral-400">Premium unlock</p><p class="mt-4 text-5xl font-black">$7</p><p class="mt-3 text-neutral-300">Top-shelf direct access for premium titles.</p></div></div><div class="mt-10 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">How it works</p><ol class="mt-5 space-y-4 text-neutral-300"><li>1. Sign in to your Hidden Gems account.</li><li>2. Open any guest-access video and click <span class="font-semibold text-white">Buy Access</span>.</li><li>3. Complete PayPal checkout.</li><li>4. Hidden Gems unlocks that video for the same signed-in account after successful capture.</li></ol><div class="mt-6 flex flex-wrap gap-3"><a href="all-videos.html" class="rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white transition hover:bg-pink-400">Browse all videos</a><a href="vip-checkout.html" class="rounded-2xl border border-white/15 px-6 py-3 font-semibold text-white transition hover:bg-white/5">VIP checkout</a></div></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">VIP stays separate</p><p class="mt-4 text-neutral-300">VIP is still the only tier with VIP exclusives and download access. Direct video purchases do not include downloads.</p><a href="vip-checkout.html" class="mt-6 inline-flex rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Buy VIP for $20</a></div></div></main>` + shellFooter();
+    document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-7xl px-6 py-14"><div class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Pricing & Access</p><h1 class="mt-3 text-4xl font-black">Buy videos directly with PayPal</h1><p class="mt-4 max-w-3xl text-neutral-300">Hidden Gems now uses direct purchases instead of stored credits. Standard videos unlock one-by-one at $3, $5, or $7. VIP stays separate at $20 and still unlocks the VIP vault plus download access.</p></div><div id="pricing-access-banner" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300">Loading account status...</div><div class="mt-10 grid gap-6 md:grid-cols-3"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-neutral-400">Standard unlock</p><p class="mt-4 text-5xl font-black">$3</p><p class="mt-3 text-neutral-300">Fast access for entry-priced videos.</p></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-neutral-400">Standard unlock</p><p class="mt-4 text-5xl font-black">$5</p><p class="mt-3 text-neutral-300">Core tier for most regular purchases.</p></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-neutral-400">Premium unlock</p><p class="mt-4 text-5xl font-black">$7</p><p class="mt-3 text-neutral-300">Top-shelf direct access for premium titles.</p></div></div><div class="mt-10 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">How it works</p><ol class="mt-5 space-y-4 text-neutral-300"><li>1. Sign in to your Hidden Gems account.</li><li>2. Open any guest-access video and click <span class="font-semibold text-white">Buy Access</span>.</li><li>3. Complete PayPal checkout.</li><li>4. Hidden Gems unlocks that video for the same signed-in account after successful capture.</li></ol><div class="mt-6 flex flex-wrap gap-3"><a href="all-videos.html" class="rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white transition hover:bg-pink-400">Browse all videos</a><a href="vip-checkout.html" class="rounded-2xl border border-white/15 px-6 py-3 font-semibold text-white transition hover:bg-white/5">VIP checkout</a></div></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">VIP stays separate</p><p class="mt-4 text-neutral-300">VIP is still the only tier with VIP exclusives and download access. Direct video purchases do not include downloads.</p><a href="vip-checkout.html" class="mt-6 inline-flex rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Buy VIP for $20</a></div></div></main>` + shellFooter();
     bindCommonUi();
     const mount = async () => {
       const state = await getState();
@@ -1359,8 +1272,8 @@ window.HiddenGemsApp = (() => {
         visible.sort((a, b) => {
           if (sort === 'oldest') return String(a.id).localeCompare(String(b.id));
           if (sort === 'title') return a.title.localeCompare(b.title);
-          if (sort === 'price-low') return Number(a.points || 0) - Number(b.points || 0);
-          if (sort === 'price-high') return Number(b.points || 0) - Number(a.points || 0);
+          if (sort === 'price-low') return Number((a.priceCents ?? a.points) || 0) - Number((b.priceCents ?? b.points) || 0);
+          if (sort === 'price-high') return Number((b.priceCents ?? b.points) || 0) - Number((a.priceCents ?? a.points) || 0);
           return String(b.id).localeCompare(String(a.id));
         });
         document.getElementById('all-videos-summary').innerHTML = `Role: <span class="font-bold text-pink-300">${state.role}</span> · Visible videos: <span class="font-bold text-white">${visible.length}</span> · Categories: <span class="font-bold text-white">${categories.length}</span>`;
@@ -1384,7 +1297,7 @@ window.HiddenGemsApp = (() => {
       const gate = document.getElementById('admin-gate');
       if (state.role !== 'admin') { gate.innerHTML = `<div class="rounded-[2rem] border border-amber-400/30 bg-amber-500/10 p-8"><p class="text-sm uppercase tracking-[0.25em] text-amber-200">Admin only</p><h1 class="mt-3 text-4xl font-black">Access denied</h1><p class="mt-4 max-w-2xl text-neutral-200">Only accounts marked admin in your profile or listed in config.js can open this page.</p><a href="index.html" class="mt-6 inline-flex rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Back to Home</a></div>`; return; }
       const categories = Object.entries(allCategories()).map(([slug, category]) => `<option value="${slug}">${escapeHtml(category.title)}</option>`).join('');
-      gate.innerHTML = `<section class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Admin Portal</p><h1 class="mt-3 text-4xl font-black">Manage videos, pricing, files, and user roles</h1><p class="mt-4 max-w-3xl text-neutral-300">Manage live catalog content, assign access levels, and control the preview experience guests see after a purchase.</p><p class="mt-3 text-sm text-amber-200">Uploaded files use your configured storage path when available, with your existing workflow kept intact.</p></section><section class="mt-8 grid gap-8 xl:grid-cols-[1.05fr_0.95fr]"><div class="space-y-8"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><div class="flex flex-wrap items-center justify-between gap-3"><div><h2 class="text-2xl font-bold">Add or edit video</h2><p class="mt-2 text-sm text-neutral-400">Use a direct video file or a video link, then choose how restricted previews should appear for guests.</p></div><span id="admin-form-mode" class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.25em] text-neutral-300">Add mode</span></div><form id="admin-video-form" class="mt-6 grid gap-4 md:grid-cols-2"><input type="hidden" name="videoId" /><input type="hidden" name="isCustom" value="true" /><div class="md:col-span-2"><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Title</label><input required name="title" placeholder="Video title" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div class="md:col-span-2"><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Description</label><textarea required name="description" placeholder="Description" class="min-h-[120px] w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"></textarea></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Access type</label><select name="access" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"><option value="guest">Guest video</option><option value="vip">VIP video</option></select></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Price (cents)</label><input required type="number" min="0" name="points" placeholder="Price (cents)" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Category</label><select name="categorySlug" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white">${categories}</select></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Custom category title</label><input name="categoryTitle" placeholder="Optional custom category title" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div class="md:col-span-2 flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3"><input id="video-published" type="checkbox" name="isPublished" checked class="h-4 w-4 rounded border-white/20 bg-black/40 text-pink-500" /><label for="video-published" class="text-sm text-neutral-300">Published on site</label></div><div class="md:col-span-2 rounded-[1.5rem] border border-white/10 bg-black/20 p-4"><div class="grid gap-4 md:grid-cols-2"><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Thumbnail upload</label><input type="file" name="thumbnailFile" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Thumbnail URL fallback</label><input name="image" placeholder="Optional image URL" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div></div><div id="admin-thumbnail-preview" class="mt-4 hidden overflow-hidden rounded-2xl border border-white/10 bg-black/30"><img src="" alt="Thumbnail preview" class="h-48 w-full object-cover" /></div></div><div class="md:col-span-2 rounded-[1.5rem] border border-white/10 bg-black/20 p-4"><div class="grid gap-4 md:grid-cols-2"><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Video link</label><input name="videoUrl" placeholder="https://..." class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Video file upload</label><input type="file" name="videoFile" accept=".mp4,.webm,.mov,video/mp4,video/webm,video/quicktime" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div></div><p class="mt-3 text-sm text-neutral-400">Source priority: uploaded video file first, then video link.</p><div id="admin-video-source-note" class="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-neutral-300">No source selected yet.</div><div class="mt-4"><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">External file link (Mega / MediaFire)</label><input name="externalFileUrl" placeholder="https://mega.nz/... or https://mediafire.com/..." class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div></div><div class="md:col-span-2 rounded-[1.5rem] border border-white/10 bg-black/20 p-4"><div class="flex flex-wrap items-center gap-6"><label class="flex items-center gap-3 text-sm text-neutral-300"><input id="preview-image-enabled" type="checkbox" name="previewImageEnabled" checked class="h-4 w-4 rounded border-white/20 bg-black/40 text-pink-500" />Enable image preview</label><label class="flex items-center gap-3 text-sm text-neutral-300"><input id="preview-video-enabled" type="checkbox" name="previewVideoEnabled" class="h-4 w-4 rounded border-white/20 bg-black/40 text-pink-500" />Enable video preview assets</label></div><p class="mt-3 text-sm text-neutral-400">Guest purchases always show a still preview on-site. Use these fields to control the preview assets shown across restricted views.</p><div id="admin-preview-settings" class="mt-4 grid gap-4 md:grid-cols-2"><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Preview image upload</label><input type="file" name="previewImageFile" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Preview image URL</label><input name="previewImageUrl" placeholder="Optional preview image URL" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Preview video upload</label><input type="file" name="previewVideoFile" accept=".mp4,.webm,.mov,video/mp4,video/webm,video/quicktime" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Preview video URL</label><input name="previewVideoUrl" placeholder="Optional preview video URL" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div></div><div id="admin-preview-note" class="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-neutral-300">Guests currently fall back to a generated still preview when no custom preview asset is provided.</div></div><div class="md:col-span-2 flex flex-wrap gap-3"><button class="rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Save video</button><button type="button" id="admin-form-reset" class="rounded-2xl border border-white/15 px-6 py-3 font-semibold text-white">Clear form</button></div></form></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><div class="flex items-center justify-between gap-4"><div><h2 class="text-2xl font-bold">Manage saved videos</h2><p class="mt-2 text-sm text-neutral-400">Every saved video shows its access label, thumbnail preview, and edit/delete actions.</p></div><a href="index.html" class="rounded-xl border border-white/15 px-4 py-2 text-sm text-white">Back to site</a></div><div id="admin-video-list" class="mt-6 space-y-4"></div></div></div><div class="space-y-8"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">Role manager</h2><p class="mt-2 text-sm text-neutral-400">Use this to mark a user as guest, VIP, or admin on this site.</p><form id="admin-role-form" class="mt-6 space-y-4"><input required type="email" name="email" placeholder="user@example.com" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><select name="role" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"><option value="guest">Guest</option><option value="vip">VIP</option><option value="admin">Admin</option></select><button class="w-full rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Save role</button></form><div id="admin-role-list" class="mt-6 space-y-3"></div></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">Category manager</h2><p class="mt-2 text-sm text-neutral-400">Rename the front-end category labels without breaking the category slugs or links.</p><form id="admin-category-form" class="mt-6 space-y-4"></form></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">VIP quick actions</h2><p class="mt-2 text-sm text-neutral-400">Open the live VIP checkout page to confirm your customer-facing membership flow.</p><a href="vip-checkout.html" class="mt-4 inline-flex rounded-2xl border border-white/15 px-5 py-3 text-white">Open VIP Checkout Page</a></div></div></section>`;
+      gate.innerHTML = `<section class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Admin Portal</p><h1 class="mt-3 text-4xl font-black">Manage videos, pricing, files, and user roles</h1><p class="mt-4 max-w-3xl text-neutral-300">Manage live catalog content, assign access levels, and control the preview experience guests see after a purchase.</p><p class="mt-3 text-sm text-amber-200">Uploaded files use your configured storage path when available, with your existing workflow kept intact.</p></section><section class="mt-8 grid gap-8 xl:grid-cols-[1.05fr_0.95fr]"><div class="space-y-8"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><div class="flex flex-wrap items-center justify-between gap-3"><div><h2 class="text-2xl font-bold">Add or edit video</h2><p class="mt-2 text-sm text-neutral-400">Use a direct video file or a video link, then choose how restricted previews should appear for guests.</p></div><span id="admin-form-mode" class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.25em] text-neutral-300">Add mode</span></div><form id="admin-video-form" class="mt-6 grid gap-4 md:grid-cols-2"><input type="hidden" name="videoId" /><input type="hidden" name="isCustom" value="true" /><div class="md:col-span-2"><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Title</label><input required name="title" placeholder="Video title" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div class="md:col-span-2"><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Description</label><textarea required name="description" placeholder="Description" class="min-h-[120px] w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"></textarea></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Access type</label><select name="access" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"><option value="guest">Guest video</option><option value="vip">VIP video</option></select></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Price (cents)</label><input required type="number" min="0" name="priceCents" placeholder="Price (cents)" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Category</label><select name="categorySlug" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white">${categories}</select></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Custom category title</label><input name="categoryTitle" placeholder="Optional custom category title" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div class="md:col-span-2 flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3"><input id="video-published" type="checkbox" name="isPublished" checked class="h-4 w-4 rounded border-white/20 bg-black/40 text-pink-500" /><label for="video-published" class="text-sm text-neutral-300">Published on site</label></div><div class="md:col-span-2 rounded-[1.5rem] border border-white/10 bg-black/20 p-4"><div class="grid gap-4 md:grid-cols-2"><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Thumbnail upload</label><input type="file" name="thumbnailFile" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Thumbnail URL fallback</label><input name="image" placeholder="Optional image URL" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div></div><div id="admin-thumbnail-preview" class="mt-4 hidden overflow-hidden rounded-2xl border border-white/10 bg-black/30"><img src="" alt="Thumbnail preview" class="h-48 w-full object-cover" /></div></div><div class="md:col-span-2 rounded-[1.5rem] border border-white/10 bg-black/20 p-4"><div class="grid gap-4 md:grid-cols-2"><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Video link</label><input name="videoUrl" placeholder="https://..." class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Video file upload</label><input type="file" name="videoFile" accept=".mp4,.webm,.mov,video/mp4,video/webm,video/quicktime" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div></div><p class="mt-3 text-sm text-neutral-400">Source priority: uploaded video file first, then video link.</p><div id="admin-video-source-note" class="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-neutral-300">No source selected yet.</div><div class="mt-4"><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">External file link (Mega / MediaFire)</label><input name="externalFileUrl" placeholder="https://mega.nz/... or https://mediafire.com/..." class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div></div><div class="md:col-span-2 rounded-[1.5rem] border border-white/10 bg-black/20 p-4"><div class="flex flex-wrap items-center gap-6"><label class="flex items-center gap-3 text-sm text-neutral-300"><input id="preview-image-enabled" type="checkbox" name="previewImageEnabled" checked class="h-4 w-4 rounded border-white/20 bg-black/40 text-pink-500" />Enable image preview</label><label class="flex items-center gap-3 text-sm text-neutral-300"><input id="preview-video-enabled" type="checkbox" name="previewVideoEnabled" class="h-4 w-4 rounded border-white/20 bg-black/40 text-pink-500" />Enable video preview assets</label></div><p class="mt-3 text-sm text-neutral-400">Guest purchases always show a still preview on-site. Use these fields to control the preview assets shown across restricted views.</p><div id="admin-preview-settings" class="mt-4 grid gap-4 md:grid-cols-2"><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Preview image upload</label><input type="file" name="previewImageFile" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Preview image URL</label><input name="previewImageUrl" placeholder="Optional preview image URL" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Preview video upload</label><input type="file" name="previewVideoFile" accept=".mp4,.webm,.mov,video/mp4,video/webm,video/quicktime" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Preview video URL</label><input name="previewVideoUrl" placeholder="Optional preview video URL" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div></div><div id="admin-preview-note" class="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-neutral-300">Guests currently fall back to a generated still preview when no custom preview asset is provided.</div></div><div class="md:col-span-2 flex flex-wrap gap-3"><button class="rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Save video</button><button type="button" id="admin-form-reset" class="rounded-2xl border border-white/15 px-6 py-3 font-semibold text-white">Clear form</button></div></form></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><div class="flex items-center justify-between gap-4"><div><h2 class="text-2xl font-bold">Manage saved videos</h2><p class="mt-2 text-sm text-neutral-400">Every saved video shows its access label, thumbnail preview, and edit/delete actions.</p></div><a href="index.html" class="rounded-xl border border-white/15 px-4 py-2 text-sm text-white">Back to site</a></div><div id="admin-video-list" class="mt-6 space-y-4"></div></div></div><div class="space-y-8"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">Role manager</h2><p class="mt-2 text-sm text-neutral-400">Use this to mark a user as guest, VIP, or admin on this site.</p><form id="admin-role-form" class="mt-6 space-y-4"><input required type="email" name="email" placeholder="user@example.com" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><select name="role" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"><option value="guest">Guest</option><option value="vip">VIP</option><option value="admin">Admin</option></select><button class="w-full rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Save role</button></form><div id="admin-role-list" class="mt-6 space-y-3"></div></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">Category manager</h2><p class="mt-2 text-sm text-neutral-400">Rename the front-end category labels without breaking the category slugs or links.</p><form id="admin-category-form" class="mt-6 space-y-4"></form></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">VIP quick actions</h2><p class="mt-2 text-sm text-neutral-400">Open the live VIP checkout page to confirm your customer-facing membership flow.</p><a href="vip-checkout.html" class="mt-4 inline-flex rounded-2xl border border-white/15 px-5 py-3 text-white">Open VIP Checkout Page</a></div></div></section>`;
 
       const form = document.getElementById('admin-video-form');
       const modeBadge = document.getElementById('admin-form-mode');
@@ -1441,7 +1354,7 @@ window.HiddenGemsApp = (() => {
         form.elements.title.value = video.title || '';
         form.elements.description.value = video.description || '';
         form.elements.access.value = video.access === 'vip' ? 'vip' : 'guest';
-        form.elements.points.value = Number(video.points || 0);
+        form.elements.priceCents.value = Number((video.priceCents ?? video.points) || 0);
         form.elements.categorySlug.value = video.categorySlug || 'creator-picks';
         form.elements.categoryTitle.value = video.categoryTitle || '';
         form.elements.image.value = video.image || '';
@@ -1477,7 +1390,7 @@ window.HiddenGemsApp = (() => {
         form.elements.videoId.value = '';
         form.elements.isCustom.value = 'true';
         form.elements.access.value = 'guest';
-        form.elements.points.value = '0';
+        form.elements.priceCents.value = '0';
         if (form.elements.isPublished) form.elements.isPublished.checked = true;
         thumbnailData = '';
         videoData = '';
@@ -1557,7 +1470,7 @@ window.HiddenGemsApp = (() => {
           const source = getVideoSource(video);
           const accessClass = video.access === 'vip' ? 'border-pink-400/30 bg-pink-500/10 text-pink-200' : 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200';
           const publishClass = video.isPublished === false ? 'border-amber-400/30 bg-amber-500/10 text-amber-200' : 'border-sky-400/30 bg-sky-500/10 text-sky-200';
-          return `<div class="rounded-[1.75rem] border border-white/10 bg-neutral-900/80 p-4"><div class="grid gap-4 md:grid-cols-[180px_1fr]"><div class="overflow-hidden rounded-2xl border border-white/10 bg-black/30">${video.image ? `<img src="${escapeHtml(video.image)}" alt="${escapeHtml(video.title)}" class="h-40 w-full object-cover" />` : '<div class="flex h-40 items-center justify-center text-sm text-neutral-500">No thumbnail</div>'}</div><div><div class="flex flex-wrap items-start justify-between gap-3"><div><div class="flex flex-wrap items-center gap-2"><p class="text-lg font-semibold text-white">${escapeHtml(video.title)}</p><span class="rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${accessClass}">${video.access}</span><span class="rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${publishClass}">${video.isPublished === false ? 'draft' : 'published'}</span>${video.isCustom ? '<span class=\"rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-300\">Custom</span>' : '<span class=\"rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400\">Catalog</span>'}${video.previewImageEnabled !== false ? '<span class=\"rounded-full border border-sky-400/20 bg-sky-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-sky-200\">Image preview</span>' : ''}${video.previewVideoEnabled ? '<span class=\"rounded-full border border-fuchsia-400/20 bg-fuchsia-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-fuchsia-200\">Video preview asset</span>' : ''}</div><p class="mt-2 text-sm text-neutral-400">${escapeHtml(video.category)} · ${video.points} pts</p></div><div class="text-sm text-neutral-400">${source.type === 'file' ? 'Uploaded file' : source.type === 'link' ? 'Video link' : 'No source'}</div></div><p class="mt-3 text-sm text-neutral-300">${escapeHtml(video.description || 'No description added yet.')}</p>${video.externalFileUrl ? `<p class="mt-2 text-xs text-pink-200 break-all">External file link saved</p>` : ''}<div class="mt-4 flex flex-wrap gap-3"><button data-edit-video="${video.id}" class="rounded-xl bg-pink-500 px-4 py-2 text-sm font-semibold text-white">Edit</button><button data-delete-video="${video.id}" class="rounded-xl border border-rose-400/20 bg-rose-500/10 px-4 py-2 text-sm text-rose-200">Delete</button></div></div></div></div>`;
+          return `<div class="rounded-[1.75rem] border border-white/10 bg-neutral-900/80 p-4"><div class="grid gap-4 md:grid-cols-[180px_1fr]"><div class="overflow-hidden rounded-2xl border border-white/10 bg-black/30">${video.image ? `<img src="${escapeHtml(video.image)}" alt="${escapeHtml(video.title)}" class="h-40 w-full object-cover" />` : '<div class="flex h-40 items-center justify-center text-sm text-neutral-500">No thumbnail</div>'}</div><div><div class="flex flex-wrap items-start justify-between gap-3"><div><div class="flex flex-wrap items-center gap-2"><p class="text-lg font-semibold text-white">${escapeHtml(video.title)}</p><span class="rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${accessClass}">${video.access}</span><span class="rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${publishClass}">${video.isPublished === false ? 'draft' : 'published'}</span>${video.isCustom ? '<span class=\"rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-300\">Custom</span>' : '<span class=\"rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400\">Catalog</span>'}${video.previewImageEnabled !== false ? '<span class=\"rounded-full border border-sky-400/20 bg-sky-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-sky-200\">Image preview</span>' : ''}${video.previewVideoEnabled ? '<span class=\"rounded-full border border-fuchsia-400/20 bg-fuchsia-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-fuchsia-200\">Video preview asset</span>' : ''}</div><p class="mt-2 text-sm text-neutral-400">${escapeHtml(video.category)} · ${moneyLabelFromVideo(video)}</p></div><div class="text-sm text-neutral-400">${source.type === 'file' ? 'Uploaded file' : source.type === 'link' ? 'Video link' : 'No source'}</div></div><p class="mt-3 text-sm text-neutral-300">${escapeHtml(video.description || 'No description added yet.')}</p>${video.externalFileUrl ? `<p class="mt-2 text-xs text-pink-200 break-all">External file link saved</p>` : ''}<div class="mt-4 flex flex-wrap gap-3"><button data-edit-video="${video.id}" class="rounded-xl bg-pink-500 px-4 py-2 text-sm font-semibold text-white">Edit</button><button data-delete-video="${video.id}" class="rounded-xl border border-rose-400/20 bg-rose-500/10 px-4 py-2 text-sm text-rose-200">Delete</button></div></div></div></div>`;
         }).join('') : '<div class="rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-6 text-neutral-300">No videos found.</div>';
 
         document.querySelectorAll('[data-edit-video]').forEach((button) => button.addEventListener('click', () => {
@@ -1641,7 +1554,7 @@ window.HiddenGemsApp = (() => {
           categoryTitle: selectedCategoryTitle,
           category: selectedCategoryTitle,
           access: String(data.get('access') || 'guest').trim(),
-          points: Number(data.get('points') || 0),
+          priceCents: Number(data.get('priceCents') || 0),
           isPublished: !!form.elements.isPublished?.checked,
           isCustom,
           externalFileUrl: String(data.get('externalFileUrl') || '').trim(),
@@ -1719,7 +1632,7 @@ window.HiddenGemsApp = (() => {
               categorySlug: item.categorySlug,
               categoryTitle: item.categoryTitle,
               access: item.access,
-              points: item.points,
+              priceCents: item.priceCents,
               previewImageEnabled: item.previewImageEnabled,
               previewVideoEnabled: item.previewVideoEnabled,
               previewImage: item.previewImage,
@@ -1729,8 +1642,7 @@ window.HiddenGemsApp = (() => {
               previewVideoMimeType: item.previewVideoMimeType,
               previewVideoFileName: item.previewVideoFileName
             });
-            storage.setVideoPoints(id, item.points);
-            storage.setVideoLink(id, item.videoUrl);
+                        storage.setVideoLink(id, item.videoUrl);
           }
 
           await refreshSupabaseVideos(true);
@@ -1753,7 +1665,7 @@ window.HiddenGemsApp = (() => {
         const email = String(formData.get('email') || '').trim().toLowerCase();
         const role = String(formData.get('role') || 'guest').trim();
         storage.setRoleOverride(email, role);
-        const cached = storage.getCachedProfile(email) || { email, points_balance: 0, is_vip: false };
+        const cached = storage.getCachedProfile(email) || { email, is_vip: false, role: 'guest' };
         storage.cacheProfile(email, { ...cached, email, is_vip: role === 'vip' || role === 'admin', role });
         toast('Role saved.', 'success'); event.currentTarget.reset(); renderRoleList(); window.dispatchEvent(new CustomEvent('hg:state-changed'));
       });
@@ -1809,5 +1721,5 @@ window.HiddenGemsApp = (() => {
   }
 
   bindRealtimeSync();
-  return { storage, getState, getVideo, getCategory, allVideos, renderCategoryPage, renderVideoPage, renderPointsStore, renderVipCheckoutPage, renderLibraryPage, renderAllVideosPage, renderSimplePage, shellHeader, shellFooter, bindCommonUi, addPoints, initialsFromEmail, mountSharedHeader, refreshHeaderUi, signOutUser, syncVipForCurrentUser, canAccessVideo, initVipCheckoutPage, startPointsCheckout, startVipCheckout, startVideoCheckout, finalizeCheckoutFromUrl, updateCurrentUserProfile };
+  return { storage, getState, getVideo, getCategory, allVideos, renderCategoryPage, renderVideoPage, renderPointsStore, renderVipCheckoutPage, renderLibraryPage, renderAllVideosPage, renderSimplePage, shellHeader, shellFooter, bindCommonUi, initialsFromEmail, mountSharedHeader, refreshHeaderUi, signOutUser, syncVipForCurrentUser, canAccessVideo, initVipCheckoutPage, startVipCheckout, startVideoCheckout, finalizeCheckoutFromUrl, updateCurrentUserProfile };
 })();
