@@ -57,7 +57,10 @@ Deno.serve(async (req) => {
     const videoId = String(body?.videoId || "").trim();
     const title = String(body?.title || "").trim();
     const amountCents = Math.max(0, Number(body?.amountCents || 0) || 0);
-    const siteUrl = (Deno.env.get("SITE_URL") || `${new URL(req.url).origin}`).replace(/\/$/, "");
+    const requestedSiteUrl = String(body?.siteUrl || "").trim();
+    const envSiteUrl = String(Deno.env.get("SITE_URL") || "").trim();
+    const fallbackSiteUrl = `${new URL(req.url).origin}`;
+    const siteUrl = (requestedSiteUrl || envSiteUrl || fallbackSiteUrl).replace(/\/$/, "");
     const { accessToken, baseUrl } = await getPaypalAccessToken();
 
     if (action === "create") {

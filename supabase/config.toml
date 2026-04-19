@@ -1,0 +1,4 @@
+project_id = "netolzyxnifogojwwesq"
+
+[functions.hg-paypal-checkout]
+verify_jwt = false

@@ -184,10 +184,7 @@
             console.log('PROFILE UPSERT RESULT:', { profileError });
 
             if (profileError) {
-              showMessage(profileError.message, 'error');
-              submitBtn.disabled = false;
-              submitBtn.textContent = 'Create account';
-              return;
+              console.warn('Profile upsert warning:', profileError);
             }
           }
 
