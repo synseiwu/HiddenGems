@@ -8,9 +8,13 @@
       default: 'https://www.paypal.com/ncp/payment/TH74PFXUPCR2N',
       vip: 'https://www.paypal.com/ncp/payment/TH74PFXUPCR2N'
     },
+    stripeLinks: {
+      defaultVideo: 'https://buy.stripe.com/test_14A8wP3d24yj0Xa0143Ru00'
+    },
     payment: {
-      provider: 'paypal',
-      edgeFunctionUrl: 'https://netolzyxnifogojwwesq.supabase.co/functions/v1/hg-paypal-checkout'
+      provider: 'stripe-link',
+      stripeVideoLink: 'https://buy.stripe.com/test_14A8wP3d24yj0Xa0143Ru00',
+      edgeFunctionUrl: ''
     },
     adminEmails: ['hayzerxsloth@gmail.com'],
     auth: {

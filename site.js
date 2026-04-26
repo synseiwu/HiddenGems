@@ -13,6 +13,7 @@ window.HiddenGemsApp = (() => {
   const PAYPAL_VIP_URL = (APP_CONFIG.paypalLinks && (APP_CONFIG.paypalLinks.vip || APP_CONFIG.paypalLinks.default)) || 'https://www.paypal.com/ncp/payment/TH74PFXUPCR2N';
   const SITE_URL = APP_CONFIG.siteUrl || window.location.origin;
   const PAYMENT_CONFIG = APP_CONFIG.payment || {};
+  const STRIPE_VIDEO_PAYMENT_LINK = (PAYMENT_CONFIG.stripeVideoLink || (APP_CONFIG.stripeLinks && (APP_CONFIG.stripeLinks.defaultVideo || APP_CONFIG.stripeLinks.video)) || '').trim();
   const PAYPAL_FUNCTION_URL = String(PAYMENT_CONFIG.edgeFunctionUrl || '').trim();
 
   const KEYS = {
@@ -372,26 +373,12 @@ window.HiddenGemsApp = (() => {
 
 
   async function getPurchasedVideoIds(state = null) {
+    // Stripe Payment Link mode: purchase unlocks are stored locally after the success redirect.
+    // This intentionally avoids Supabase purchase lookups, which were causing invalid JWT checkout errors.
     const currentState = state || await getState();
     const email = String(currentState?.email || '').trim().toLowerCase();
     const localIds = email ? storage.getUserUnlocked(email) : storage.getUnlocked();
-    const merged = new Set(Array.isArray(localIds) ? localIds : []);
-    if (currentState?.role === 'vip' || currentState?.role === 'admin') return [...merged];
-    const supabase = getSupabaseClient();
-    const user = currentState?.user || await getSessionUser();
-    if (supabase && user) {
-      try {
-        const result = await supabase.from('hg_video_purchases').select('video_id').eq('user_id', user.id);
-        (Array.isArray(result?.data) ? result.data : []).forEach((row) => { if (row?.video_id) merged.add(String(row.video_id)); });
-      } catch (error) {
-        if (isInvalidJwtError(error)) {
-          await resetSupabaseSession(extractErrorMessage(error, 'Invalid JWT'));
-        } else {
-          console.error('Failed to load purchases', error);
-        }
-      }
-    }
-    return [...merged];
+    return Array.isArray(localIds) ? localIds : [];
   }
 
   async function unlockVideoForState(state, video) {
@@ -784,7 +771,7 @@ window.HiddenGemsApp = (() => {
 
     if (!response.ok) {
       const details = data && typeof data === 'object' ? (data.error || data.message || data.details || '') : '';
-      throw new Error(String(details || `PayPal checkout service error (${response.status}).`).trim());
+      throw new Error(String(details || `Stripe checkout service error (${response.status}).`).trim());
     }
     return data;
   }
@@ -1085,37 +1072,63 @@ window.HiddenGemsApp = (() => {
     }
   }
 
+  function buildStripeVideoCheckoutUrl(video, state = {}) {
+    const base = String(STRIPE_VIDEO_PAYMENT_LINK || '').trim();
+    if (!base || base.includes('REPLACE_WITH')) throw new Error('Add your Stripe payment link in config.js first.');
+    const params = new URLSearchParams();
+    params.set('client_reference_id', String(video?.id || 'video'));
+    if (state?.email) params.set('prefilled_email', String(state.email));
+    const joiner = base.includes('?') ? '&' : '?';
+    return base + joiner + params.toString();
+  }
+
+  function savePendingStripeVideo(video, state = {}) {
+    const pending = {
+      id: String(video?.id || ''),
+      title: String(video?.title || 'Purchased video'),
+      amountCents: normalizePriceCents(video?.priceCents),
+      email: String(state?.email || '').trim().toLowerCase(),
+      createdAt: new Date().toISOString()
+    };
+    writeJson('hg_pending_stripe_video', pending);
+    return pending;
+  }
+
+  async function finalizeStripeVideoCheckoutFromLocalStorage() {
+    const query = new URLSearchParams(window.location.search || '');
+    const queryVideoId = String(query.get('video') || query.get('id') || '').trim();
+    const pending = readJson('hg_pending_stripe_video', {});
+    const videoId = queryVideoId || String(pending?.id || '').trim();
+    if (!videoId) return { status: 'idle' };
+    const video = getVideo(videoId) || { id: videoId, title: pending?.title || 'Purchased video' };
+    let state = { email: pending?.email || '', role: 'guest' };
+    try { state = await getState(); } catch (_) {}
+    if (state?.email) storage.unlockForUser(state.email, videoId); else storage.unlock(videoId);
+    storage.addTransaction({ type: 'stripe-video', videoId, title: video.title || pending?.title || 'Purchased video', amountCents: pending?.amountCents || normalizePriceCents(video.priceCents) });
+    try { window.localStorage.removeItem('hg_pending_stripe_video'); } catch (_) {}
+    window.dispatchEvent(new CustomEvent('hg:state-changed'));
+    return { status: 'complete', videoUnlocked: true, title: video.title || pending?.title || '', videoId };
+  }
+
   async function startVideoCheckout(video) {
     if (!video?.id) throw new Error('That video is not configured correctly yet.');
-    const state = await getState();
-    if (!state.user?.id || !state.email) throw new Error('Please sign in before buying access so the purchase can be attached to the right account.');
-    if (!hasConfiguredPaymentFunction()) throw new Error('The PayPal payment function is not configured in config.js.');
-    const result = await callPaypalPaymentFunction({
-      action: 'create',
-      kind: 'video',
-      videoId: String(video.id),
-      title: String(video.title || 'Video access'),
-      amountCents: normalizePriceCents(video.priceCents),
-      siteUrl: SITE_URL || window.location.origin
-    });
-    if (!result?.approvalUrl) throw new Error('PayPal did not return an approval URL for this video.');
-    window.location.href = result.approvalUrl;
+    let state = {};
+    try { state = await getState(); } catch (_) {}
+    savePendingStripeVideo(video, state);
+    window.location.href = buildStripeVideoCheckoutUrl(video, state);
     return true;
   }
 
   function buyVideo(video) {
     if (!video) return;
-    getState().then(async (state) => {
-      if (video.access === 'vip' && state.role === 'guest') { toast('This title requires VIP access.', 'error'); return; }
-      const purchasedIds = new Set(await getPurchasedVideoIds(state));
-      if (state.role === 'vip' || state.role === 'admin') { await unlockVideoForState(state, video); window.dispatchEvent(new CustomEvent('hg:state-changed')); location.href = `video.html?id=${encodeURIComponent(video.id)}`; return; }
-      if (purchasedIds.has(String(video.id)) || storage.isUnlockedForUser(state.email, video.id)) { location.href = `video.html?id=${encodeURIComponent(video.id)}`; return; }
-      try {
-        await startVideoCheckout(video);
-      } catch (error) {
-        toast(extractErrorMessage(error, 'Unable to start video checkout right now.'), 'error');
-      }
-    });
+    if (video.access === 'vip') { window.location.href = 'vip-checkout.html'; return; }
+    if (storage.isUnlocked(video.id)) { window.location.href = `video.html?id=${encodeURIComponent(video.id)}`; return; }
+    try {
+      savePendingStripeVideo(video, {});
+      window.location.href = buildStripeVideoCheckoutUrl(video, {});
+    } catch (error) {
+      toast(extractErrorMessage(error, 'Unable to start Stripe checkout right now.'), 'error');
+    }
   }
 
   
@@ -1238,13 +1251,13 @@ window.HiddenGemsApp = (() => {
 
   function renderPointsStore() {
     applyBg();
-    document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-7xl px-6 py-14"><div class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Pricing & Access</p><h1 class="mt-3 text-4xl font-black">Buy videos directly with PayPal</h1><p class="mt-4 max-w-3xl text-neutral-300">Hidden Gems now uses direct purchases instead of stored credits. Standard videos unlock one-by-one at $3, $5, or $7. VIP stays separate at $20 and still unlocks the VIP vault plus download access.</p></div><div id="pricing-access-banner" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300">Loading account status...</div><div class="mt-10 rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Direct pricing</p><p class="mt-4 max-w-3xl text-neutral-300">Standard titles are priced individually inside the catalog. Customers only see the real video price on each listing instead of old package cards.</p></div><div class="mt-10 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">How it works</p><ol class="mt-5 space-y-4 text-neutral-300"><li>1. Sign in to your Hidden Gems account.</li><li>2. Open any guest-access video and click <span class="font-semibold text-white">Buy Access</span>.</li><li>3. Complete PayPal checkout.</li><li>4. Hidden Gems unlocks that video for the same signed-in account after successful capture.</li></ol><div class="mt-6 flex flex-wrap gap-3"><a href="all-videos.html" class="rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white transition hover:bg-pink-400">Browse all videos</a><a href="vip-checkout.html" class="rounded-2xl border border-white/15 px-6 py-3 font-semibold text-white transition hover:bg-white/5">VIP checkout</a></div></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">VIP stays separate</p><p class="mt-4 text-neutral-300">VIP is still the only tier with VIP exclusives and download access. Direct video purchases do not include downloads.</p><a href="vip-checkout.html" class="mt-6 inline-flex rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Buy VIP for $20</a></div></div></main>` + shellFooter();
+    document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-7xl px-6 py-14"><div class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Pricing & Access</p><h1 class="mt-3 text-4xl font-black">Buy videos directly with Stripe</h1><p class="mt-4 max-w-3xl text-neutral-300">Hidden Gems now uses direct purchases instead of stored credits. Standard videos unlock one-by-one at $3, $5, or $7. VIP stays separate at $20 and still unlocks the VIP vault plus download access.</p></div><div id="pricing-access-banner" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300">Loading account status...</div><div class="mt-10 rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Direct pricing</p><p class="mt-4 max-w-3xl text-neutral-300">Standard titles are priced individually inside the catalog. Customers only see the real video price on each listing instead of old package cards.</p></div><div class="mt-10 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">How it works</p><ol class="mt-5 space-y-4 text-neutral-300"><li>1. Sign in to your Hidden Gems account.</li><li>2. Open any guest-access video and click <span class="font-semibold text-white">Buy Access</span>.</li><li>3. Complete Stripe checkout.</li><li>4. Hidden Gems unlocks that video for the same signed-in account after successful capture.</li></ol><div class="mt-6 flex flex-wrap gap-3"><a href="all-videos.html" class="rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white transition hover:bg-pink-400">Browse all videos</a><a href="vip-checkout.html" class="rounded-2xl border border-white/15 px-6 py-3 font-semibold text-white transition hover:bg-white/5">VIP checkout</a></div></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">VIP stays separate</p><p class="mt-4 text-neutral-300">VIP is still the only tier with VIP exclusives and download access. Direct video purchases do not include downloads.</p><a href="vip-checkout.html" class="mt-6 inline-flex rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Buy VIP for $20</a></div></div></main>` + shellFooter();
     bindCommonUi();
     const mount = async () => {
       const state = await getState();
       const banner = document.getElementById('pricing-access-banner');
       if (!banner) return;
-      if (!state.user?.id) banner.innerHTML = 'Sign in before buying access so PayPal purchases can be attached to the correct Hidden Gems account.';
+      if (!state.user?.id) banner.innerHTML = 'Sign in before buying access so Stripe purchases can be attached to the correct Hidden Gems account.';
       else if (state.role === 'vip') banner.innerHTML = `Signed in: <span class="font-bold text-white">${state.email}</span> · Role: <span class="font-bold text-pink-300">VIP</span> · You already have full VIP access.`;
       else if (state.role === 'admin') banner.innerHTML = `Signed in: <span class="font-bold text-white">${state.email}</span> · Role: <span class="font-bold text-pink-300">admin</span> · Admin already bypasses paywalls and can open all videos.`;
       else banner.innerHTML = `Signed in: <span class="font-bold text-white">${state.email}</span> · Role: <span class="font-bold text-pink-300">guest</span> · Direct purchases unlock one video at a time for this account.`;
@@ -1770,5 +1783,5 @@ window.HiddenGemsApp = (() => {
   }
 
   bindRealtimeSync();
-  return { storage, getState, getVideo, getCategory, allVideos, renderCategoryPage, renderVideoPage, renderPointsStore, renderVipCheckoutPage, renderLibraryPage, renderAllVideosPage, renderSimplePage, shellHeader, shellFooter, bindCommonUi, initialsFromEmail, mountSharedHeader, refreshHeaderUi, signOutUser, syncVipForCurrentUser, canAccessVideo, initVipCheckoutPage, startVipCheckout, startVideoCheckout, finalizeCheckoutFromUrl, updateCurrentUserProfile, getSupabaseClient, resetSupabaseSession, getSessionUser };
+  return { storage, getState, getVideo, getCategory, allVideos, renderCategoryPage, renderVideoPage, renderPointsStore, renderVipCheckoutPage, renderLibraryPage, renderAllVideosPage, renderSimplePage, shellHeader, shellFooter, bindCommonUi, initialsFromEmail, mountSharedHeader, refreshHeaderUi, signOutUser, syncVipForCurrentUser, canAccessVideo, initVipCheckoutPage, startVipCheckout, startVideoCheckout, finalizeCheckoutFromUrl, finalizeStripeVideoCheckoutFromLocalStorage, updateCurrentUserProfile, getSupabaseClient, resetSupabaseSession, getSessionUser };
 })();
