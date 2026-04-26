@@ -9,11 +9,13 @@
       vip: 'https://www.paypal.com/ncp/payment/TH74PFXUPCR2N'
     },
     stripeLinks: {
-      defaultVideo: 'https://buy.stripe.com/test_14A8wP3d24yj0Xa0143Ru00'
+      defaultVideo: 'https://buy.stripe.com/test_14A8wP3d24yj0Xa0143Ru00',
+      vipSubscription: 'https://buy.stripe.com/test_6oUcN57ti0i35dqcNQ3Ru01'
     },
     payment: {
       provider: 'stripe-link',
       stripeVideoLink: 'https://buy.stripe.com/test_14A8wP3d24yj0Xa0143Ru00',
+      stripeVipSubscriptionLink: 'https://buy.stripe.com/test_6oUcN57ti0i35dqcNQ3Ru01',
       edgeFunctionUrl: ''
     },
     adminEmails: ['hayzerxsloth@gmail.com'],
