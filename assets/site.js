@@ -962,10 +962,17 @@ window.HiddenGemsApp = (() => {
     document.querySelectorAll('[data-nav-link]').forEach((link) => { if (link.dataset.navLink === currentPageKey()) link.classList.add('text-pink-300'); });
     const menuButton = document.getElementById('account-menu-button');
     const dropdown = document.getElementById('account-menu-dropdown');
-    if (menuButton && dropdown) {
+    if (menuButton && dropdown && menuButton.dataset.hgDropdownBound !== 'true') {
+      menuButton.dataset.hgDropdownBound = 'true';
       const close = () => dropdown.classList.add('hidden');
-      menuButton.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); dropdown.classList.toggle('hidden'); });
-      document.addEventListener('click', (event) => { if (!dropdown.contains(event.target) && !menuButton.contains(event.target)) close(); });
+      menuButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        dropdown.classList.toggle('hidden');
+      });
+      document.addEventListener('click', (event) => {
+        if (!dropdown.contains(event.target) && !menuButton.contains(event.target)) close();
+      });
       document.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });
     }
     document.getElementById('logout-button-menu')?.addEventListener('click', signOutUser);
@@ -989,8 +996,18 @@ window.HiddenGemsApp = (() => {
     if (avatar) avatar.textContent = initialsFromEmail(state.email);
     const dropdown = document.getElementById('account-dropdown');
     const button = document.getElementById('account-menu-button');
-    button?.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); dropdown?.classList.toggle('hidden'); });
-    document.addEventListener('click', (event) => { if (dropdown && button && !dropdown.contains(event.target) && !button.contains(event.target)) dropdown.classList.add('hidden'); });
+    if (button && dropdown && button.dataset.hgDropdownBound !== 'true') {
+      button.dataset.hgDropdownBound = 'true';
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        dropdown.classList.toggle('hidden');
+      });
+      document.addEventListener('click', (event) => {
+        if (!dropdown.contains(event.target) && !button.contains(event.target)) dropdown.classList.add('hidden');
+      });
+      document.addEventListener('keydown', (event) => { if (event.key === 'Escape') dropdown.classList.add('hidden'); });
+    }
     if (state.role === 'admin' && !document.getElementById('legacy-admin-link')) {
       const adminLink = document.createElement('a');
       adminLink.id = 'legacy-admin-link';

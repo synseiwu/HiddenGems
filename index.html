@@ -428,27 +428,8 @@
       applyVipLocks(!!profile.is_vip || normalizedRole === 'admin');
     }
 
-    if (accountMenuButton) {
-      accountMenuButton.addEventListener('click', () => {
-        accountDropdown.classList.toggle('hidden');
-      });
-    }
-
-    document.addEventListener('click', (event) => {
-      if (loggedInActions && !loggedInActions.contains(event.target)) {
-        accountDropdown.classList.add('hidden');
-      }
-    });
-
-    if (logoutButton) {
-      logoutButton.addEventListener('click', async () => {
-        try {
-          await window.HiddenGemsApp?.signOutUser?.();
-        } catch (_) {
-          window.location.href = 'index.html';
-        }
-      });
-    }
+    // Account dropdown and logout handlers are bound once by assets/site.js.
+    // This avoids double-toggle issues after login.
 
     async function syncHeaderState() {
       try {
@@ -474,6 +455,6 @@
 
     window.addEventListener('hg:state-changed', syncHeaderState);
     syncHeaderState();
-  </script>  </script>
+  </script>
 </body>
 </html>
