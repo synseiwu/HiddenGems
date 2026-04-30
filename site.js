@@ -25,7 +25,10 @@ window.HiddenGemsApp = (() => {
     roleOverrides: 'hg_role_overrides',
     profileCache: 'hg_profile_cache',
     linkOverrides: 'hg_link_overrides',
-    videoOverrides: 'hg_video_overrides'
+    videoOverrides: 'hg_video_overrides',
+    categoryNames: 'hg_category_names',
+    categoryMeta: 'hg_category_meta',
+    deletedCategories: 'hg_deleted_categories'
   };
 
   function readJson(key, fallback) {
@@ -136,13 +139,35 @@ window.HiddenGemsApp = (() => {
     cacheProfile(email, data) { if (!email) return; const map = readJson(KEYS.profileCache, {}); map[String(email).toLowerCase()] = data; writeJson(KEYS.profileCache, map); },
     getCachedProfile(email) { const map = readJson(KEYS.profileCache, {}); return map[String(email || '').toLowerCase()] || null; },
     getCategoryNameOverrides() { return readJson(KEYS.categoryNames, {}); },
+    getCategoryMeta() { return readJson(KEYS.categoryMeta, {}); },
+    setCategoryMeta(slug, data = {}) {
+      const key = String(slug || '').trim().toLowerCase();
+      if (!key) return;
+      const map = this.getCategoryMeta();
+      map[key] = { ...(map[key] || {}), ...data, slug: key };
+      writeJson(KEYS.categoryMeta, map);
+    },
+    removeCategoryMeta(slug) { const map = this.getCategoryMeta(); delete map[String(slug || '').trim().toLowerCase()]; writeJson(KEYS.categoryMeta, map); },
+    getDeletedCategories() { return readJson(KEYS.deletedCategories, []); },
+    markCategoryDeleted(slug) {
+      const key = String(slug || '').trim().toLowerCase();
+      if (!key || CATEGORY_ORDER.includes(key)) return;
+      const items = this.getDeletedCategories();
+      if (!items.includes(key)) items.push(key);
+      writeJson(KEYS.deletedCategories, items);
+    },
+    restoreCategory(slug) {
+      const key = String(slug || '').trim().toLowerCase();
+      writeJson(KEYS.deletedCategories, this.getDeletedCategories().filter((item) => item !== key));
+    },
     setCategoryNameOverride(slug, title) {
       const map = this.getCategoryNameOverrides();
-      const key = String(slug || '').trim();
+      const key = String(slug || '').trim().toLowerCase();
       if (!key) return;
       const value = String(title || '').trim();
       if (value) map[key] = value; else delete map[key];
       writeJson(KEYS.categoryNames, map);
+      this.setCategoryMeta(key, { title: value || titleFromSlug(key) });
     }
   };
 
@@ -163,7 +188,7 @@ window.HiddenGemsApp = (() => {
   function currentPageKey() { const page = (location.pathname.split('/').pop() || 'index.html').toLowerCase(); return !page || page === 'index.html' ? 'home' : page.replace(/\.html$/, ''); }
   function categoryPageHref(slug) {
     const safeSlug = String(slug || '').trim().toLowerCase();
-    return CATEGORY_ORDER.includes(safeSlug) ? `${safeSlug}.html` : 'all-videos.html';
+    return CATEGORY_ORDER.includes(safeSlug) ? `${safeSlug}.html` : `all-videos.html?category=${encodeURIComponent(safeSlug)}`;
   }
   function escapeHtml(value) { return String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]); }
   const CATEGORY_ORDER = ['new-releases', 'most-popular', 'behind-the-scenes', 'live-sessions', 'short-films', 'creator-picks', 'vip-exclusives'];
@@ -183,9 +208,21 @@ window.HiddenGemsApp = (() => {
   }
 
   function categoryDisplayName(slug, fallback = '') {
-    const key = String(slug || '').trim();
+    const key = String(slug || '').trim().toLowerCase();
+    const meta = storage.getCategoryMeta ? storage.getCategoryMeta() : {};
     const overrides = storage.getCategoryNameOverrides ? storage.getCategoryNameOverrides() : {};
-    return String(overrides[key] || '').trim() || TEMP_CATEGORY_LABELS[key] || String(fallback || '').trim() || titleFromSlug(slug);
+    return String(meta[key]?.title || overrides[key] || '').trim() || TEMP_CATEGORY_LABELS[key] || String(fallback || '').trim() || titleFromSlug(slug);
+  }
+
+  function categoryDescription(slug, fallback = '') {
+    const key = String(slug || '').trim().toLowerCase();
+    const meta = storage.getCategoryMeta ? storage.getCategoryMeta() : {};
+    return String(meta[key]?.description || '').trim() || String(fallback || '').trim() || 'Premium titles ready to unlock.';
+  }
+
+  function makeCategorySlug(title) {
+    const base = String(title || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    return base || `category-${Date.now()}`;
   }
 
   function categorySortIndex(slug) {
@@ -523,6 +560,8 @@ window.HiddenGemsApp = (() => {
 
   let supabaseVideosCache = [];
   let supabaseVideosLoaded = false;
+  let supabaseCategoriesCache = [];
+  let supabaseCategoriesLoaded = false;
 
   function hasSharedVideoCatalog() {
     return supabaseVideosCache.length > 0;
@@ -593,6 +632,54 @@ window.HiddenGemsApp = (() => {
       console.error('Failed to refresh Supabase videos', error);
     }
     return supabaseVideosCache;
+  }
+
+  function mapDbCategory(row = {}) {
+    const slug = String(row.slug || '').trim().toLowerCase();
+    return { slug, title: String(row.title || categoryDisplayName(slug)).trim(), description: String(row.description || '').trim(), isCore: !!row.is_core, deletedAt: row.deleted_at || null, updatedAt: row.updated_at || '' };
+  }
+
+  async function refreshSupabaseCategories(force = false) {
+    const supabase = getSupabaseClient();
+    if (!supabase) return supabaseCategoriesCache;
+    if (supabaseCategoriesLoaded && !force) return supabaseCategoriesCache;
+    try {
+      const result = await supabase.from('hg_categories').select('*').is('deleted_at', null).order('sort_order', { ascending: true }).order('title', { ascending: true });
+      if (result?.error) throw result.error;
+      const rows = Array.isArray(result?.data) ? result.data : [];
+      supabaseCategoriesCache = rows.map(mapDbCategory).filter((category) => category.slug);
+      const local = storage.getCategoryMeta();
+      supabaseCategoriesCache.forEach((category) => { local[category.slug] = { ...(local[category.slug] || {}), title: category.title, description: category.description, slug: category.slug }; });
+      writeJson(KEYS.categoryMeta, local);
+      supabaseCategoriesLoaded = true;
+    } catch (error) {
+      console.error('Failed to refresh Supabase categories', error);
+    }
+    return supabaseCategoriesCache;
+  }
+
+  async function saveCategoryToSupabase(category) {
+    const supabase = getSupabaseClient();
+    if (!supabase) return false;
+    const slug = String(category?.slug || '').trim().toLowerCase();
+    if (!slug) return false;
+    const payload = { slug, title: String(category.title || titleFromSlug(slug)).trim(), description: String(category.description || '').trim(), is_core: CATEGORY_ORDER.includes(slug), deleted_at: null, updated_at: new Date().toISOString() };
+    const result = await supabase.from('hg_categories').upsert(payload, { onConflict: 'slug' });
+    if (result?.error) throw result.error;
+    supabaseCategoriesLoaded = false;
+    return true;
+  }
+
+  async function deleteCategoryFromSupabase(slug) {
+    const supabase = getSupabaseClient();
+    const key = String(slug || '').trim().toLowerCase();
+    if (!supabase || !key || CATEGORY_ORDER.includes(key)) return false;
+    await supabase.from('hg_videos').update({ category_slug: 'creator-picks', category_title: categoryDisplayName('creator-picks'), category: categoryDisplayName('creator-picks'), updated_at: new Date().toISOString() }).eq('category_slug', key);
+    const result = await supabase.from('hg_categories').update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('slug', key);
+    if (result?.error) throw result.error;
+    supabaseCategoriesLoaded = false;
+    supabaseVideosLoaded = false;
+    return true;
   }
 
   async function uploadVideoToSupabaseStorage(file, id) {
@@ -825,56 +912,46 @@ window.HiddenGemsApp = (() => {
 
   function allCategories() {
     const baseCatalog = window.HIDDEN_GEMS_CATALOG || {};
+    const deleted = new Set(storage.getDeletedCategories ? storage.getDeletedCategories() : []);
+    const localMeta = storage.getCategoryMeta ? storage.getCategoryMeta() : {};
     const catalog = Object.fromEntries(Object.entries(baseCatalog).map(([slug, category]) => [slug, {
-      ...category,
-      title: categoryDisplayName(slug, category.title),
-      subtitle: category.subtitle,
-      count: '0 videos',
-      slug,
-      vip: slug === 'vip-exclusives',
-      access: slug === 'vip-exclusives' ? 'vip' : 'guest',
-      videos: []
+      ...category, title: categoryDisplayName(slug, category.title), subtitle: categoryDescription(slug, category.subtitle),
+      count: '0 videos', slug, vip: slug === 'vip-exclusives', access: slug === 'vip-exclusives' ? 'vip' : 'guest', videos: []
     }]));
-    const hidden = new Set(storage.getHiddenVideos());
-
-    Object.entries(catalog).forEach(([slug, category]) => {
-      category.slug = slug;
-      category.title = categoryDisplayName(slug, category.title);
-      category.access = category.vip ? 'vip' : 'guest';
-      category.videos = [];
+    Object.entries(localMeta).forEach(([slug, meta]) => {
+      if (!slug || deleted.has(slug)) return;
+      if (!catalog[slug]) catalog[slug] = { title: categoryDisplayName(slug, meta.title), subtitle: categoryDescription(slug, meta.description), count: '0 videos', slug, access: 'guest', videos: [] };
+      catalog[slug].title = categoryDisplayName(slug, meta.title); catalog[slug].subtitle = categoryDescription(slug, meta.description || catalog[slug].subtitle);
     });
-
+    supabaseCategoriesCache.forEach((meta) => {
+      const slug = String(meta.slug || '').trim().toLowerCase(); if (!slug || deleted.has(slug)) return;
+      if (!catalog[slug]) catalog[slug] = { title: categoryDisplayName(slug, meta.title), subtitle: categoryDescription(slug, meta.description), count: '0 videos', slug, access: 'guest', videos: [] };
+      catalog[slug].title = categoryDisplayName(slug, meta.title); catalog[slug].subtitle = categoryDescription(slug, meta.description || catalog[slug].subtitle);
+    });
+    Object.entries(catalog).forEach(([slug, category]) => { category.slug = slug; category.title = categoryDisplayName(slug, category.title); category.subtitle = categoryDescription(slug, category.subtitle); category.access = category.vip ? 'vip' : 'guest'; category.videos = []; });
     for (const rawVideo of storage.getCustomVideos()) {
       const video = normalizeVideoItem({ ...normalizeVideoItem(rawVideo), ...rawVideo, isCustom: true });
-      const slug = video.categorySlug || 'creator-picks';
-      if (!catalog[slug]) {
-        catalog[slug] = { title: categoryDisplayName(slug, video.categoryTitle), subtitle: 'Custom admin-managed category.', count: 'Custom', slug, access: video.access, videos: [] };
-      }
-      catalog[slug].title = categoryDisplayName(slug, catalog[slug].title || video.categoryTitle);
-      catalog[slug].videos.push({ ...video, category: catalog[slug].title, categoryTitle: catalog[slug].title });
+      const slug = deleted.has(video.categorySlug) ? 'creator-picks' : (video.categorySlug || 'creator-picks');
+      if (!catalog[slug]) catalog[slug] = { title: categoryDisplayName(slug, video.categoryTitle), subtitle: categoryDescription(slug, 'Custom admin-managed category.'), count: 'Custom', slug, access: video.access, videos: [] };
+      catalog[slug].title = categoryDisplayName(slug, catalog[slug].title || video.categoryTitle); catalog[slug].videos.push({ ...video, categorySlug: slug, category: catalog[slug].title, categoryTitle: catalog[slug].title });
     }
-
     for (const rawVideo of supabaseVideosCache) {
       const video = normalizeVideoItem({ ...rawVideo, isCustom: true });
-      const slug = video.categorySlug || 'creator-picks';
-      if (!catalog[slug]) {
-        catalog[slug] = { title: categoryDisplayName(slug, video.categoryTitle), subtitle: 'Custom admin-managed category.', count: 'Custom', slug, access: video.access, videos: [] };
-      }
+      const slug = deleted.has(video.categorySlug) ? 'creator-picks' : (video.categorySlug || 'creator-picks');
+      if (!catalog[slug]) catalog[slug] = { title: categoryDisplayName(slug, video.categoryTitle), subtitle: categoryDescription(slug, 'Custom admin-managed category.'), count: 'Custom', slug, access: video.access, videos: [] };
       catalog[slug].title = categoryDisplayName(slug, catalog[slug].title || video.categoryTitle);
       const existingIndex = (catalog[slug].videos || []).findIndex((entry) => String(entry.id) === String(video.id));
-      const mergedVideo = { ...video, category: catalog[slug].title, categoryTitle: catalog[slug].title };
-      if (existingIndex >= 0) catalog[slug].videos[existingIndex] = mergedVideo;
-      else catalog[slug].videos.push(mergedVideo);
+      const mergedVideo = { ...video, categorySlug: slug, category: catalog[slug].title, categoryTitle: catalog[slug].title };
+      if (existingIndex >= 0) catalog[slug].videos[existingIndex] = mergedVideo; else catalog[slug].videos.push(mergedVideo);
     }
-
     Object.entries(catalog).forEach(([slug, category]) => {
-      category.title = categoryDisplayName(slug, category.title);
-      category.vip = (category.videos || []).some((video) => String(video.access || '').toLowerCase() === 'vip');
+      category.title = categoryDisplayName(slug, category.title); category.subtitle = categoryDescription(slug, category.subtitle);
+      category.vip = slug === 'vip-exclusives' || (category.videos || []).some((video) => String(video.access || '').toLowerCase() === 'vip');
       category.access = category.vip ? 'vip' : 'guest';
       category.videos = uniqueVideos((category.videos || []).map((video) => ({ ...video, category: categoryDisplayName(video.categorySlug || slug, video.category || category.title), categoryTitle: categoryDisplayName(video.categorySlug || slug, video.categoryTitle || category.title) })));
       category.count = `${category.videos.length} videos`;
     });
-    return Object.fromEntries(Object.entries(catalog).sort((a, b) => categorySortIndex(a[0]) - categorySortIndex(b[0])));
+    return Object.fromEntries(Object.entries(catalog).filter(([slug]) => !deleted.has(slug)).sort((a, b) => categorySortIndex(a[0]) - categorySortIndex(b[0])));
   }
 
   function allVideos() {
@@ -1030,20 +1107,10 @@ window.HiddenGemsApp = (() => {
   }
 
   function renderHomeCategoryGrid(categories) {
-    const grid = document.getElementById('category-grid-home');
-    if (!grid) return;
-    const cards = CATEGORY_ORDER.map((slug) => {
-      const category = categories[slug] || { title: categoryDisplayName(slug), subtitle: 'Premium titles ready to unlock.', videos: [] };
-      const subtitle = {
-        'new-releases': 'Latest drops added to the platform.',
-        'most-popular': 'Top-viewed videos across Hidden Gems.',
-        'behind-the-scenes': 'Exclusive process, recording, and making-of content.',
-        'live-sessions': 'Performance-style videos and live recordings.',
-        'short-films': 'Story-driven premium visual content.',
-        'creator-picks': 'Hand-selected standout videos from the vault.',
-        'vip-exclusives': 'Members-only premium vault content.'
-      }[slug] || category.subtitle || 'Premium titles ready to unlock.';
-      return `<div ${slug === 'vip-exclusives' ? 'id="vip-category-card"' : ''} class="rounded-[1.75rem] border border-white/10 bg-neutral-900/70 p-6 transition hover:border-pink-400/30 hover:bg-neutral-900"><div class="mb-8 inline-flex rounded-2xl bg-pink-500/10 px-4 py-2 text-sm font-medium text-pink-300">${(category.videos || []).length} videos</div><h4 class="text-2xl font-bold">${escapeHtml(category.title || categoryDisplayName(slug))}</h4><p class="mt-3 text-sm text-neutral-400">${escapeHtml(subtitle)}</p><a href="${slug}.html" class="mt-6 inline-block text-sm font-semibold text-pink-300 transition hover:text-pink-200">View category →</a></div>`;
+    const grid = document.getElementById('category-grid-home'); if (!grid) return;
+    const cards = Object.entries(categories).sort((a, b) => categorySortIndex(a[0]) - categorySortIndex(b[0])).map(([slug, category]) => {
+      const subtitle = categoryDescription(slug, category.subtitle);
+      return `<div ${slug === 'vip-exclusives' ? 'id="vip-category-card"' : ''} class="rounded-[1.75rem] border border-white/10 bg-neutral-900/70 p-6 transition hover:border-pink-400/30 hover:bg-neutral-900"><div class="mb-8 inline-flex rounded-2xl bg-pink-500/10 px-4 py-2 text-sm font-medium text-pink-300">${(category.videos || []).length} videos</div><h4 class="text-2xl font-bold">${escapeHtml(category.title || categoryDisplayName(slug))}</h4><p class="mt-3 text-sm text-neutral-400">${escapeHtml(subtitle)}</p><a href="${categoryPageHref(slug)}" class="mt-6 inline-block text-sm font-semibold text-pink-300 transition hover:text-pink-200">View category →</a></div>`;
     }).join('');
     grid.innerHTML = cards;
   }
@@ -1162,6 +1229,7 @@ window.HiddenGemsApp = (() => {
     bindCommonUi();
     const mount = async () => {
       await refreshSupabaseVideos(true);
+      await refreshSupabaseCategories(true);
       const category = getCategory(slug); if (!category) return;
       document.getElementById('category-hero').innerHTML = `<div class="flex flex-wrap items-start justify-between gap-6"><div><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Category</p><h2 class="mt-3 text-4xl font-black">${escapeHtml(category.title)}</h2><p class="mt-4 max-w-2xl text-neutral-300">${escapeHtml(category.subtitle || 'Premium titles ready to unlock.')}</p></div><div class="rounded-2xl border border-white/10 bg-black/20 px-5 py-4 text-right"><p class="text-xs uppercase tracking-[0.25em] text-neutral-400">Access tier</p><p class="mt-2 text-2xl font-bold text-white">${category.vip ? 'VIP' : 'Guest'}</p><p class="mt-3 text-xs uppercase tracking-[0.25em] text-neutral-400">Videos in category</p><p class="mt-2 text-2xl font-bold text-white">${category.videos.length}</p><p class="text-sm text-neutral-400">Admin can access everything</p></div></div>`;
       const state = await getState();
@@ -1176,13 +1244,14 @@ window.HiddenGemsApp = (() => {
     applyBg();
     const mount = async () => {
       await refreshSupabaseVideos(true);
+      await refreshSupabaseCategories(true);
       const video = getVideo(requestedId);
       if (!video) {
         document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-5xl px-6 py-14"><div class="rounded-[2rem] border border-rose-400/20 bg-rose-500/10 p-8"><h1 class="text-3xl font-black">Video not found</h1><p class="mt-4 text-neutral-300">This video may have been removed or the link is invalid.</p><a href="index.html" class="mt-6 inline-flex rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Back to Home</a></div></main>` + shellFooter();
         bindCommonUi();
         return;
       }
-      document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-6xl px-6 py-14"><a href="${categoryPageHref(video.categorySlug)}" class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-300 transition hover:bg-white/10">← Back</a><div class="mt-8 grid gap-8 lg:grid-cols-[1.15fr_0.85fr]"><section class="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 shadow-xl shadow-black/20"><div class="relative"><img src="${escapeHtml(video.image)}" class="h-[420px] w-full object-cover" alt="${escapeHtml(video.title)}"><div class="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent"></div><div class="absolute bottom-6 left-6"><p class="text-xs uppercase tracking-[0.25em] text-pink-300">${escapeHtml(video.category)}</p><h1 class="mt-2 text-4xl font-black">${escapeHtml(video.title)}</h1></div></div><div class="p-6"><div id="video-access-banner" class="rounded-[1.5rem] border border-white/10 bg-neutral-950/70 p-5 text-neutral-300">Checking access...</div><div id="video-player-shell" class="mt-6 rounded-[1.5rem] border border-white/10 bg-black/20 p-5"></div><div id="video-description-shell" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-5"><p class="text-xs uppercase tracking-[0.25em] text-neutral-500">Description</p><p class="mt-3 text-neutral-200">${escapeHtml(video.description || 'No description added yet.')}</p></div><div id="video-external-file-shell" class="mt-4 hidden rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-5"><p class="text-xs uppercase tracking-[0.25em] text-neutral-500">External file link</p><div id="video-external-file-link" class="mt-3"></div></div></div></section><aside class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><p class="text-xs uppercase tracking-[0.25em] text-pink-300">Access details</p><div class="mt-5 space-y-4"><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Category</p><p class="mt-1 text-lg font-semibold text-white">${escapeHtml(video.category)}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Purchase tier</p><p class="mt-1 text-lg font-semibold text-white">${video.access === 'vip' ? 'VIP / Admin' : `${moneyLabelFromVideo(video)} one-time access`}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Role access</p><p class="mt-1 text-lg font-semibold text-white">Guest: purchased titles unlock playback · VIP: full access + downloads · Admin: all access</p></div></div><div class="mt-6 flex flex-col gap-3"><a id="video-action-button" href="#" class="rounded-2xl bg-pink-500 px-6 py-3 text-center font-semibold text-white transition hover:bg-pink-400">Loading...</a><a href="points-store.html" class="rounded-2xl border border-white/15 px-6 py-3 text-center font-semibold text-white transition hover:bg-white/5">View pricing</a></div></aside></div></main>` + shellFooter();
+      document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-6xl px-6 py-14"><a href="${categoryPageHref(video.categorySlug)}" class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-300 transition hover:bg-white/10">← Back</a><div class="mt-8 grid gap-8 lg:grid-cols-[1.15fr_0.85fr]"><section class="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 shadow-xl shadow-black/20"><div class="relative"><img src="${escapeHtml(video.image)}" class="h-[420px] w-full object-cover" alt="${escapeHtml(video.title)}"><div class="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent"></div><div class="absolute bottom-6 left-6"><p class="text-xs uppercase tracking-[0.25em] text-pink-300">${escapeHtml(video.category)}</p><h1 class="mt-2 text-4xl font-black">${escapeHtml(video.title)}</h1></div></div><div class="p-6"><div id="video-access-banner" class="rounded-[1.5rem] border border-white/10 bg-neutral-950/70 p-5 text-neutral-300">Checking access...</div><div id="video-player-shell" class="mt-6 rounded-[1.5rem] border border-white/10 bg-black/20 p-5"></div><div id="video-description-shell" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-5"><p class="text-xs uppercase tracking-[0.25em] text-neutral-500">Description</p><p class="mt-3 text-neutral-200">${escapeHtml(video.description || 'No description added yet.')}</p></div><div id="video-external-file-shell" class="mt-4 hidden rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-5"><p class="text-xs uppercase tracking-[0.25em] text-neutral-500">External file link</p><div id="video-external-file-link" class="mt-3"></div></div></div></section><aside class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><p class="text-xs uppercase tracking-[0.25em] text-pink-300">Access details</p><div class="mt-5 space-y-4"><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Category</p><p class="mt-1 text-lg font-semibold text-white">${escapeHtml(video.category)}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Purchase tier</p><p class="mt-1 text-lg font-semibold text-white">${video.access === 'vip' ? 'VIP / Admin' : `${moneyLabelFromVideo(video)} one-time access`}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Role access</p><p class="mt-1 text-lg font-semibold text-white">Guest/VIP: preview and on-site playback only · Admin: full management access</p></div></div><div class="mt-6 flex flex-col gap-3"><a id="video-action-button" href="#" class="rounded-2xl bg-pink-500 px-6 py-3 text-center font-semibold text-white transition hover:bg-pink-400">Loading...</a><a href="points-store.html" class="rounded-2xl border border-white/15 px-6 py-3 text-center font-semibold text-white transition hover:bg-white/5">View pricing</a></div></aside></div></main>` + shellFooter();
       bindCommonUi();
       const state = await getState();
       const actionButton = document.getElementById('video-action-button');
@@ -1194,7 +1263,7 @@ window.HiddenGemsApp = (() => {
       const purchasedIds = new Set(await getPurchasedVideoIds(state));
       const unlocked = state.role === 'admin' || state.role === 'vip' || purchasedIds.has(String(video.id)) || storage.isUnlockedForUser(state.email, video.id);
       const hasPlaybackAccess = accessible && (state.role === 'guest' ? unlocked : true);
-      const canRevealExternalFile = !!video.externalFileUrl && hasPlaybackAccess;
+      const canRevealExternalFile = !!video.externalFileUrl && hasPlaybackAccess && state.role === 'admin';
       if (externalFileShell) {
         externalFileShell.classList.toggle('hidden', !canRevealExternalFile);
       }
@@ -1202,8 +1271,8 @@ window.HiddenGemsApp = (() => {
         externalFileLink.innerHTML = `<a href="${escapeHtml(video.externalFileUrl)}" target="_blank" rel="noopener noreferrer" class="break-all text-pink-300 transition hover:text-pink-200">${escapeHtml(video.externalFileUrl)}</a>`;
       }
       if (!accessible) {
-        banner.innerHTML = '<p class="text-sm uppercase tracking-[0.2em] text-pink-300">VIP Preview</p><h3 class="mt-2 text-2xl font-bold text-white">Preview before joining VIP</h3><p class="mt-3 text-neutral-300">Guests can preview this VIP title before upgrading. Full playback and downloads stay locked for VIP members.</p>';
-        player.innerHTML = await renderPublicPreviewShell(video, 'Preview only. Join VIP to unlock the full VIP video and download access.');
+        banner.innerHTML = '<p class="text-sm uppercase tracking-[0.2em] text-pink-300">VIP Preview</p><h3 class="mt-2 text-2xl font-bold text-white">Preview before joining VIP</h3><p class="mt-3 text-neutral-300">Guests can preview this VIP title before upgrading. Downloads stay disabled for guests and VIP. Join VIP to unlock on-site VIP playback.</p>';
+        player.innerHTML = await renderPublicPreviewShell(video, 'Preview only. Join VIP to unlock on-site VIP playback. Downloads stay disabled for customer roles.');
         actionButton.textContent = 'Join VIP'; actionButton.href = 'vip-checkout.html'; actionButton.onclick = null;
         return;
       }
@@ -1214,7 +1283,7 @@ window.HiddenGemsApp = (() => {
         return;
       }
       const source = getVideoSource(video);
-      banner.innerHTML = `<p class="text-sm uppercase tracking-[0.2em] ${state.role === 'guest' ? 'text-pink-300' : 'text-emerald-300'}">${state.role === 'guest' ? 'Guest preview access' : 'Access granted'}</p><h3 class="mt-2 text-2xl font-bold text-white">${state.role === 'guest' ? 'Protected preview enabled' : 'You can open this video'}</h3><p class="mt-3 text-neutral-300">${state.role === 'guest' ? 'Guest purchases show a protected still preview on-site. Full playback and downloads stay locked.' : 'VIP and admin can watch with full access. Download appears when a direct file is available.'}</p>`;
+      banner.innerHTML = `<p class="text-sm uppercase tracking-[0.2em] ${state.role === 'guest' ? 'text-pink-300' : 'text-emerald-300'}">${state.role === 'guest' ? 'Guest preview access' : 'Access granted'}</p><h3 class="mt-2 text-2xl font-bold text-white">${state.role === 'guest' ? 'Protected preview enabled' : 'You can open this video'}</h3><p class="mt-3 text-neutral-300">${state.role === 'guest' ? 'Guest and VIP accounts can watch unlocked videos on-site only. Downloads stay disabled for customer roles.' : 'Unlocked customer accounts can watch on-site only. Admin can manage source files.'}</p>`;
       if (source.type === 'file' && hasPlaybackAccess) {
         let playableSrc = source.value;
         if (!playableSrc && video.videoStoragePath) {
@@ -1227,7 +1296,7 @@ window.HiddenGemsApp = (() => {
           } catch (error) { console.error(error); }
         }
         if (playableSrc) {
-          const downloadButton = (state.role === 'vip' || state.role === 'admin') ? `<a href="${escapeHtml(playableSrc)}" download="${escapeHtml(source.fileName || `${video.id}.mp4`)}" class="inline-flex rounded-2xl border border-white/15 px-4 py-2 text-sm text-white transition hover:bg-white/5">Download video</a>` : '<p class="text-sm text-neutral-500">Download is reserved for VIP and admin.</p>';
+          const downloadButton = state.role === 'admin' ? `<a href="${escapeHtml(playableSrc)}" download="${escapeHtml(source.fileName || `${video.id}.mp4`)}" class="inline-flex rounded-2xl border border-white/15 px-4 py-2 text-sm text-white transition hover:bg-white/5">Admin download source</a>` : '<p class="text-sm text-neutral-500">Downloads are disabled for guest and VIP accounts. Playback stays on-site only.</p>';
           player.innerHTML = `<div class="space-y-4"><div class="relative overflow-hidden rounded-2xl border border-white/10 bg-black"><video controls playsinline preload="metadata" class="w-full rounded-2xl bg-black"><source src="${escapeHtml(playableSrc)}" type="${escapeHtml(source.mimeType || 'video/mp4')}" />Your browser does not support embedded video playback for this file.</video></div><div class="flex flex-wrap items-center justify-between gap-3">${source.fileName ? `<p class="text-sm text-neutral-500 break-all">${escapeHtml(source.fileName)}</p>` : '<span></span>'}${downloadButton}</div></div>`;
         } else {
           player.innerHTML = '<p class="text-neutral-400">This uploaded video file could not be loaded. Re-save the file from the admin page.</p>';
@@ -1256,7 +1325,7 @@ window.HiddenGemsApp = (() => {
 
   function renderPointsStore() {
     applyBg();
-    document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-7xl px-6 py-14"><div class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Pricing & Access</p><h1 class="mt-3 text-4xl font-black">Buy videos directly with Stripe</h1><p class="mt-4 max-w-3xl text-neutral-300">Hidden Gems now uses direct purchases instead of stored credits. Standard videos unlock one-by-one at $3, $5, or $7. VIP stays separate at $19.99 and still unlocks the VIP vault plus download access.</p></div><div id="pricing-access-banner" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300">Loading account status...</div><div class="mt-10 rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Direct pricing</p><p class="mt-4 max-w-3xl text-neutral-300">Standard titles are priced individually inside the catalog. Customers only see the real video price on each listing instead of old package cards.</p></div><div class="mt-10 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">How it works</p><ol class="mt-5 space-y-4 text-neutral-300"><li>1. Sign in to your Hidden Gems account.</li><li>2. Open any guest-access video and click <span class="font-semibold text-white">Buy Access</span>.</li><li>3. Complete Stripe checkout.</li><li>4. Hidden Gems unlocks that video for the same signed-in account after successful capture.</li></ol><div class="mt-6 flex flex-wrap gap-3"><a href="all-videos.html" class="rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white transition hover:bg-pink-400">Browse all videos</a><a href="vip-checkout.html" class="rounded-2xl border border-white/15 px-6 py-3 font-semibold text-white transition hover:bg-white/5">VIP checkout</a></div></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">VIP stays separate</p><p class="mt-4 text-neutral-300">VIP is still the only tier with VIP exclusives and download access. Direct video purchases do not include downloads.</p><a href="vip-checkout.html" class="mt-6 inline-flex rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Buy VIP for $19.99</a></div></div></main>` + shellFooter();
+    document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-7xl px-6 py-14"><div class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Pricing & Access</p><h1 class="mt-3 text-4xl font-black">Buy videos directly with Stripe</h1><p class="mt-4 max-w-3xl text-neutral-300">Hidden Gems now uses direct purchases instead of stored credits. Standard videos unlock one-by-one at $3, $5, or $7. VIP stays separate at $19.99 and unlocks the VIP vault for on-site playback.</p></div><div id="pricing-access-banner" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300">Loading account status...</div><div class="mt-10 rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Direct pricing</p><p class="mt-4 max-w-3xl text-neutral-300">Standard titles are priced individually inside the catalog. Customers only see the real video price on each listing instead of old package cards.</p></div><div class="mt-10 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">How it works</p><ol class="mt-5 space-y-4 text-neutral-300"><li>1. Sign in to your Hidden Gems account.</li><li>2. Open any guest-access video and click <span class="font-semibold text-white">Buy Access</span>.</li><li>3. Complete Stripe checkout.</li><li>4. Hidden Gems unlocks that video for the same signed-in account after successful capture.</li></ol><div class="mt-6 flex flex-wrap gap-3"><a href="all-videos.html" class="rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white transition hover:bg-pink-400">Browse all videos</a><a href="vip-checkout.html" class="rounded-2xl border border-white/15 px-6 py-3 font-semibold text-white transition hover:bg-white/5">VIP checkout</a></div></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">VIP stays separate</p><p class="mt-4 text-neutral-300">VIP is still the tier with VIP exclusives. Guest and VIP accounts use on-site playback only; downloads stay disabled.</p><a href="vip-checkout.html" class="mt-6 inline-flex rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Buy VIP for $19.99</a></div></div></main>` + shellFooter();
     bindCommonUi();
     const mount = async () => {
       const state = await getState();
@@ -1273,7 +1342,7 @@ window.HiddenGemsApp = (() => {
 
   function renderVipCheckoutPage() {
     applyBg();
-    document.body.innerHTML = shellHeader() + `<main class="mx-auto flex min-h-[75vh] max-w-3xl items-center px-6 py-16"><div class="w-full rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8 shadow-xl shadow-black/20"><div class="flex items-center gap-4"><img src="./assets/hidden-gems-logo.png" alt="${BRAND_NAME} logo" class="h-14 w-14 rounded-2xl object-contain" /><div><h1 class="text-3xl font-black text-pink-400">${BRAND_NAME} VIP</h1><p class="text-neutral-400">$19.99 deal — was $39.99</p></div></div><p class="mt-6 text-neutral-300">Use the secure Stripe checkout below to start your VIP subscription. After payment, Stripe will send you to the VIP success page.</p><div id="vip-checkout-note" class="mt-8 rounded-2xl border border-white/10 bg-black/30 p-5 text-sm text-neutral-300">Checking VIP checkout status...</div><div class="mt-8 rounded-2xl border border-white/10 bg-black/30 p-5"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Secure checkout</p><div class="mt-4 flex flex-col gap-3 sm:flex-row"><button id="vip-checkout-button" class="inline-block rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white transition hover:bg-pink-400 text-center">Subscribe with Stripe</button></div></div><div class="mt-8 grid gap-4 md:grid-cols-2"><div class="rounded-2xl bg-white/5 p-4"><p class="font-semibold">VIP-only vault</p><p class="mt-1 text-sm text-neutral-400">Special titles reserved for VIP members.</p></div><div class="rounded-2xl bg-white/5 p-4"><p class="font-semibold">Download rights</p><p class="mt-1 text-sm text-neutral-400">VIP remains the only tier with downloads.</p></div></div><a href="index.html" class="mt-6 inline-block text-sm text-neutral-400 hover:text-white">← Back to ${BRAND_NAME}</a></div></main>` + shellFooter();
+    document.body.innerHTML = shellHeader() + `<main class="mx-auto flex min-h-[75vh] max-w-3xl items-center px-6 py-16"><div class="w-full rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8 shadow-xl shadow-black/20"><div class="flex items-center gap-4"><img src="./assets/hidden-gems-logo.png" alt="${BRAND_NAME} logo" class="h-14 w-14 rounded-2xl object-contain" /><div><h1 class="text-3xl font-black text-pink-400">${BRAND_NAME} VIP</h1><p class="text-neutral-400">$19.99 deal — was $39.99</p></div></div><p class="mt-6 text-neutral-300">Use the secure Stripe checkout below to start your VIP subscription. After payment, Stripe will send you to the VIP success page.</p><div id="vip-checkout-note" class="mt-8 rounded-2xl border border-white/10 bg-black/30 p-5 text-sm text-neutral-300">Checking VIP checkout status...</div><div class="mt-8 rounded-2xl border border-white/10 bg-black/30 p-5"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Secure checkout</p><div class="mt-4 flex flex-col gap-3 sm:flex-row"><button id="vip-checkout-button" class="inline-block rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white transition hover:bg-pink-400 text-center">Subscribe with Stripe</button></div></div><div class="mt-8 grid gap-4 md:grid-cols-2"><div class="rounded-2xl bg-white/5 p-4"><p class="font-semibold">VIP-only vault</p><p class="mt-1 text-sm text-neutral-400">Special titles reserved for VIP members.</p></div><div class="rounded-2xl bg-white/5 p-4"><p class="font-semibold">On-site playback</p><p class="mt-1 text-sm text-neutral-400">VIP unlocks member videos for streaming on the site.</p></div></div><a href="index.html" class="mt-6 inline-block text-sm text-neutral-400 hover:text-white">← Back to ${BRAND_NAME}</a></div></main>` + shellFooter();
     bindCommonUi();
     const note = document.getElementById('vip-checkout-note');
     const button = document.getElementById('vip-checkout-button');
@@ -1318,11 +1387,14 @@ window.HiddenGemsApp = (() => {
     bindCommonUi();
     const mount = async () => {
       await refreshSupabaseVideos(true);
+      await refreshSupabaseCategories(true);
       const state = await getState();
       const categorySelect = document.getElementById('all-videos-category');
       const all = allVideos().filter((video) => canAccessVideo(state.role, video));
       const categories = [...new Set(all.map((video) => video.categorySlug))].sort((a, b) => categorySortIndex(a) - categorySortIndex(b));
       categorySelect.innerHTML = `<option value="all">All categories</option>` + categories.map((slug) => `<option value="${escapeHtml(slug)}">${escapeHtml(categoryDisplayName(slug, getCategory(slug)?.title || ''))}</option>`).join('');
+      const requestedCategory = String(qs('category') || '').trim().toLowerCase();
+      if (requestedCategory && categories.includes(requestedCategory)) categorySelect.value = requestedCategory;
       const render = () => {
         const sort = document.getElementById('all-videos-sort').value;
         const category = document.getElementById('all-videos-category').value;
@@ -1359,11 +1431,12 @@ window.HiddenGemsApp = (() => {
     bindCommonUi();
     const mount = async () => {
       await refreshSupabaseVideos(true);
+      await refreshSupabaseCategories(true);
       const state = await getState();
       const gate = document.getElementById('admin-gate');
       if (state.role !== 'admin') { gate.innerHTML = `<div class="rounded-[2rem] border border-amber-400/30 bg-amber-500/10 p-8"><p class="text-sm uppercase tracking-[0.25em] text-amber-200">Admin only</p><h1 class="mt-3 text-4xl font-black">Access denied</h1><p class="mt-4 max-w-2xl text-neutral-200">Only accounts marked admin in your profile or listed in config.js can open this page.</p><a href="index.html" class="mt-6 inline-flex rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Back to Home</a></div>`; return; }
       const categories = Object.entries(allCategories()).map(([slug, category]) => `<option value="${slug}">${escapeHtml(category.title)}</option>`).join('');
-      gate.innerHTML = `<section class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Admin Portal</p><h1 class="mt-3 text-4xl font-black">Manage videos, pricing, files, and user roles</h1><p class="mt-4 max-w-3xl text-neutral-300">Manage live catalog content, assign access levels, and control the preview experience guests see after a purchase.</p><p class="mt-3 text-sm text-amber-200">Uploaded files use your configured storage path when available, with your existing workflow kept intact.</p></section><section class="mt-8 grid gap-8 xl:grid-cols-[1.05fr_0.95fr]"><div class="space-y-8"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><div class="flex flex-wrap items-center justify-between gap-3"><div><h2 class="text-2xl font-bold">Add or edit video</h2><p class="mt-2 text-sm text-neutral-400">Use a direct video file or a video link, then choose how restricted previews should appear for guests.</p></div><span id="admin-form-mode" class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.25em] text-neutral-300">Add mode</span></div><form id="admin-video-form" class="mt-6 grid gap-4 md:grid-cols-2"><input type="hidden" name="videoId" /><input type="hidden" name="isCustom" value="true" /><div class="md:col-span-2"><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Title</label><input required name="title" placeholder="Video title" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div class="md:col-span-2"><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Description</label><textarea required name="description" placeholder="Description" class="min-h-[120px] w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"></textarea></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Access type</label><select name="access" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"><option value="guest">Guest video</option><option value="vip">VIP video</option></select></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Price (cents)</label><input required type="number" min="0" name="priceCents" placeholder="Price (cents)" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Category</label><select name="categorySlug" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white">${categories}</select></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Custom category title</label><input name="categoryTitle" placeholder="Optional custom category title" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div class="md:col-span-2 flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3"><input id="video-published" type="checkbox" name="isPublished" checked class="h-4 w-4 rounded border-white/20 bg-black/40 text-pink-500" /><label for="video-published" class="text-sm text-neutral-300">Published on site</label></div><div class="md:col-span-2 rounded-[1.5rem] border border-white/10 bg-black/20 p-4"><div class="grid gap-4 md:grid-cols-2"><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Thumbnail upload</label><input type="file" name="thumbnailFile" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Thumbnail URL fallback</label><input name="image" placeholder="Optional image URL" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div></div><div id="admin-thumbnail-preview" class="mt-4 hidden overflow-hidden rounded-2xl border border-white/10 bg-black/30"><img src="" alt="Thumbnail preview" class="h-48 w-full object-cover" /></div></div><div class="md:col-span-2 rounded-[1.5rem] border border-white/10 bg-black/20 p-4"><div class="grid gap-4 md:grid-cols-2"><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Video link</label><input name="videoUrl" placeholder="https://..." class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Video file upload</label><input type="file" name="videoFile" accept=".mp4,.webm,.mov,video/mp4,video/webm,video/quicktime" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div></div><p class="mt-3 text-sm text-neutral-400">Source priority: uploaded video file first, then video link.</p><div id="admin-video-source-note" class="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-neutral-300">No source selected yet.</div><div class="mt-4"><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">External file link (Mega / MediaFire)</label><input name="externalFileUrl" placeholder="https://mega.nz/... or https://mediafire.com/..." class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div></div><div class="md:col-span-2 rounded-[1.5rem] border border-white/10 bg-black/20 p-4"><div class="flex flex-wrap items-center gap-6"><label class="flex items-center gap-3 text-sm text-neutral-300"><input id="preview-image-enabled" type="checkbox" name="previewImageEnabled" checked class="h-4 w-4 rounded border-white/20 bg-black/40 text-pink-500" />Enable image preview</label><label class="flex items-center gap-3 text-sm text-neutral-300"><input id="preview-video-enabled" type="checkbox" name="previewVideoEnabled" class="h-4 w-4 rounded border-white/20 bg-black/40 text-pink-500" />Enable video preview assets</label></div><p class="mt-3 text-sm text-neutral-400">Guests and VIP visitors can see preview images/videos before purchase. Full source videos and downloads stay protected.</p><div id="admin-preview-settings" class="mt-4 grid gap-4 md:grid-cols-2"><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Preview image upload</label><input type="file" name="previewImageFile" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Preview image URL</label><input name="previewImageUrl" placeholder="Optional preview image URL" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Preview video upload</label><input type="file" name="previewVideoFile" accept=".mp4,.webm,.mov,video/mp4,video/webm,video/quicktime" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Preview video URL</label><input name="previewVideoUrl" placeholder="Optional preview video URL" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div></div><div id="admin-preview-note" class="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-neutral-300">Guests and VIP visitors can preview this asset before purchase. Full playback stays locked until purchase/VIP access.</div></div><div class="md:col-span-2 flex flex-wrap gap-3"><button class="rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Save video</button><button type="button" id="admin-form-reset" class="rounded-2xl border border-white/15 px-6 py-3 font-semibold text-white">Clear form</button></div></form></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><div class="flex items-center justify-between gap-4"><div><h2 class="text-2xl font-bold">Manage saved videos</h2><p class="mt-2 text-sm text-neutral-400">Every saved video shows its access label, thumbnail preview, and edit/delete actions.</p></div><a href="index.html" class="rounded-xl border border-white/15 px-4 py-2 text-sm text-white">Back to site</a></div><div id="admin-video-list" class="mt-6 space-y-4"></div></div></div><div class="space-y-8"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">Role manager</h2><p class="mt-2 text-sm text-neutral-400">Use this to mark a user as guest, VIP, or admin on this site.</p><form id="admin-role-form" class="mt-6 space-y-4"><input required type="email" name="email" placeholder="user@example.com" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><select name="role" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"><option value="guest">Guest</option><option value="vip">VIP</option><option value="admin">Admin</option></select><button class="w-full rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Save role</button></form><div id="admin-role-list" class="mt-6 space-y-3"></div></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">Category manager</h2><p class="mt-2 text-sm text-neutral-400">Rename the front-end category labels without breaking the category slugs or links.</p><form id="admin-category-form" class="mt-6 space-y-4"></form></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">VIP quick actions</h2><p class="mt-2 text-sm text-neutral-400">Open the live VIP checkout page to confirm your customer-facing membership flow.</p><a href="vip-checkout.html" class="mt-4 inline-flex rounded-2xl border border-white/15 px-5 py-3 text-white">Open VIP Checkout Page</a></div></div></section>`;
+      gate.innerHTML = `<section class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Admin Portal</p><h1 class="mt-3 text-4xl font-black">Manage videos, pricing, files, and user roles</h1><p class="mt-4 max-w-3xl text-neutral-300">Manage live catalog content, assign access levels, and control the preview experience guests see after a purchase.</p><p class="mt-3 text-sm text-amber-200">Uploaded files use your configured storage path when available, with your existing workflow kept intact.</p></section><section class="mt-8 grid gap-8 xl:grid-cols-[1.05fr_0.95fr]"><div class="space-y-8"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><div class="flex flex-wrap items-center justify-between gap-3"><div><h2 class="text-2xl font-bold">Add or edit video</h2><p class="mt-2 text-sm text-neutral-400">Use a direct video file or a video link, then choose how restricted previews should appear for guests.</p></div><span id="admin-form-mode" class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.25em] text-neutral-300">Add mode</span></div><form id="admin-video-form" class="mt-6 grid gap-4 md:grid-cols-2"><input type="hidden" name="videoId" /><input type="hidden" name="isCustom" value="true" /><div class="md:col-span-2"><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Title</label><input required name="title" placeholder="Video title" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div class="md:col-span-2"><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Description</label><textarea required name="description" placeholder="Description" class="min-h-[120px] w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"></textarea></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Access type</label><select name="access" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"><option value="guest">Guest video</option><option value="vip">VIP video</option></select></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Price (cents)</label><input required type="number" min="0" name="priceCents" placeholder="Price (cents)" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Category</label><select name="categorySlug" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white">${categories}</select></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Custom category title</label><input name="categoryTitle" placeholder="Optional custom category title" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div class="md:col-span-2 flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3"><input id="video-published" type="checkbox" name="isPublished" checked class="h-4 w-4 rounded border-white/20 bg-black/40 text-pink-500" /><label for="video-published" class="text-sm text-neutral-300">Published on site</label></div><div class="md:col-span-2 rounded-[1.5rem] border border-white/10 bg-black/20 p-4"><div class="grid gap-4 md:grid-cols-2"><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Thumbnail upload</label><input type="file" name="thumbnailFile" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Thumbnail URL fallback</label><input name="image" placeholder="Optional image URL" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div></div><div id="admin-thumbnail-preview" class="mt-4 hidden overflow-hidden rounded-2xl border border-white/10 bg-black/30"><img src="" alt="Thumbnail preview" class="h-48 w-full object-cover" /></div></div><div class="md:col-span-2 rounded-[1.5rem] border border-white/10 bg-black/20 p-4"><div class="grid gap-4 md:grid-cols-2"><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Video link</label><input name="videoUrl" placeholder="https://..." class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Video file upload</label><input type="file" name="videoFile" accept=".mp4,.webm,.mov,video/mp4,video/webm,video/quicktime" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div></div><p class="mt-3 text-sm text-neutral-400">Source priority: uploaded video file first, then video link.</p><div id="admin-video-source-note" class="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-neutral-300">No source selected yet.</div><div class="mt-4"><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">External file link (Mega / MediaFire)</label><input name="externalFileUrl" placeholder="https://mega.nz/... or https://mediafire.com/..." class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div></div><div class="md:col-span-2 rounded-[1.5rem] border border-white/10 bg-black/20 p-4"><div class="flex flex-wrap items-center gap-6"><label class="flex items-center gap-3 text-sm text-neutral-300"><input id="preview-image-enabled" type="checkbox" name="previewImageEnabled" checked class="h-4 w-4 rounded border-white/20 bg-black/40 text-pink-500" />Enable image preview</label><label class="flex items-center gap-3 text-sm text-neutral-300"><input id="preview-video-enabled" type="checkbox" name="previewVideoEnabled" class="h-4 w-4 rounded border-white/20 bg-black/40 text-pink-500" />Enable video preview assets</label></div><p class="mt-3 text-sm text-neutral-400">Guests and VIP visitors can see preview images/videos before purchase. Full source videos and downloads stay protected.</p><div id="admin-preview-settings" class="mt-4 grid gap-4 md:grid-cols-2"><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Preview image upload</label><input type="file" name="previewImageFile" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Preview image URL</label><input name="previewImageUrl" placeholder="Optional preview image URL" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Preview video upload</label><input type="file" name="previewVideoFile" accept=".mp4,.webm,.mov,video/mp4,video/webm,video/quicktime" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Preview video URL</label><input name="previewVideoUrl" placeholder="Optional preview video URL" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div></div><div id="admin-preview-note" class="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-neutral-300">Guests and VIP visitors can preview this asset before purchase. Full playback stays locked until purchase/VIP access.</div></div><div class="md:col-span-2 flex flex-wrap gap-3"><button class="rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Save video</button><button type="button" id="admin-form-reset" class="rounded-2xl border border-white/15 px-6 py-3 font-semibold text-white">Clear form</button></div></form></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><div class="flex items-center justify-between gap-4"><div><h2 class="text-2xl font-bold">Manage saved videos</h2><p class="mt-2 text-sm text-neutral-400">Every saved video shows its access label, thumbnail preview, and edit/delete actions.</p></div><a href="index.html" class="rounded-xl border border-white/15 px-4 py-2 text-sm text-white">Back to site</a></div><div id="admin-video-list" class="mt-6 space-y-4"></div></div></div><div class="space-y-8"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">Role manager</h2><p class="mt-2 text-sm text-neutral-400">Use this to mark a user as guest, VIP, or admin on this site.</p><form id="admin-role-form" class="mt-6 space-y-4"><input required type="email" name="email" placeholder="user@example.com" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><select name="role" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"><option value="guest">Guest</option><option value="vip">VIP</option><option value="admin">Admin</option></select><button class="w-full rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Save role</button></form><div id="admin-role-list" class="mt-6 space-y-3"></div></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">Category manager</h2><p class="mt-2 text-sm text-neutral-400">Create, delete, rename, and describe categories. These sync through Supabase when your database table is installed.</p><form id="admin-category-create-form" class="mt-6 space-y-3"><input name="title" required placeholder="New category name" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><textarea name="description" placeholder="Category description" class="min-h-[90px] w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"></textarea><button class="w-full rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Add category</button></form><form id="admin-category-form" class="mt-6 space-y-4"></form></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">VIP quick actions</h2><p class="mt-2 text-sm text-neutral-400">Open the live VIP checkout page to confirm your customer-facing membership flow.</p><a href="vip-checkout.html" class="mt-4 inline-flex rounded-2xl border border-white/15 px-5 py-3 text-white">Open VIP Checkout Page</a></div></div></section>`;
 
       const form = document.getElementById('admin-video-form');
       const modeBadge = document.getElementById('admin-form-mode');
@@ -1504,26 +1577,12 @@ window.HiddenGemsApp = (() => {
       };
 
       const renderCategoryManager = () => {
-        const formEl = document.getElementById('admin-category-form');
-        if (!formEl) return;
-        const overrides = storage.getCategoryNameOverrides();
-        formEl.innerHTML = CATEGORY_ORDER.map((slug) => `<div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">${escapeHtml(slug)}</label><input data-category-name="${escapeHtml(slug)}" value="${escapeHtml(overrides[slug] || '')}" placeholder="${escapeHtml(TEMP_CATEGORY_LABELS[slug] || titleFromSlug(slug))}" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div>`).join('') + `<div class="flex flex-wrap gap-3 pt-2"><button class="rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white">Save category names</button><button type="button" id="reset-category-names" class="rounded-2xl border border-white/15 px-5 py-3 font-semibold text-white">Reset names</button></div>`;
-        formEl.onsubmit = (event) => {
-          event.preventDefault();
-          CATEGORY_ORDER.forEach((slug) => {
-            const input = formEl.querySelector(`[data-category-name="${slug}"]`);
-            storage.setCategoryNameOverride(slug, input?.value || '');
-          });
-          toast('Category names updated.', 'success');
-          renderVideoList();
-          window.dispatchEvent(new CustomEvent('hg:state-changed'));
-        };
-        formEl.querySelector('#reset-category-names')?.addEventListener('click', () => {
-          CATEGORY_ORDER.forEach((slug) => storage.setCategoryNameOverride(slug, ''));
-          renderCategoryManager();
-          toast('Category names reset.', 'success');
-          window.dispatchEvent(new CustomEvent('hg:state-changed'));
-        });
+        const formEl = document.getElementById('admin-category-form'); if (!formEl) return;
+        const cats = Object.entries(allCategories()).sort((a, b) => categorySortIndex(a[0]) - categorySortIndex(b[0]));
+        formEl.innerHTML = cats.map(([slug, category]) => {
+          const core = CATEGORY_ORDER.includes(slug);
+          return `<div class="rounded-2xl border border-white/10 bg-black/20 p-4"><div class="flex items-center justify-between gap-3"><p class="text-xs uppercase tracking-[0.2em] text-neutral-500">${escapeHtml(slug)}${core ? ' · core' : ''}</p>${!core ? `<button type="button" data-delete-category="${escapeHtml(slug)}" class="rounded-xl border border-rose-400/20 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">Delete</button>` : ''}</div><label class="mt-3 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Name</label><input data-category-title="${escapeHtml(slug)}" value="${escapeHtml(category.title)}" class="mt-2 w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><label class="mt-3 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Description</label><textarea data-category-description="${escapeHtml(slug)}" class="mt-2 min-h-[90px] w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white">${escapeHtml(categoryDescription(slug, category.subtitle))}</textarea><button type="button" data-save-category="${escapeHtml(slug)}" class="mt-3 w-full rounded-xl border border-white/15 px-4 py-2 text-sm font-semibold text-white">Save category</button></div>`;
+        }).join('');
       };
 
       const renderVideoList = () => {
@@ -1736,6 +1795,46 @@ window.HiddenGemsApp = (() => {
         toast('Role saved.', 'success'); event.currentTarget.reset(); renderRoleList(); window.dispatchEvent(new CustomEvent('hg:state-changed'));
       });
 
+      document.getElementById('admin-category-create-form')?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const formData = new FormData(event.currentTarget);
+        const title = String(formData.get('title') || '').trim();
+        const description = String(formData.get('description') || '').trim();
+        const slug = makeCategorySlug(title);
+        if (!title) { toast('Category name is required.', 'error'); return; }
+        storage.restoreCategory(slug);
+        storage.setCategoryMeta(slug, { title, description });
+        try { await saveCategoryToSupabase({ slug, title, description }); toast('Category added and synced.', 'success'); }
+        catch (error) { toast(`Category saved locally. Run the category SQL to sync sitewide: ${extractErrorMessage(error, 'Supabase category table missing.')}`, 'error'); }
+        await refreshSupabaseCategories(true);
+        event.currentTarget.reset();
+        renderCategoryManager();
+        window.dispatchEvent(new CustomEvent('hg:state-changed'));
+      });
+
+      document.getElementById('admin-category-form')?.addEventListener('click', async (event) => {
+        const saveSlug = event.target?.dataset?.saveCategory;
+        const deleteSlug = event.target?.dataset?.deleteCategory;
+        if (saveSlug) {
+          const title = String(document.querySelector(`[data-category-title="${saveSlug}"]`)?.value || '').trim() || titleFromSlug(saveSlug);
+          const description = String(document.querySelector(`[data-category-description="${saveSlug}"]`)?.value || '').trim();
+          storage.setCategoryNameOverride(saveSlug, title);
+          storage.setCategoryMeta(saveSlug, { title, description });
+          try { await saveCategoryToSupabase({ slug: saveSlug, title, description }); toast('Category updated for all users.', 'success'); }
+          catch (error) { toast(`Category updated locally. Run the category SQL to sync all users: ${extractErrorMessage(error, 'Supabase category table missing.')}`, 'error'); }
+          await refreshSupabaseCategories(true); renderCategoryManager(); window.dispatchEvent(new CustomEvent('hg:state-changed'));
+        }
+        if (deleteSlug) {
+          if (!confirm(`Delete category "${categoryDisplayName(deleteSlug)}"? Videos in it will move to Creator Picks.`)) return;
+          storage.markCategoryDeleted(deleteSlug); storage.removeCategoryMeta(deleteSlug);
+          const updatedLocalVideos = storage.getCustomVideos().map((video) => String(video.categorySlug || '').toLowerCase() === deleteSlug ? { ...video, categorySlug: 'creator-picks', categoryTitle: categoryDisplayName('creator-picks'), category: categoryDisplayName('creator-picks') } : video);
+          storage.setCustomVideos(updatedLocalVideos);
+          try { await deleteCategoryFromSupabase(deleteSlug); toast('Category deleted and videos moved.', 'success'); }
+          catch (error) { toast(`Category deleted locally. Run the category SQL to sync all users: ${extractErrorMessage(error, 'Supabase category table missing.')}`, 'error'); }
+          await refreshSupabaseCategories(true); await refreshSupabaseVideos(true); renderCategoryManager(); renderVideoList(); window.dispatchEvent(new CustomEvent('hg:state-changed'));
+        }
+      });
+
       resetVideoForm();
       renderRoleList();
       renderCategoryManager();
@@ -1745,7 +1844,7 @@ window.HiddenGemsApp = (() => {
   }
 
   function renderSimplePage(title, eyebrow, copy) { applyBg(); document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-5xl px-6 py-14"><div class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">${eyebrow}</p><h1 class="mt-3 text-4xl font-black">${title}</h1><div class="mt-6 max-w-none space-y-4 text-neutral-300">${copy}</div></div></main>` + shellFooter(); bindCommonUi(); }
-  function initHomePage() { refreshSupabaseVideos(true).then(() => getState().then(updateHomeStateUi)); window.addEventListener('hg:state-changed', async () => { await refreshSupabaseVideos(true); updateHomeStateUi(await getState()); }); }
+  function initHomePage() { Promise.all([refreshSupabaseVideos(true), refreshSupabaseCategories(true)]).then(() => getState().then(updateHomeStateUi)); window.addEventListener('hg:state-changed', async () => { await refreshSupabaseVideos(true); await refreshSupabaseCategories(true); updateHomeStateUi(await getState()); }); }
   function initVipCheckoutPage() { renderVipCheckoutPage(); }
 
   function initPage() {
@@ -1779,6 +1878,11 @@ window.HiddenGemsApp = (() => {
           await refreshSupabaseVideos(true);
           window.dispatchEvent(new CustomEvent('hg:state-changed'));
         })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'hg_categories' }, async () => {
+          supabaseCategoriesLoaded = false;
+          await refreshSupabaseCategories(true);
+          window.dispatchEvent(new CustomEvent('hg:state-changed'));
+        })
         .subscribe();
       realtimeBound = true;
     } catch (error) {
@@ -1787,5 +1891,5 @@ window.HiddenGemsApp = (() => {
   }
 
   bindRealtimeSync();
-  return { storage, getState, getVideo, getCategory, allVideos, renderCategoryPage, renderVideoPage, renderPointsStore, renderVipCheckoutPage, renderLibraryPage, renderAllVideosPage, renderSimplePage, shellHeader, shellFooter, bindCommonUi, initialsFromEmail, mountSharedHeader, refreshHeaderUi, signOutUser, syncVipForCurrentUser, canAccessVideo, initVipCheckoutPage, startVipCheckout, startVideoCheckout, finalizeCheckoutFromUrl, finalizeStripeVideoCheckoutFromLocalStorage, updateCurrentUserProfile, getSupabaseClient, resetSupabaseSession, getSessionUser };
+  return { storage, getState, getVideo, getCategory, allVideos, renderCategoryPage, renderVideoPage, renderPointsStore, renderVipCheckoutPage, renderLibraryPage, renderAllVideosPage, renderSimplePage, shellHeader, shellFooter, bindCommonUi, initialsFromEmail, mountSharedHeader, refreshHeaderUi, signOutUser, syncVipForCurrentUser, canAccessVideo, refreshSupabaseCategories, initVipCheckoutPage, startVipCheckout, startVideoCheckout, finalizeCheckoutFromUrl, finalizeStripeVideoCheckoutFromLocalStorage, updateCurrentUserProfile, getSupabaseClient, resetSupabaseSession, getSessionUser };
 })();

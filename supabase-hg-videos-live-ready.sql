@@ -171,3 +171,60 @@ do $$ begin
   create policy "hg_video_purchases_delete_own" on public.hg_video_purchases
     for delete using (auth.uid() = user_id);
 exception when duplicate_object then null; end $$;
+
+
+-- Shared category manager used by the admin portal.
+-- This fixes category names/descriptions only changing in one browser.
+create table if not exists public.hg_categories (
+  slug text primary key,
+  title text not null,
+  description text not null default '',
+  is_core boolean not null default false,
+  sort_order integer not null default 999,
+  deleted_at timestamptz,
+  updated_at timestamptz not null default now()
+);
+
+insert into public.hg_categories (slug, title, description, is_core, sort_order)
+values
+  ('new-releases', 'New Releases', 'Fresh premium drops added to the Hidden Gems vault. Unlock fast-moving releases before they rotate into the archive.', true, 10),
+  ('most-popular', 'Most Popular', 'Top-performing videos across the platform, based on viewer demand and replay value.', true, 20),
+  ('behind-the-scenes', 'Behind the Scenes', 'Process footage, setup moments, studio energy, and the making-of content that viewers usually never get to see.', true, 30),
+  ('live-sessions', 'Live Sessions', 'Performance-driven content with live energy, room texture, and premium session-style presentation.', true, 40),
+  ('short-films', 'Short Films', 'Story-driven premium visuals with cinematic structure, sharper pacing, and high replay value.', true, 50),
+  ('creator-picks', 'Creator Picks', 'Hand-selected standouts that represent the strongest direction, quality, and replay value in the vault.', true, 60),
+  ('vip-exclusives', 'VIP Exclusives', 'Members-only premium vault content. These titles stay locked unless VIP access is active on the account.', true, 70)
+on conflict (slug) do update set
+  title = excluded.title,
+  description = coalesce(nullif(public.hg_categories.description, ''), excluded.description),
+  is_core = excluded.is_core,
+  sort_order = excluded.sort_order,
+  deleted_at = null,
+  updated_at = now();
+
+alter table public.hg_categories enable row level security;
+
+create index if not exists hg_categories_deleted_at_idx on public.hg_categories(deleted_at);
+create index if not exists hg_categories_sort_order_idx on public.hg_categories(sort_order);
+
+alter table public.hg_categories replica identity full;
+
+do $$ begin
+  create policy "hg_categories_select_all" on public.hg_categories
+    for select using (true);
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create policy "hg_categories_insert_all" on public.hg_categories
+    for insert with check (true);
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create policy "hg_categories_update_all" on public.hg_categories
+    for update using (true) with check (true);
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create policy "hg_categories_delete_all" on public.hg_categories
+    for delete using (true);
+exception when duplicate_object then null; end $$;
