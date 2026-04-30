@@ -427,9 +427,9 @@ create policy "hg_videos_storage_update_admin" on storage.objects
 create policy "hg_videos_storage_delete_admin" on storage.objects
   for delete using (bucket_id = 'hg-videos' and public.hg_is_admin());
 
--- Universal admin editing fix.
--- Any account with public.profiles.role = 'admin' can manage every video, no matter who uploaded it.
--- Public pages can read published catalog rows; the admin panel can load all non-deleted rows, including drafts.
+
+-- Final admin video list repair: make all non-deleted video rows readable to the site/admin panel.
+-- Admin-only write protection still stays enforced by hg_is_admin().
 create or replace function public.hg_is_admin()
 returns boolean
 language sql
@@ -455,9 +455,9 @@ drop policy if exists "hg_videos_read_all" on public.hg_videos;
 drop policy if exists "Allow public read access to hg_videos" on public.hg_videos;
 
 create policy "hg_videos_select_all"
-on public.hg_videos
-for select
-using (true);
+  on public.hg_videos
+  for select
+  using (true);
 
 drop policy if exists hg_videos_insert_all on public.hg_videos;
 drop policy if exists hg_videos_update_all on public.hg_videos;
@@ -467,17 +467,21 @@ drop policy if exists "hg_videos_update_admin" on public.hg_videos;
 drop policy if exists "hg_videos_delete_admin" on public.hg_videos;
 
 create policy "hg_videos_insert_admin"
-on public.hg_videos
-for insert
-with check (public.hg_is_admin());
+  on public.hg_videos
+  for insert
+  with check (public.hg_is_admin());
 
 create policy "hg_videos_update_admin"
-on public.hg_videos
-for update
-using (public.hg_is_admin())
-with check (public.hg_is_admin());
+  on public.hg_videos
+  for update
+  using (public.hg_is_admin())
+  with check (public.hg_is_admin());
 
 create policy "hg_videos_delete_admin"
-on public.hg_videos
-for delete
-using (public.hg_is_admin());
+  on public.hg_videos
+  for delete
+  using (public.hg_is_admin());
+
+update public.profiles
+set role = 'admin', is_vip = true
+where lower(email) in ('hayzerxsloth@gmail.com');
