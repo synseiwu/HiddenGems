@@ -29,7 +29,8 @@ window.HiddenGemsApp = (() => {
     categoryNames: 'hg_category_names',
     categoryMeta: 'hg_category_meta',
     deletedCategories: 'hg_deleted_categories',
-    siteSettings: 'hg_site_settings'
+    siteSettings: 'hg_site_settings',
+    thumbnailLibrary: 'hg_thumbnail_library'
   };
 
   function readJson(key, fallback) {
@@ -142,6 +143,16 @@ window.HiddenGemsApp = (() => {
     getSiteSettings() { return readJson(KEYS.siteSettings, {}); },
     setSiteSetting(key, value) { const map = this.getSiteSettings(); map[String(key || '').trim()] = value; writeJson(KEYS.siteSettings, map); },
     getSiteSetting(key, fallback = '') { const map = this.getSiteSettings(); const value = map[String(key || '').trim()]; return typeof value === 'undefined' ? fallback : value; },
+    getThumbnailLibrary() { return readJson(KEYS.thumbnailLibrary, []); },
+    setThumbnailLibrary(items) { writeJson(KEYS.thumbnailLibrary, uniqueThumbnailItems(items)); },
+    addThumbnail(item = {}) {
+      const library = this.getThumbnailLibrary();
+      const url = String(item.url || item.imageUrl || item.image_url || '').trim();
+      if (!url) return library;
+      const next = uniqueThumbnailItems([{ id: item.id || `thumb-${Date.now()}`, url, title: item.title || item.fileName || item.file_name || 'Saved thumbnail', fileName: item.fileName || item.file_name || '', linkedVideoId: item.linkedVideoId || item.linked_video_id || '', createdAt: item.createdAt || item.created_at || new Date().toISOString() }, ...library]);
+      this.setThumbnailLibrary(next);
+      return next;
+    },
     getCategoryNameOverrides() { return readJson(KEYS.categoryNames, {}); },
     getCategoryMeta() { return readJson(KEYS.categoryMeta, {}); },
     setCategoryMeta(slug, data = {}) {
@@ -259,6 +270,31 @@ window.HiddenGemsApp = (() => {
       seen.set(String(video.id), video);
     }
     return [...seen.values()];
+  }
+
+  function uniqueThumbnailItems(items = []) {
+    const seen = new Map();
+    for (const item of items || []) {
+      const url = String(item?.url || item?.imageUrl || item?.image_url || '').trim();
+      if (!url) continue;
+      const key = url;
+      seen.set(key, {
+        id: String(item.id || `thumb-${Math.abs(hashString(url))}`).trim(),
+        url,
+        title: String(item.title || item.fileName || item.file_name || 'Saved thumbnail').trim(),
+        fileName: String(item.fileName || item.file_name || '').trim(),
+        linkedVideoId: String(item.linkedVideoId || item.linked_video_id || '').trim(),
+        createdAt: String(item.createdAt || item.created_at || '').trim()
+      });
+    }
+    return [...seen.values()];
+  }
+
+  function hashString(value) {
+    let hash = 0;
+    const text = String(value || '');
+    for (let i = 0; i < text.length; i += 1) hash = ((hash << 5) - hash) + text.charCodeAt(i), hash |= 0;
+    return hash;
   }
 
   function readFileAsDataUrl(file) {
@@ -582,6 +618,8 @@ window.HiddenGemsApp = (() => {
   let supabaseVideosLoaded = false;
   let supabaseCategoriesCache = [];
   let supabaseCategoriesLoaded = false;
+  let supabaseThumbnailsCache = [];
+  let supabaseThumbnailsLoaded = false;
 
   function hasSharedVideoCatalog() {
     return supabaseVideosCache.length > 0;
@@ -678,6 +716,61 @@ window.HiddenGemsApp = (() => {
       console.error('Failed to refresh Supabase categories', error);
     }
     return supabaseCategoriesCache;
+  }
+
+  function mapDbThumbnail(row = {}) {
+    return {
+      id: String(row.id || '').trim(),
+      url: String(row.image_url || row.url || '').trim(),
+      title: String(row.title || row.file_name || 'Saved thumbnail').trim(),
+      fileName: String(row.file_name || '').trim(),
+      linkedVideoId: String(row.linked_video_id || '').trim(),
+      createdAt: String(row.created_at || '').trim()
+    };
+  }
+
+  async function refreshSupabaseThumbnails(force = false) {
+    const supabase = getSupabaseClient();
+    if (!supabase) return supabaseThumbnailsCache;
+    if (supabaseThumbnailsLoaded && !force) return supabaseThumbnailsCache;
+    try {
+      const result = await supabase.from('hg_thumbnails').select('*').is('deleted_at', null).order('created_at', { ascending: false });
+      if (result?.error) throw result.error;
+      supabaseThumbnailsCache = uniqueThumbnailItems((result.data || []).map(mapDbThumbnail));
+      supabaseThumbnailsCache.forEach((thumb) => storage.addThumbnail(thumb));
+      supabaseThumbnailsLoaded = true;
+    } catch (error) {
+      console.error('Failed to refresh thumbnail library', error);
+    }
+    return supabaseThumbnailsCache;
+  }
+
+  function buildThumbnailLibrary() {
+    const fromVideos = uniqueVideos([...Object.values(CATALOG).flatMap((category) => category.videos || []), ...storage.getCustomVideos(), ...supabaseVideosCache]).map((video) => ({ id: `video-${video.id}`, url: video.image, title: video.title || 'Video thumbnail', linkedVideoId: video.id })).filter((item) => item.url);
+    return uniqueThumbnailItems([...supabaseThumbnailsCache, ...storage.getThumbnailLibrary(), ...fromVideos]);
+  }
+
+  async function saveThumbnailToSupabase(item = {}) {
+    const url = String(item.url || item.imageUrl || '').trim();
+    if (!url) return false;
+    storage.addThumbnail(item);
+    const supabase = getSupabaseClient();
+    const user = await getSessionUser();
+    if (!supabase || !user) return false;
+    const payload = {
+      id: String(item.id || `thumb-${Date.now()}`).trim(),
+      image_url: url,
+      title: String(item.title || item.fileName || 'Saved thumbnail').trim(),
+      file_name: String(item.fileName || '').trim(),
+      linked_video_id: String(item.linkedVideoId || '').trim() || null,
+      created_by: user.id,
+      updated_at: new Date().toISOString(),
+      deleted_at: null
+    };
+    const result = await supabase.from('hg_thumbnails').upsert(payload, { onConflict: 'id' });
+    if (result?.error) throw result.error;
+    supabaseThumbnailsLoaded = false;
+    return true;
   }
 
   let siteSettingsCache = {};
@@ -1507,16 +1600,19 @@ window.HiddenGemsApp = (() => {
       const gate = document.getElementById('admin-gate');
       if (state.role !== 'admin') { gate.innerHTML = `<div class="rounded-[2rem] border border-amber-400/30 bg-amber-500/10 p-8"><p class="text-sm uppercase tracking-[0.25em] text-amber-200">Admin only</p><h1 class="mt-3 text-4xl font-black">Access denied</h1><p class="mt-4 max-w-2xl text-neutral-200">Only accounts marked admin in your profile or listed in config.js can open this page.</p><a href="index.html" class="mt-6 inline-flex rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Back to Home</a></div>`; return; }
       const categories = Object.entries(allCategories()).map(([slug, category]) => `<option value="${slug}">${escapeHtml(category.title)}</option>`).join('');
-      gate.innerHTML = `<section class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Admin Portal</p><h1 class="mt-3 text-4xl font-black">Manage videos, PayPal links, files, and user roles</h1><p class="mt-4 max-w-3xl text-neutral-300">Manage live catalog content, assign access levels, and control the preview experience guests see after a purchase.</p><p class="mt-3 text-sm text-amber-200">Uploaded files use your configured storage path when available, with your existing workflow kept intact.</p></section><section class="mt-8 grid gap-8 xl:grid-cols-[1.05fr_0.95fr]"><div class="space-y-8"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><div class="flex flex-wrap items-center justify-between gap-3"><div><h2 class="text-2xl font-bold">Add or edit video</h2><p class="mt-2 text-sm text-neutral-400">Use a direct video file or a video link, then add the PayPal purchase link for this specific video.</p></div><span id="admin-form-mode" class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.25em] text-neutral-300">Add mode</span></div><form id="admin-video-form" class="mt-6 grid gap-4 md:grid-cols-2"><input type="hidden" name="videoId" /><input type="hidden" name="isCustom" value="true" /><div class="md:col-span-2"><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Title</label><input required name="title" placeholder="Video title" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div class="md:col-span-2"><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Description</label><textarea required name="description" placeholder="Description" class="min-h-[120px] w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"></textarea></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Access type</label><select name="access" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"><option value="guest">Guest video</option><option value="vip">VIP video</option></select></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Video price</label><input name="priceCents" inputmode="decimal" placeholder="7.00" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><p class="mt-2 text-xs text-neutral-500">Enter the customer-facing price in dollars. Example: 7.00</p></div><div class="md:col-span-2"><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">PayPal purchase link for this video</label><input name="paypalUrl" placeholder="https://www.paypal.com/..." class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><p class="mt-2 text-xs text-neutral-500">The displayed price is informational; the button sends viewers to this exact PayPal link.</p></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Category</label><select name="categorySlug" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white">${categories}</select></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Custom category title</label><input name="categoryTitle" placeholder="Optional custom category title" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div class="md:col-span-2 flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3"><input id="video-published" type="checkbox" name="isPublished" checked class="h-4 w-4 rounded border-white/20 bg-black/40 text-pink-500" /><label for="video-published" class="text-sm text-neutral-300">Published on site</label></div><div class="md:col-span-2 rounded-[1.5rem] border border-white/10 bg-black/20 p-4"><div class="grid gap-4 md:grid-cols-2"><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Thumbnail upload</label><input type="file" name="thumbnailFile" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Thumbnail URL fallback</label><input name="image" placeholder="Optional image URL" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div></div><div id="admin-thumbnail-preview" class="mt-4 hidden overflow-hidden rounded-2xl border border-white/10 bg-black/30"><img src="" alt="Thumbnail preview" class="h-48 w-full object-cover" /></div></div><div class="md:col-span-2 rounded-[1.5rem] border border-white/10 bg-black/20 p-4"><div class="grid gap-4 md:grid-cols-2"><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Video link</label><input name="videoUrl" placeholder="https://..." class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Video file upload</label><input type="file" name="videoFile" accept=".mp4,.webm,.mov,video/mp4,video/webm,video/quicktime" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div></div><p class="mt-3 text-sm text-neutral-400">Source priority: uploaded video file first, then video link.</p><div id="admin-video-source-note" class="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-neutral-300">No source selected yet.</div><div class="mt-4"><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">External file link (Mega / MediaFire)</label><input name="externalFileUrl" placeholder="https://mega.nz/... or https://mediafire.com/..." class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div></div><div class="md:col-span-2 rounded-[1.5rem] border border-white/10 bg-black/20 p-4"><div class="flex flex-wrap items-center gap-6"><label class="flex items-center gap-3 text-sm text-neutral-300"><input id="preview-image-enabled" type="checkbox" name="previewImageEnabled" checked class="h-4 w-4 rounded border-white/20 bg-black/40 text-pink-500" />Enable image preview</label><label class="flex items-center gap-3 text-sm text-neutral-300"><input id="preview-video-enabled" type="checkbox" name="previewVideoEnabled" class="h-4 w-4 rounded border-white/20 bg-black/40 text-pink-500" />Enable video preview assets</label></div><p class="mt-3 text-sm text-neutral-400">Guests and VIP visitors can see preview images/videos before purchase. Full source videos and downloads stay protected.</p><div id="admin-preview-settings" class="mt-4 grid gap-4 md:grid-cols-2"><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Preview image upload</label><input type="file" name="previewImageFile" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Preview image URL</label><input name="previewImageUrl" placeholder="Optional preview image URL" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Preview video upload</label><input type="file" name="previewVideoFile" accept=".mp4,.webm,.mov,video/mp4,video/webm,video/quicktime" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Preview video URL</label><input name="previewVideoUrl" placeholder="Optional preview video URL" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div></div><div id="admin-preview-note" class="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-neutral-300">Guests and VIP visitors can preview this asset before purchase. Full playback stays locked until purchase/VIP access.</div></div><div class="md:col-span-2 flex flex-wrap gap-3"><button class="rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Save video</button><button type="button" id="admin-form-reset" class="rounded-2xl border border-white/15 px-6 py-3 font-semibold text-white">Clear form</button></div></form></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><div class="flex items-center justify-between gap-4"><div><h2 class="text-2xl font-bold">Manage saved videos</h2><p class="mt-2 text-sm text-neutral-400">Every saved video shows its access label, thumbnail preview, and edit/delete actions.</p></div><a href="index.html" class="rounded-xl border border-white/15 px-4 py-2 text-sm text-white">Back to site</a></div><div id="admin-video-list" class="mt-6 space-y-4"></div></div></div><div class="space-y-8"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">Role manager</h2><p class="mt-2 text-sm text-neutral-400">Use this to mark a user as guest, VIP, or admin on this site.</p><form id="admin-role-form" class="mt-6 space-y-4"><input required type="email" name="email" placeholder="user@example.com" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><select name="role" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"><option value="guest">Guest</option><option value="vip">VIP</option><option value="admin">Admin</option></select><button class="w-full rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Save role</button></form><div id="admin-role-list" class="mt-6 space-y-3"></div></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">Category manager</h2><p class="mt-2 text-sm text-neutral-400">Create, delete, rename, and describe categories. These sync through Supabase when your database table is installed.</p><form id="admin-category-create-form" class="mt-6 space-y-3"><input name="title" required placeholder="New category name" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><textarea name="description" placeholder="Category description" class="min-h-[90px] w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"></textarea><button class="w-full rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Add category</button></form><form id="admin-category-form" class="mt-6 space-y-4"></form></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">Homepage showcase image</h2><p class="mt-2 text-sm text-neutral-400">Change the large image on the homepage without editing code. Use an image URL or upload a JPG/PNG/WEBP file.</p><form id="admin-showcase-form" class="mt-6 space-y-4"><input name="showcaseUrl" placeholder="Homepage showcase image URL" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><input type="file" name="showcaseFile" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /><div id="admin-showcase-preview" class="hidden overflow-hidden rounded-2xl border border-white/10 bg-black/30"><img src="" alt="Homepage showcase preview" class="h-48 w-full object-cover" /></div><button class="w-full rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Save homepage image</button></form></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">VIP quick actions</h2><p class="mt-2 text-sm text-neutral-400">Open the live VIP checkout page to confirm your customer-facing membership flow.</p><a href="vip-checkout.html" class="mt-4 inline-flex rounded-2xl border border-white/15 px-5 py-3 text-white">Open VIP Checkout Page</a></div></div></section>`;
+      gate.innerHTML = `<section class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Admin Portal</p><h1 class="mt-3 text-4xl font-black">Manage videos, PayPal links, files, and user roles</h1><p class="mt-4 max-w-3xl text-neutral-300">Manage live catalog content, assign access levels, and control the preview experience guests see after a purchase.</p><p class="mt-3 text-sm text-amber-200">Uploaded files use your configured storage path when available, with your existing workflow kept intact.</p></section><section class="mt-8 grid gap-8 xl:grid-cols-[1.05fr_0.95fr]"><div class="space-y-8"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><div class="flex flex-wrap items-center justify-between gap-3"><div><h2 class="text-2xl font-bold">Add or edit video</h2><p class="mt-2 text-sm text-neutral-400">Use a direct video file or a video link, then add the PayPal purchase link for this specific video.</p></div><span id="admin-form-mode" class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs uppercase tracking-[0.25em] text-neutral-300">Add mode</span></div><form id="admin-video-form" class="mt-6 grid gap-4 md:grid-cols-2"><input type="hidden" name="videoId" /><input type="hidden" name="isCustom" value="true" /><div class="md:col-span-2"><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Title</label><input required name="title" placeholder="Video title" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div class="md:col-span-2"><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Description</label><textarea required name="description" placeholder="Description" class="min-h-[120px] w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"></textarea></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Access type</label><select name="access" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"><option value="guest">Guest video</option><option value="vip">VIP video</option></select></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Video price</label><input name="priceCents" inputmode="decimal" placeholder="7.00" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><p class="mt-2 text-xs text-neutral-500">Enter the customer-facing price in dollars. Example: 7.00</p></div><div class="md:col-span-2"><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">PayPal purchase link for this video</label><input name="paypalUrl" placeholder="https://www.paypal.com/..." class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><p class="mt-2 text-xs text-neutral-500">The displayed price is informational; the button sends viewers to this exact PayPal link.</p></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Category</label><select name="categorySlug" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white">${categories}</select></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Custom category title</label><input name="categoryTitle" placeholder="Optional custom category title" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div class="md:col-span-2 flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3"><input id="video-published" type="checkbox" name="isPublished" checked class="h-4 w-4 rounded border-white/20 bg-black/40 text-pink-500" /><label for="video-published" class="text-sm text-neutral-300">Published on site</label></div><div class="md:col-span-2 rounded-[1.5rem] border border-white/10 bg-black/20 p-4"><div class="grid gap-4 md:grid-cols-2"><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Thumbnail upload</label><input type="file" name="thumbnailFile" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Thumbnail URL fallback</label><input name="image" placeholder="Optional image URL" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div></div><div class="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4"><div class="flex flex-wrap items-center justify-between gap-3"><div><p class="text-sm font-semibold text-white">Saved thumbnail library</p><p class="mt-1 text-xs text-neutral-400">Pick a thumbnail you already uploaded instead of adding it again.</p></div><button type="button" id="admin-refresh-thumbnails" class="rounded-xl border border-white/10 px-3 py-2 text-xs font-semibold text-white">Refresh library</button></div><div id="admin-thumbnail-library" class="mt-4 grid max-h-72 gap-3 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3"></div></div><div id="admin-thumbnail-preview" class="mt-4 hidden overflow-hidden rounded-2xl border border-white/10 bg-black/30"><img src="" alt="Thumbnail preview" class="h-48 w-full object-cover" /></div></div><div class="md:col-span-2 rounded-[1.5rem] border border-white/10 bg-black/20 p-4"><div class="grid gap-4 md:grid-cols-2"><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Video link</label><input name="videoUrl" placeholder="https://..." class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Video file upload</label><input type="file" name="videoFile" accept=".mp4,.webm,.mov,video/mp4,video/webm,video/quicktime" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div></div><p class="mt-3 text-sm text-neutral-400">Source priority: uploaded video file first, then video link.</p><div id="admin-video-source-note" class="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-neutral-300">No source selected yet.</div><div class="mt-4"><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">External file link (Mega / MediaFire)</label><input name="externalFileUrl" placeholder="https://mega.nz/... or https://mediafire.com/..." class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div></div><div class="md:col-span-2 rounded-[1.5rem] border border-white/10 bg-black/20 p-4"><div class="flex flex-wrap items-center gap-6"><label class="flex items-center gap-3 text-sm text-neutral-300"><input id="preview-image-enabled" type="checkbox" name="previewImageEnabled" checked class="h-4 w-4 rounded border-white/20 bg-black/40 text-pink-500" />Enable image preview</label><label class="flex items-center gap-3 text-sm text-neutral-300"><input id="preview-video-enabled" type="checkbox" name="previewVideoEnabled" class="h-4 w-4 rounded border-white/20 bg-black/40 text-pink-500" />Enable video preview assets</label></div><p class="mt-3 text-sm text-neutral-400">Guests and VIP visitors can see preview images/videos before purchase. Full source videos and downloads stay protected.</p><div id="admin-preview-settings" class="mt-4 grid gap-4 md:grid-cols-2"><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Preview image upload</label><input type="file" name="previewImageFile" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Preview image URL</label><input name="previewImageUrl" placeholder="Optional preview image URL" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Preview video upload</label><input type="file" name="previewVideoFile" accept=".mp4,.webm,.mov,video/mp4,video/webm,video/quicktime" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /></div><div><label class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Preview video URL</label><input name="previewVideoUrl" placeholder="Optional preview video URL" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /></div></div><div id="admin-preview-note" class="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-neutral-300">Guests and VIP visitors can preview this asset before purchase. Full playback stays locked until purchase/VIP access.</div></div><div class="md:col-span-2 flex flex-wrap gap-3"><button class="rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Save video</button><button type="button" id="admin-form-reset" class="rounded-2xl border border-white/15 px-6 py-3 font-semibold text-white">Clear form</button></div></form></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><div class="flex items-center justify-between gap-4"><div><h2 class="text-2xl font-bold">Manage saved videos</h2><p class="mt-2 text-sm text-neutral-400">Every saved video shows its access label, thumbnail preview, and edit/delete actions.</p></div><a href="index.html" class="rounded-xl border border-white/15 px-4 py-2 text-sm text-white">Back to site</a></div><div id="admin-video-list" class="mt-6 space-y-4"></div></div></div><div class="space-y-8"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">Role manager</h2><p class="mt-2 text-sm text-neutral-400">Use this to mark a user as guest, VIP, or admin on this site.</p><form id="admin-role-form" class="mt-6 space-y-4"><input required type="email" name="email" placeholder="user@example.com" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><select name="role" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"><option value="guest">Guest</option><option value="vip">VIP</option><option value="admin">Admin</option></select><button class="w-full rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Save role</button></form><div id="admin-role-list" class="mt-6 space-y-3"></div></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">Category manager</h2><p class="mt-2 text-sm text-neutral-400">Create, delete, rename, and describe categories. These sync through Supabase when your database table is installed.</p><form id="admin-category-create-form" class="mt-6 space-y-3"><input name="title" required placeholder="New category name" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><textarea name="description" placeholder="Category description" class="min-h-[90px] w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"></textarea><button class="w-full rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Add category</button></form><form id="admin-category-form" class="mt-6 space-y-4"></form></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">Homepage showcase image</h2><p class="mt-2 text-sm text-neutral-400">Change the large image on the homepage without editing code. Use an image URL or upload a JPG/PNG/WEBP file.</p><form id="admin-showcase-form" class="mt-6 space-y-4"><input name="showcaseUrl" placeholder="Homepage showcase image URL" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white" /><input type="file" name="showcaseFile" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="block w-full rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 py-3 text-sm text-neutral-300 file:mr-4 file:rounded-xl file:border-0 file:bg-pink-500 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white" /><div id="admin-showcase-preview" class="hidden overflow-hidden rounded-2xl border border-white/10 bg-black/30"><img src="" alt="Homepage showcase preview" class="h-48 w-full object-cover" /></div><button class="w-full rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white">Save homepage image</button></form></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">VIP quick actions</h2><p class="mt-2 text-sm text-neutral-400">Open the live VIP checkout page to confirm your customer-facing membership flow.</p><a href="vip-checkout.html" class="mt-4 inline-flex rounded-2xl border border-white/15 px-5 py-3 text-white">Open VIP Checkout Page</a></div></div></section>`;
 
       const form = document.getElementById('admin-video-form');
       const modeBadge = document.getElementById('admin-form-mode');
       const resetButton = document.getElementById('admin-form-reset');
       const thumbnailPreviewWrap = document.getElementById('admin-thumbnail-preview');
       const thumbnailPreviewImage = thumbnailPreviewWrap.querySelector('img');
+      const thumbnailLibraryEl = document.getElementById('admin-thumbnail-library');
+      const refreshThumbnailsButton = document.getElementById('admin-refresh-thumbnails');
       const sourceNote = document.getElementById('admin-video-source-note');
 
       let thumbnailData = '';
+      let selectedThumbnailUrl = '';
       let videoData = '';
       let videoMimeType = '';
       let videoFileName = '';
@@ -1539,10 +1635,12 @@ window.HiddenGemsApp = (() => {
         else note.textContent = 'Guests and VIP visitors can preview this asset before purchase. Full playback stays locked until purchase/VIP access.';
       };
 
-      const setThumbnailPreview = (value) => {
-        thumbnailData = value || '';
+      const setThumbnailPreview = (value, options = {}) => {
+        if (options.fromLibrary) selectedThumbnailUrl = value || '';
+        else if (options.fromUpload) selectedThumbnailUrl = '';
+        thumbnailData = options.fromUpload ? (value || '') : '';
         const fallbackValue = String(form.elements.image.value || '').trim();
-        const preview = thumbnailData || fallbackValue;
+        const preview = thumbnailData || selectedThumbnailUrl || fallbackValue;
         if (preview) {
           thumbnailPreviewWrap.classList.remove('hidden');
           thumbnailPreviewImage.src = preview;
@@ -1550,6 +1648,19 @@ window.HiddenGemsApp = (() => {
           thumbnailPreviewWrap.classList.add('hidden');
           thumbnailPreviewImage.src = '';
         }
+      };
+
+      const renderThumbnailLibrary = () => {
+        if (!thumbnailLibraryEl) return;
+        const library = buildThumbnailLibrary();
+        thumbnailLibraryEl.innerHTML = library.length ? library.map((thumb) => `<button type="button" data-select-thumbnail="${escapeHtml(thumb.url)}" class="overflow-hidden rounded-2xl border ${selectedThumbnailUrl === thumb.url ? 'border-pink-400 bg-pink-500/10' : 'border-white/10 bg-black/30'} text-left transition hover:border-pink-400/40"><img src="${escapeHtml(thumb.url)}" alt="${escapeHtml(thumb.title || 'Saved thumbnail')}" class="h-24 w-full object-cover" /><span class="block truncate px-3 py-2 text-xs text-neutral-300">${escapeHtml(thumb.title || thumb.fileName || 'Saved thumbnail')}</span></button>`).join('') : '<p class="rounded-2xl border border-dashed border-white/10 p-4 text-sm text-neutral-400">No saved thumbnails yet. Upload one and save a video to add it here.</p>';
+        thumbnailLibraryEl.querySelectorAll('[data-select-thumbnail]').forEach((button) => button.addEventListener('click', () => {
+          const url = button.dataset.selectThumbnail || '';
+          if (form.elements.thumbnailFile) form.elements.thumbnailFile.value = '';
+          if (form.elements.image) form.elements.image.value = url;
+          setThumbnailPreview(url, { fromLibrary: true });
+          renderThumbnailLibrary();
+        }));
       };
 
       const updateSourceNote = () => {
@@ -1571,6 +1682,7 @@ window.HiddenGemsApp = (() => {
         form.elements.categorySlug.value = video.categorySlug || 'creator-picks';
         form.elements.categoryTitle.value = video.categoryTitle || '';
         form.elements.image.value = video.image || '';
+        selectedThumbnailUrl = video.image || '';
         form.elements.videoUrl.value = video.videoUrl || '';
         if (form.elements.isPublished) form.elements.isPublished.checked = video.isPublished !== false;
         thumbnailData = video.image && video.image.startsWith('data:image/') ? video.image : '';
@@ -1592,7 +1704,8 @@ window.HiddenGemsApp = (() => {
         previewVideoData = video.previewVideo || '';
         previewVideoMimeType = video.previewVideoMimeType || '';
         previewVideoFileName = video.previewVideoFileName || '';
-        setThumbnailPreview(video.image || '');
+        setThumbnailPreview(video.image || '', { fromLibrary: true });
+        renderThumbnailLibrary();
         updateSourceNote();
         updatePreviewNote();
         modeBadge.textContent = `Edit mode · ${video.access === 'vip' ? 'VIP' : 'Guest'}`;
@@ -1608,6 +1721,7 @@ window.HiddenGemsApp = (() => {
         if (form.elements.priceCents) form.elements.priceCents.value = '';
         if (form.elements.isPublished) form.elements.isPublished.checked = true;
         thumbnailData = '';
+        selectedThumbnailUrl = '';
         videoData = '';
         videoMimeType = '';
         videoFileName = '';
@@ -1623,6 +1737,7 @@ window.HiddenGemsApp = (() => {
         if (form.elements.previewImageUrl) form.elements.previewImageUrl.value = '';
         if (form.elements.previewVideoUrl) form.elements.previewVideoUrl.value = '';
         setThumbnailPreview('');
+        renderThumbnailLibrary();
         updateSourceNote();
         updatePreviewNote();
         modeBadge.textContent = 'Add mode';
@@ -1713,9 +1828,10 @@ window.HiddenGemsApp = (() => {
         const file = event.target.files?.[0];
         if (!file) { setThumbnailPreview(''); return; }
         if (!/image\/(jpeg|png|webp)/i.test(file.type) && !/\.(jpe?g|png|webp)$/i.test(file.name || '')) { toast('Thumbnail must be JPG, JPEG, PNG, or WEBP.', 'error'); event.target.value = ''; return; }
-        try { setThumbnailPreview(await readFileAsDataUrl(file)); } catch (error) { toast('Thumbnail upload failed.', 'error'); }
+        try { setThumbnailPreview(await readFileAsDataUrl(file), { fromUpload: true }); renderThumbnailLibrary(); } catch (error) { toast('Thumbnail upload failed.', 'error'); }
       });
-      form.elements.image.addEventListener('input', () => setThumbnailPreview(thumbnailData || String(form.elements.image.value || '').trim()));
+      form.elements.image.addEventListener('input', () => { selectedThumbnailUrl = ''; setThumbnailPreview(thumbnailData || String(form.elements.image.value || '').trim(), thumbnailData ? { fromUpload: true } : {}); renderThumbnailLibrary(); });
+      refreshThumbnailsButton?.addEventListener('click', async () => { await refreshSupabaseThumbnails(true); renderThumbnailLibrary(); toast('Thumbnail library refreshed.', 'success'); });
       form.elements.videoUrl.addEventListener('input', updateSourceNote);
       form.elements.videoFile?.addEventListener('change', async (event) => {
         const file = event.target.files?.[0];
@@ -1738,7 +1854,7 @@ window.HiddenGemsApp = (() => {
         const data = new FormData(form);
         const id = String(data.get('videoId') || '').trim() || ('custom-' + Date.now());
         const isCustom = String(data.get('isCustom') || 'true') === 'true';
-        const imageValue = thumbnailData || String(data.get('image') || '').trim();
+        const imageValue = thumbnailData || selectedThumbnailUrl || String(data.get('image') || '').trim();
         const videoUrl = String(data.get('videoUrl') || '').trim();
         const selectedCategorySlug = String(data.get('categorySlug') || 'creator-picks').trim() || 'creator-picks';
         const selectedCategoryTitle = String(data.get('categoryTitle') || '').trim() || categoryDisplayName(selectedCategorySlug);
@@ -1799,6 +1915,21 @@ window.HiddenGemsApp = (() => {
               item.videoFileRef = blobRef;
               item.videoFile = '';
               item.sourceType = 'file';
+            }
+          }
+
+          if (imageValue) {
+            try {
+              await saveThumbnailToSupabase({
+                id: `thumb-${id}-${Math.abs(hashString(imageValue))}`,
+                url: imageValue,
+                title: item.title ? `${item.title} thumbnail` : 'Saved thumbnail',
+                fileName: form.elements.thumbnailFile?.files?.[0]?.name || '',
+                linkedVideoId: id
+              });
+            } catch (error) {
+              console.error('Thumbnail library save failed', error);
+              storage.addThumbnail({ url: imageValue, title: item.title ? `${item.title} thumbnail` : 'Saved thumbnail', linkedVideoId: id });
             }
           }
 
@@ -1956,6 +2087,8 @@ window.HiddenGemsApp = (() => {
 
       resetVideoForm();
       renderRoleList();
+      renderThumbnailLibrary();
+      refreshSupabaseThumbnails().then(renderThumbnailLibrary).catch(() => {});
       renderCategoryManager();
       renderVideoList();
     };

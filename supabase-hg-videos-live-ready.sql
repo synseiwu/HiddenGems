@@ -231,6 +231,50 @@ do $$ begin
 exception when duplicate_object then null; end $$;
 
 
+
+
+-- Shared thumbnail library used by the admin portal.
+-- This lets admin reuse existing thumbnails instead of uploading them again.
+create table if not exists public.hg_thumbnails (
+  id text primary key,
+  image_url text not null,
+  title text not null default 'Saved thumbnail',
+  file_name text,
+  linked_video_id text,
+  created_by uuid,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz
+);
+
+alter table public.hg_thumbnails enable row level security;
+alter table public.hg_thumbnails replica identity full;
+
+create index if not exists hg_thumbnails_deleted_at_idx on public.hg_thumbnails(deleted_at);
+create index if not exists hg_thumbnails_created_at_idx on public.hg_thumbnails(created_at desc);
+create index if not exists hg_thumbnails_linked_video_id_idx on public.hg_thumbnails(linked_video_id);
+
+do $$ begin
+  create policy "hg_thumbnails_select_all" on public.hg_thumbnails
+    for select using (true);
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create policy "hg_thumbnails_insert_admin" on public.hg_thumbnails
+    for insert with check (public.hg_is_admin());
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create policy "hg_thumbnails_update_admin" on public.hg_thumbnails
+    for update using (public.hg_is_admin()) with check (public.hg_is_admin());
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create policy "hg_thumbnails_delete_admin" on public.hg_thumbnails
+    for delete using (public.hg_is_admin());
+exception when duplicate_object then null; end $$;
+
+
 -- Shared launch settings, including the homepage showcase image.
 create table if not exists public.hg_site_settings (
   key text primary key,
@@ -334,6 +378,25 @@ create policy "hg_categories_update_admin" on public.hg_categories
   for update using (public.hg_is_admin()) with check (public.hg_is_admin());
 
 create policy "hg_categories_delete_admin" on public.hg_categories
+  for delete using (public.hg_is_admin());
+
+
+
+-- Replace older open write policies for thumbnails.
+drop policy if exists "hg_thumbnails_insert_all" on public.hg_thumbnails;
+drop policy if exists "hg_thumbnails_update_all" on public.hg_thumbnails;
+drop policy if exists "hg_thumbnails_delete_all" on public.hg_thumbnails;
+drop policy if exists "hg_thumbnails_insert_admin" on public.hg_thumbnails;
+drop policy if exists "hg_thumbnails_update_admin" on public.hg_thumbnails;
+drop policy if exists "hg_thumbnails_delete_admin" on public.hg_thumbnails;
+
+create policy "hg_thumbnails_insert_admin" on public.hg_thumbnails
+  for insert with check (public.hg_is_admin());
+
+create policy "hg_thumbnails_update_admin" on public.hg_thumbnails
+  for update using (public.hg_is_admin()) with check (public.hg_is_admin());
+
+create policy "hg_thumbnails_delete_admin" on public.hg_thumbnails
   for delete using (public.hg_is_admin());
 
 -- Replace older open write policies for site settings.
