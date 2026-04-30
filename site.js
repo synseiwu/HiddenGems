@@ -1521,6 +1521,7 @@ window.HiddenGemsApp = (() => {
       let videoMimeType = '';
       let videoFileName = '';
       let videoFileRef = '';
+      let videoStoragePath = '';
       let previewImageData = '';
       let previewVideoData = '';
       let previewVideoMimeType = '';
@@ -1553,7 +1554,8 @@ window.HiddenGemsApp = (() => {
 
       const updateSourceNote = () => {
         const link = String(form.elements.videoUrl.value || '').trim();
-        if (videoData) sourceNote.innerHTML = `<span class="font-semibold text-emerald-300">Using uploaded file</span>${videoFileName ? ` · ${escapeHtml(videoFileName)}` : ''}`;
+        if (videoData) sourceNote.innerHTML = `<span class="font-semibold text-emerald-300">Using newly uploaded file</span>${videoFileName ? ` · ${escapeHtml(videoFileName)}` : ''}`;
+        else if (videoFileRef || videoStoragePath) sourceNote.innerHTML = `<span class="font-semibold text-emerald-300">Keeping existing uploaded file</span>${videoFileName ? ` · ${escapeHtml(videoFileName)}` : ''}<br><span class="text-xs text-neutral-500">You can edit the title, price, category, preview, or payment link without re-uploading the video.</span>`;
         else if (link) sourceNote.innerHTML = `<span class="font-semibold text-pink-300">Using video link</span> · ${escapeHtml(link)}`;
         else sourceNote.textContent = 'No source selected yet.';
       };
@@ -1576,6 +1578,7 @@ window.HiddenGemsApp = (() => {
         videoMimeType = video.videoMimeType || '';
         videoFileName = video.videoFileName || '';
         videoFileRef = video.videoFileRef || '';
+        videoStoragePath = video.videoStoragePath || '';
         if (form.elements.thumbnailFile) form.elements.thumbnailFile.value = '';
         if (form.elements.videoFile) form.elements.videoFile.value = '';
         if (form.elements.externalFileUrl) form.elements.externalFileUrl.value = video.externalFileUrl || '';
@@ -1609,6 +1612,7 @@ window.HiddenGemsApp = (() => {
         videoMimeType = '';
         videoFileName = '';
         videoFileRef = '';
+        videoStoragePath = '';
         previewImageData = '';
         previewVideoData = '';
         previewVideoMimeType = '';
@@ -1715,13 +1719,14 @@ window.HiddenGemsApp = (() => {
       form.elements.videoUrl.addEventListener('input', updateSourceNote);
       form.elements.videoFile?.addEventListener('change', async (event) => {
         const file = event.target.files?.[0];
-        if (!file) { videoData = ''; videoMimeType = ''; videoFileName = ''; videoFileRef = ''; updateSourceNote(); return; }
+        if (!file) { videoData = ''; videoMimeType = ''; videoFileName = ''; updateSourceNote(); return; }
         if (!/video\/(mp4|webm|quicktime)/i.test(file.type) && !/\.(mp4|webm|mov)$/i.test(file.name || '')) { toast('Video file must be MP4, WEBM, or MOV.', 'error'); event.target.value = ''; return; }
         try {
           videoData = await readFileAsDataUrl(file);
           videoMimeType = file.type || '';
           videoFileName = file.name || '';
           videoFileRef = '';
+          videoStoragePath = '';
           updateSourceNote();
         } catch (error) { toast('Video upload failed.', 'error'); }
       });
@@ -1747,7 +1752,8 @@ window.HiddenGemsApp = (() => {
           videoFileName,
           videoMimeType,
           videoFileRef,
-          sourceType: (videoData || videoFileRef) ? 'file' : 'link',
+          videoStoragePath,
+          sourceType: (videoData || videoFileRef || videoStoragePath) ? 'file' : 'link',
           categorySlug: selectedCategorySlug,
           categoryTitle: selectedCategoryTitle,
           category: selectedCategoryTitle,
@@ -1769,7 +1775,7 @@ window.HiddenGemsApp = (() => {
 
         if (!item.title || !item.description) { toast('Title and description are required.', 'error'); if (submitButton) { submitButton.disabled = false; submitButton.textContent = 'Save video'; } return; }
         if (!item.image) { toast('Add a thumbnail upload or image URL.', 'error'); if (submitButton) { submitButton.disabled = false; submitButton.textContent = 'Save video'; } return; }
-        if (!item.videoFile && !item.videoFileRef && !item.videoUrl) { toast('Add a video file or a video link.', 'error'); if (submitButton) { submitButton.disabled = false; submitButton.textContent = 'Save video'; } return; }
+        if (!item.videoFile && !item.videoFileRef && !item.videoStoragePath && !item.videoUrl) { toast('Add a video file or a video link.', 'error'); if (submitButton) { submitButton.disabled = false; submitButton.textContent = 'Save video'; } return; }
 
         try {
           const pickedVideoFile = form.elements.videoFile?.files?.[0] || null;
