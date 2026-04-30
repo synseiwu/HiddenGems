@@ -426,3 +426,58 @@ create policy "hg_videos_storage_update_admin" on storage.objects
 
 create policy "hg_videos_storage_delete_admin" on storage.objects
   for delete using (bucket_id = 'hg-videos' and public.hg_is_admin());
+
+-- Universal admin editing fix.
+-- Any account with public.profiles.role = 'admin' can manage every video, no matter who uploaded it.
+-- Public pages can read published catalog rows; the admin panel can load all non-deleted rows, including drafts.
+create or replace function public.hg_is_admin()
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.profiles
+    where profiles.id = auth.uid()
+      and lower(coalesce(profiles.role, '')) = 'admin'
+  );
+$$;
+
+grant execute on function public.hg_is_admin() to anon;
+grant execute on function public.hg_is_admin() to authenticated;
+
+alter table public.hg_videos enable row level security;
+
+drop policy if exists hg_videos_select_all on public.hg_videos;
+drop policy if exists "hg_videos_select_all" on public.hg_videos;
+drop policy if exists "hg_videos_read_all" on public.hg_videos;
+drop policy if exists "Allow public read access to hg_videos" on public.hg_videos;
+
+create policy "hg_videos_select_all"
+on public.hg_videos
+for select
+using (true);
+
+drop policy if exists hg_videos_insert_all on public.hg_videos;
+drop policy if exists hg_videos_update_all on public.hg_videos;
+drop policy if exists hg_videos_delete_all on public.hg_videos;
+drop policy if exists "hg_videos_insert_admin" on public.hg_videos;
+drop policy if exists "hg_videos_update_admin" on public.hg_videos;
+drop policy if exists "hg_videos_delete_admin" on public.hg_videos;
+
+create policy "hg_videos_insert_admin"
+on public.hg_videos
+for insert
+with check (public.hg_is_admin());
+
+create policy "hg_videos_update_admin"
+on public.hg_videos
+for update
+using (public.hg_is_admin())
+with check (public.hg_is_admin());
+
+create policy "hg_videos_delete_admin"
+on public.hg_videos
+for delete
+using (public.hg_is_admin());
