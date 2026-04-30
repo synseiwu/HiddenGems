@@ -3,7 +3,7 @@
     brandName: 'Hidden Gems',
     brandShort: 'HG',
     siteUrl: 'https://hiddengems.space',
-    supportEmail: 'hayzergod@gmail.com',
+    supportEmail: 'HGemsLLC@proton.me',
     paypalLinks: {
       default: 'https://www.paypal.com/ncp/payment/TH74PFXUPCR2N',
       vip: 'https://www.paypal.com/ncp/payment/TH74PFXUPCR2N'

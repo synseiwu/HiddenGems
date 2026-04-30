@@ -38,13 +38,8 @@ set image = coalesce(nullif(image, ''), thumbnail_url, '')
 where coalesce(image, '') = '';
 
 update public.hg_videos
-set price_cents = case
-  when price_cents is not null and price_cents > 0 then price_cents
-  when points in (300, 500, 700) then points
-  when sort_order in (300, 500, 700) then sort_order
-  else 0
-end
-where price_cents is null or price_cents <= 0;
+set price_cents = 0
+where price_cents is null or price_cents < 0;
 
 alter table public.hg_videos
   alter column category_slug set default 'creator-picks',
@@ -140,6 +135,12 @@ add column if not exists preview_video_url text;
 alter table public.hg_videos
 add column if not exists external_file_url text;
 
+alter table public.hg_videos
+add column if not exists paypal_url text;
+
+alter table public.hg_videos
+add column if not exists payment_url text;
+
 create table if not exists public.hg_video_purchases (
   user_id uuid not null references auth.users(id) on delete cascade,
   video_id text not null,
@@ -228,3 +229,135 @@ do $$ begin
   create policy "hg_categories_delete_all" on public.hg_categories
     for delete using (true);
 exception when duplicate_object then null; end $$;
+
+
+-- Shared launch settings, including the homepage showcase image.
+create table if not exists public.hg_site_settings (
+  key text primary key,
+  value jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.hg_site_settings enable row level security;
+alter table public.hg_site_settings replica identity full;
+
+do $$ begin
+  create policy "hg_site_settings_select_all" on public.hg_site_settings
+    for select using (true);
+exception when duplicate_object then null; end $$;
+
+-- NOTE: For launch, restrict writes to admins by replacing the open policies below
+-- with profile-based checks when your profiles table is ready.
+do $$ begin
+  create policy "hg_site_settings_insert_admin" on public.hg_site_settings
+    for insert with check (
+      exists (
+        select 1 from public.profiles
+        where profiles.id = auth.uid()
+        and lower(coalesce(profiles.role, '')) = 'admin'
+      )
+    );
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create policy "hg_site_settings_update_admin" on public.hg_site_settings
+    for update using (
+      exists (
+        select 1 from public.profiles
+        where profiles.id = auth.uid()
+        and lower(coalesce(profiles.role, '')) = 'admin'
+      )
+    ) with check (
+      exists (
+        select 1 from public.profiles
+        where profiles.id = auth.uid()
+        and lower(coalesce(profiles.role, '')) = 'admin'
+      )
+    );
+exception when duplicate_object then null; end $$;
+
+-- Per-video PayPal links are stored in public.hg_videos.paypal_url.
+-- Add/edit the link from the admin portal. If blank, the customer sees "Purchase link coming soon."
+
+
+-- Launch hardening: only admins can write catalog/settings data.
+create or replace function public.hg_is_admin()
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.profiles
+    where profiles.id = auth.uid()
+      and lower(coalesce(profiles.role, '')) = 'admin'
+  );
+$$;
+
+-- Make sure your admin email is marked as admin.
+update public.profiles
+set role = 'admin', is_vip = true
+where lower(email) in ('hayzerxsloth@gmail.com');
+
+-- Replace older open write policies for videos.
+drop policy if exists hg_videos_insert_all on public.hg_videos;
+drop policy if exists hg_videos_update_all on public.hg_videos;
+drop policy if exists hg_videos_delete_all on public.hg_videos;
+drop policy if exists "hg_videos_insert_admin" on public.hg_videos;
+drop policy if exists "hg_videos_update_admin" on public.hg_videos;
+drop policy if exists "hg_videos_delete_admin" on public.hg_videos;
+
+create policy "hg_videos_insert_admin" on public.hg_videos
+  for insert with check (public.hg_is_admin());
+
+create policy "hg_videos_update_admin" on public.hg_videos
+  for update using (public.hg_is_admin()) with check (public.hg_is_admin());
+
+create policy "hg_videos_delete_admin" on public.hg_videos
+  for delete using (public.hg_is_admin());
+
+-- Replace older open write policies for categories.
+drop policy if exists "hg_categories_insert_all" on public.hg_categories;
+drop policy if exists "hg_categories_update_all" on public.hg_categories;
+drop policy if exists "hg_categories_delete_all" on public.hg_categories;
+drop policy if exists "hg_categories_insert_admin" on public.hg_categories;
+drop policy if exists "hg_categories_update_admin" on public.hg_categories;
+drop policy if exists "hg_categories_delete_admin" on public.hg_categories;
+
+create policy "hg_categories_insert_admin" on public.hg_categories
+  for insert with check (public.hg_is_admin());
+
+create policy "hg_categories_update_admin" on public.hg_categories
+  for update using (public.hg_is_admin()) with check (public.hg_is_admin());
+
+create policy "hg_categories_delete_admin" on public.hg_categories
+  for delete using (public.hg_is_admin());
+
+-- Replace older open write policies for site settings.
+drop policy if exists "hg_site_settings_insert_admin" on public.hg_site_settings;
+drop policy if exists "hg_site_settings_update_admin" on public.hg_site_settings;
+
+create policy "hg_site_settings_insert_admin" on public.hg_site_settings
+  for insert with check (public.hg_is_admin());
+
+create policy "hg_site_settings_update_admin" on public.hg_site_settings
+  for update using (public.hg_is_admin()) with check (public.hg_is_admin());
+
+-- Replace older open storage write policies.
+drop policy if exists hg_videos_storage_insert on storage.objects;
+drop policy if exists hg_videos_storage_update on storage.objects;
+drop policy if exists hg_videos_storage_delete on storage.objects;
+drop policy if exists "hg_videos_storage_insert_admin" on storage.objects;
+drop policy if exists "hg_videos_storage_update_admin" on storage.objects;
+drop policy if exists "hg_videos_storage_delete_admin" on storage.objects;
+
+create policy "hg_videos_storage_insert_admin" on storage.objects
+  for insert with check (bucket_id = 'hg-videos' and public.hg_is_admin());
+
+create policy "hg_videos_storage_update_admin" on storage.objects
+  for update using (bucket_id = 'hg-videos' and public.hg_is_admin())
+  with check (bucket_id = 'hg-videos' and public.hg_is_admin());
+
+create policy "hg_videos_storage_delete_admin" on storage.objects
+  for delete using (bucket_id = 'hg-videos' and public.hg_is_admin());
