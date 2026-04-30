@@ -276,8 +276,10 @@ do $$ begin
     );
 exception when duplicate_object then null; end $$;
 
+-- Per-video pricing is stored in public.hg_videos.price_cents.
 -- Per-video PayPal links are stored in public.hg_videos.paypal_url.
--- Add/edit the link from the admin portal. If blank, the customer sees "Purchase link coming soon."
+-- Add/edit both from the admin portal. The public site displays the price, while the button uses the saved PayPal link.
+-- If the link is blank, the customer sees "Purchase link coming soon."
 
 
 -- Launch hardening: only admins can write catalog/settings data.
