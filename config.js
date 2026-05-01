@@ -4,10 +4,7 @@
     brandShort: 'HG',
     siteUrl: 'https://hiddengems.space',
     supportEmail: 'HGemsLLC@proton.me',
-    paypalLinks: {
-      default: 'https://www.paypal.com/ncp/payment/TH74PFXUPCR2N',
-      vip: 'https://www.paypal.com/ncp/payment/TH74PFXUPCR2N'
-    },
+    // Stripe is the active payment provider for this build.
     stripeLinks: {
       defaultVideo: 'https://buy.stripe.com/test_14A8wP3d24yj0Xa0143Ru00',
       vipSubscription: 'https://buy.stripe.com/test_6oUcN57ti0i35dqcNQ3Ru01'
