@@ -30,7 +30,9 @@ window.HiddenGemsApp = (() => {
     categoryMeta: 'hg_category_meta',
     deletedCategories: 'hg_deleted_categories',
     siteSettings: 'hg_site_settings',
-    thumbnailLibrary: 'hg_thumbnail_library'
+    thumbnailLibrary: 'hg_thumbnail_library',
+    userPreferences: 'hg_user_preferences',
+    vipDealDeadline: 'hg_vip_deal_deadline'
   };
 
   function readJson(key, fallback) {
@@ -143,6 +145,16 @@ window.HiddenGemsApp = (() => {
     getSiteSettings() { return readJson(KEYS.siteSettings, {}); },
     setSiteSetting(key, value) { const map = this.getSiteSettings(); map[String(key || '').trim()] = value; writeJson(KEYS.siteSettings, map); },
     getSiteSetting(key, fallback = '') { const map = this.getSiteSettings(); const value = map[String(key || '').trim()]; return typeof value === 'undefined' ? fallback : value; },
+    getUserPreferences() { return readJson(KEYS.userPreferences, { theme: 'dark', cardDensity: 'comfortable', autoplayPreviews: true, reducedMotion: false }); },
+    setUserPreferences(prefs) { writeJson(KEYS.userPreferences, { ...this.getUserPreferences(), ...(prefs || {}) }); },
+    getVipDealDeadline() {
+      let deadline = localStorage.getItem(KEYS.vipDealDeadline);
+      if (!deadline || Number.isNaN(Date.parse(deadline)) || Date.parse(deadline) <= Date.now()) {
+        deadline = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+        localStorage.setItem(KEYS.vipDealDeadline, deadline);
+      }
+      return deadline;
+    },
     getThumbnailLibrary() { return readJson(KEYS.thumbnailLibrary, []); },
     setThumbnailLibrary(items) { writeJson(KEYS.thumbnailLibrary, uniqueThumbnailItems(items)); },
     addThumbnail(item = {}) {
@@ -537,9 +549,19 @@ window.HiddenGemsApp = (() => {
     setTimeout(() => item.remove(), 3000);
   }
 
+  function applyUserPreferences() {
+    const prefs = storage.getUserPreferences ? storage.getUserPreferences() : {};
+    document.documentElement.dataset.hgTheme = prefs.theme || 'dark';
+    document.documentElement.dataset.hgDensity = prefs.cardDensity || 'comfortable';
+    if (prefs.reducedMotion) document.documentElement.classList.add('hg-reduced-motion');
+    else document.documentElement.classList.remove('hg-reduced-motion');
+  }
+
   function applyBg() {
+    applyUserPreferences();
+    const prefs = storage.getUserPreferences ? storage.getUserPreferences() : {};
     document.body.className = 'min-h-screen bg-black text-white';
-    document.body.style.background = 'radial-gradient(circle at top right, rgba(236,72,153,0.22), transparent 30%),radial-gradient(circle at left, rgba(217,70,239,0.14), transparent 24%),#000';
+    document.body.style.background = prefs.theme === 'midnight' ? 'radial-gradient(circle at top right, rgba(59,130,246,0.22), transparent 30%),radial-gradient(circle at left, rgba(168,85,247,0.14), transparent 24%),#020617' : 'radial-gradient(circle at top right, rgba(236,72,153,0.22), transparent 30%),radial-gradient(circle at left, rgba(217,70,239,0.14), transparent 24%),#000';
   }
 
   let supabaseClient = null;
@@ -1184,6 +1206,30 @@ window.HiddenGemsApp = (() => {
   function getAdminVideo(id) { return adminAllVideos().find((video) => String(video.id) === String(id)) || getVideo(id); }
   function canAccessVideo(role, video) { if (!video) return false; if (role === 'admin') return true; if (video.access === 'guest') return true; return role === 'vip'; }
 
+  const VIP_DEAL = { regular: '$39.99', sale: '$19.99', discount: '50% OFF', duration: '30 days' };
+
+  function vipDealMarkup(extraClass = '') {
+    return `<div class="${extraClass} rounded-2xl border border-pink-400/30 bg-pink-500/10 p-4"><div class="flex flex-wrap items-center justify-between gap-3"><div><p class="text-xs font-semibold uppercase tracking-[0.25em] text-pink-300">Limited VIP Deal</p><div class="mt-2 flex flex-wrap items-end gap-3"><span class="text-3xl font-black text-white">${VIP_DEAL.sale}</span><span class="pb-1 text-lg text-neutral-500 line-through">${VIP_DEAL.regular}</span><span class="mb-1 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3 py-1 text-xs font-black text-emerald-200">${VIP_DEAL.discount}</span></div><p class="mt-1 text-sm text-neutral-300">VIP access for ${VIP_DEAL.duration}.</p></div><div class="text-left sm:text-right"><p class="text-xs uppercase tracking-[0.2em] text-neutral-400">Deal timer</p><p data-vip-countdown class="mt-1 font-mono text-lg font-bold text-pink-200">Loading...</p></div></div></div>`;
+  }
+
+  let vipCountdownTimer = null;
+  function updateVipCountdown() {
+    const deadline = Date.parse(storage.getVipDealDeadline ? storage.getVipDealDeadline() : new Date(Date.now() + 30 * 86400000).toISOString());
+    const remaining = Math.max(0, deadline - Date.now());
+    const days = Math.floor(remaining / 86400000);
+    const hours = Math.floor((remaining % 86400000) / 3600000);
+    const minutes = Math.floor((remaining % 3600000) / 60000);
+    const seconds = Math.floor((remaining % 60000) / 1000);
+    const label = `${days}d ${String(hours).padStart(2, '0')}h ${String(minutes).padStart(2, '0')}m ${String(seconds).padStart(2, '0')}s`;
+    document.querySelectorAll('[data-vip-countdown]').forEach((node) => { node.textContent = label; });
+  }
+
+  function startVipDealCountdown() {
+    updateVipCountdown();
+    if (vipCountdownTimer) return;
+    vipCountdownTimer = setInterval(updateVipCountdown, 1000);
+  }
+
   function roleBadge(role) {
     const map = {
       admin: 'border-amber-400/30 bg-amber-500/10 text-amber-200',
@@ -1236,11 +1282,11 @@ window.HiddenGemsApp = (() => {
   function authButtonsMarkup() { return `<a href="login.html" class="rounded-xl border border-white/15 px-4 py-2 text-sm text-white transition hover:bg-white/5">Log In</a><a href="signup.html" class="rounded-xl bg-pink-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-pink-500/20 transition hover:bg-pink-400">Sign Up</a>`; }
 
   function desktopAccountMarkup(state) {
-    return `<a href="points-store.html" class="hidden rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-neutral-200 xl:inline-flex">Access Info</a><div class="relative"><button id="account-menu-button" class="flex items-center gap-3 rounded-full border border-white/10 bg-white/5 py-1.5 pl-1.5 pr-3 text-left text-white transition hover:border-pink-400/30 hover:bg-white/10"><span class="flex h-10 w-10 items-center justify-center rounded-full bg-pink-500/20 text-sm font-bold text-pink-300">${initialsFromEmail(state.email)}</span><span class="hidden max-w-[160px] truncate text-sm font-medium xl:block">${escapeHtml(state.email)}</span><svg class="h-4 w-4 text-neutral-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.512a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg></button><div id="account-menu-dropdown" class="hidden absolute right-0 top-[calc(100%+12px)] z-50 w-72 overflow-hidden rounded-[1.5rem] border border-white/10 bg-neutral-950/95 p-2 shadow-2xl shadow-black/60"><div class="rounded-[1.25rem] border border-white/5 bg-white/[0.03] p-4"><div class="flex items-start justify-between gap-3"><div><p class="truncate text-sm font-semibold text-white">${escapeHtml(state.email)}</p><p class="mt-1 text-xs text-neutral-400">Signed in to ${BRAND_NAME}</p></div>${roleBadge(state.role)}</div><div class="mt-4 grid grid-cols-2 gap-3 text-xs"><div class="rounded-2xl bg-white/[0.04] px-3 py-3"><p class="uppercase tracking-[0.2em] text-neutral-500">Account</p><p class="mt-1 text-base font-bold text-white">${state.email ? 'Active' : 'Guest'}</p></div><div class="rounded-2xl bg-white/[0.04] px-3 py-3"><p class="uppercase tracking-[0.2em] text-neutral-500">Access</p><p class="mt-1 text-base font-bold text-white">${state.role}</p></div></div></div><div class="mt-2 grid gap-1"><a href="index.html" class="rounded-xl px-4 py-3 text-sm text-neutral-200 transition hover:bg-white/5">Home</a><a href="account.html" class="rounded-xl px-4 py-3 text-sm text-neutral-200 transition hover:bg-white/5">Your Account</a><a href="my-library.html" class="rounded-xl px-4 py-3 text-sm text-neutral-200 transition hover:bg-white/5">My Library</a><a href="points-store.html" class="rounded-xl px-4 py-3 text-sm text-neutral-200 transition hover:bg-white/5">Access Info</a><a href="vip-checkout.html" class="rounded-xl px-4 py-3 text-sm text-neutral-200 transition hover:bg-white/5">VIP Checkout</a>${state.role === 'admin' ? '<a href="admin.html" class="rounded-xl px-4 py-3 text-sm text-amber-200 transition hover:bg-amber-500/10">Admin Portal</a>' : ''}<button id="logout-button-menu" class="rounded-xl px-4 py-3 text-left text-sm text-rose-200 transition hover:bg-rose-500/10">Log Out</button></div></div></div>`;
+    return `<a href="points-store.html" class="hidden rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-neutral-200 xl:inline-flex">Access Info</a><div class="relative"><button id="account-menu-button" class="flex items-center gap-3 rounded-full border border-white/10 bg-white/5 py-1.5 pl-1.5 pr-3 text-left text-white transition hover:border-pink-400/30 hover:bg-white/10"><span class="flex h-10 w-10 items-center justify-center rounded-full bg-pink-500/20 text-sm font-bold text-pink-300">${initialsFromEmail(state.email)}</span><span class="hidden max-w-[160px] truncate text-sm font-medium xl:block">${escapeHtml(state.email)}</span><svg class="h-4 w-4 text-neutral-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.512a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg></button><div id="account-menu-dropdown" class="hidden absolute right-0 top-[calc(100%+12px)] z-50 w-72 overflow-hidden rounded-[1.5rem] border border-white/10 bg-neutral-950/95 p-2 shadow-2xl shadow-black/60"><div class="rounded-[1.25rem] border border-white/5 bg-white/[0.03] p-4"><div class="flex items-start justify-between gap-3"><div><p class="truncate text-sm font-semibold text-white">${escapeHtml(state.email)}</p><p class="mt-1 text-xs text-neutral-400">Signed in to ${BRAND_NAME}</p></div>${roleBadge(state.role)}</div><div class="mt-4 grid grid-cols-2 gap-3 text-xs"><div class="rounded-2xl bg-white/[0.04] px-3 py-3"><p class="uppercase tracking-[0.2em] text-neutral-500">Account</p><p class="mt-1 text-base font-bold text-white">${state.email ? 'Active' : 'Guest'}</p></div><div class="rounded-2xl bg-white/[0.04] px-3 py-3"><p class="uppercase tracking-[0.2em] text-neutral-500">Access</p><p class="mt-1 text-base font-bold text-white">${state.role}</p></div></div></div><div class="mt-2 grid gap-1"><a href="index.html" class="rounded-xl px-4 py-3 text-sm text-neutral-200 transition hover:bg-white/5">Home</a><a href="account.html" class="rounded-xl px-4 py-3 text-sm text-neutral-200 transition hover:bg-white/5">Your Account</a><a href="my-library.html" class="rounded-xl px-4 py-3 text-sm text-neutral-200 transition hover:bg-white/5">My Library</a><a href="settings.html" class="rounded-xl px-4 py-3 text-sm text-neutral-200 transition hover:bg-white/5">Settings</a><a href="points-store.html" class="rounded-xl px-4 py-3 text-sm text-neutral-200 transition hover:bg-white/5">Access Info</a><a href="vip-checkout.html" class="rounded-xl px-4 py-3 text-sm text-neutral-200 transition hover:bg-white/5">VIP Checkout</a>${state.role === 'admin' ? '<a href="admin.html" class="rounded-xl px-4 py-3 text-sm text-amber-200 transition hover:bg-amber-500/10">Admin Portal</a>' : ''}<button id="logout-button-menu" class="rounded-xl px-4 py-3 text-left text-sm text-rose-200 transition hover:bg-rose-500/10">Log Out</button></div></div></div>`;
   }
 
   function mobileAccountMarkup(state) {
-    return `<a href="account.html" class="transition hover:text-pink-300">Your Account</a><a href="my-library.html" class="transition hover:text-pink-300">My Library</a><a href="points-store.html" class="transition hover:text-pink-300">Access Info</a><a href="vip-checkout.html" class="transition hover:text-pink-300">VIP Checkout</a>${state.role === 'admin' ? '<a href="admin.html" class="text-amber-200 transition hover:text-amber-100">Admin Portal</a>' : ''}<div class="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs text-neutral-400">Signed in as <span class="font-semibold text-white">${escapeHtml(state.email)}</span> · <span class="uppercase text-pink-300">${state.role}</span></div><button id="logout-button-mobile" class="rounded-xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-left text-rose-200 transition hover:bg-rose-500/20">Log Out</button>`;
+    return `<a href="account.html" class="transition hover:text-pink-300">Your Account</a><a href="my-library.html" class="transition hover:text-pink-300">My Library</a><a href="settings.html" class="transition hover:text-pink-300">Settings</a><a href="points-store.html" class="transition hover:text-pink-300">Access Info</a><a href="vip-checkout.html" class="transition hover:text-pink-300">VIP Checkout</a>${state.role === 'admin' ? '<a href="admin.html" class="text-amber-200 transition hover:text-amber-100">Admin Portal</a>' : ''}<div class="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs text-neutral-400">Signed in as <span class="font-semibold text-white">${escapeHtml(state.email)}</span> · <span class="uppercase text-pink-300">${state.role}</span></div><button id="logout-button-mobile" class="rounded-xl border border-rose-400/20 bg-rose-500/10 px-4 py-3 text-left text-rose-200 transition hover:bg-rose-500/20">Log Out</button>`;
   }
 
   async function signOutUser() {
@@ -1296,6 +1342,14 @@ window.HiddenGemsApp = (() => {
       adminLink.textContent = 'Admin Portal';
       dropdown?.querySelector('.p-2')?.insertBefore(adminLink, document.getElementById('logout-button'));
     }
+    if (!document.getElementById('legacy-settings-link')) {
+      const settingsLink = document.createElement('a');
+      settingsLink.id = 'legacy-settings-link';
+      settingsLink.href = 'settings.html';
+      settingsLink.className = 'block rounded-xl px-3 py-3 text-sm text-white transition hover:bg-white/5';
+      settingsLink.textContent = 'Settings';
+      dropdown?.querySelector('.p-2')?.insertBefore(settingsLink, document.getElementById('logout-button'));
+    }
     document.getElementById('logout-button')?.addEventListener('click', signOutUser);
   }
 
@@ -1325,6 +1379,7 @@ window.HiddenGemsApp = (() => {
 
   function updateHomeStateUi(state) {
     syncLegacyHomeHeader(state);
+    startVipDealCountdown();
     if (!supabaseVideosLoaded) {
       const featuredGrid = document.getElementById('featured-grid');
       const categoryGrid = document.getElementById('category-grid-home');
@@ -1554,8 +1609,9 @@ window.HiddenGemsApp = (() => {
 
   function renderVipCheckoutPage() {
     applyBg();
-    document.body.innerHTML = shellHeader() + `<main class="mx-auto flex min-h-[75vh] max-w-3xl items-center px-6 py-16"><div class="w-full rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8 shadow-xl shadow-black/20"><div class="flex items-center gap-4"><img src="./assets/hidden-gems-logo.png" alt="${BRAND_NAME} logo" class="h-14 w-14 rounded-2xl object-contain" /><div><h1 class="text-3xl font-black text-pink-400">${BRAND_NAME} VIP</h1><p class="text-neutral-400">VIP vault access</p></div></div><p class="mt-6 text-neutral-300">Use the secure checkout below to start VIP access. After payment, return to Hidden Gems to use the VIP vault.</p><div id="vip-checkout-note" class="mt-8 rounded-2xl border border-white/10 bg-black/30 p-5 text-sm text-neutral-300">Checking VIP checkout status...</div><div class="mt-8 rounded-2xl border border-white/10 bg-black/30 p-5"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Secure checkout</p><div class="mt-4 flex flex-col gap-3 sm:flex-row"><button id="vip-checkout-button" class="inline-block rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white transition hover:bg-pink-400 text-center">Open VIP Checkout</button></div></div><div class="mt-8 grid gap-4 md:grid-cols-2"><div class="rounded-2xl bg-white/5 p-4"><p class="font-semibold">VIP-only vault</p><p class="mt-1 text-sm text-neutral-400">Special titles reserved for VIP members.</p></div><div class="rounded-2xl bg-white/5 p-4"><p class="font-semibold">On-site playback</p><p class="mt-1 text-sm text-neutral-400">VIP unlocks member videos for streaming on the site.</p></div></div><a href="index.html" class="mt-6 inline-block text-sm text-neutral-400 hover:text-white">← Back to ${BRAND_NAME}</a></div></main>` + shellFooter();
+    document.body.innerHTML = shellHeader() + `<main class="mx-auto flex min-h-[75vh] max-w-3xl items-center px-6 py-16"><div class="w-full rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8 shadow-xl shadow-black/20"><div class="flex items-center gap-4"><img src="./assets/hidden-gems-logo.png" alt="${BRAND_NAME} logo" class="h-14 w-14 rounded-2xl object-contain" /><div><h1 class="text-3xl font-black text-pink-400">${BRAND_NAME} VIP</h1><p class="text-neutral-400">VIP vault access</p></div></div><p class="mt-6 text-neutral-300">Use the secure checkout below to start 30 days of VIP access. After payment, return to Hidden Gems to use the VIP vault.</p>${vipDealMarkup('mt-6')}<div id="vip-checkout-note" class="mt-8 rounded-2xl border border-white/10 bg-black/30 p-5 text-sm text-neutral-300">Checking VIP checkout status...</div><div class="mt-8 rounded-2xl border border-white/10 bg-black/30 p-5"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Secure checkout</p><div class="mt-4 flex flex-col gap-3 sm:flex-row"><button id="vip-checkout-button" class="inline-block rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white transition hover:bg-pink-400 text-center">Open VIP Checkout</button></div></div><div class="mt-8 grid gap-4 md:grid-cols-2"><div class="rounded-2xl bg-white/5 p-4"><p class="font-semibold">VIP-only vault</p><p class="mt-1 text-sm text-neutral-400">Special titles reserved for VIP members.</p></div><div class="rounded-2xl bg-white/5 p-4"><p class="font-semibold">On-site playback</p><p class="mt-1 text-sm text-neutral-400">VIP unlocks member videos for streaming on the site.</p></div></div><a href="index.html" class="mt-6 inline-block text-sm text-neutral-400 hover:text-white">← Back to ${BRAND_NAME}</a></div></main>` + shellFooter();
     bindCommonUi();
+    startVipDealCountdown();
     const note = document.getElementById('vip-checkout-note');
     const button = document.getElementById('vip-checkout-button');
     getState().then((state) => {
@@ -1837,12 +1893,14 @@ window.HiddenGemsApp = (() => {
           const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime() || 0;
           return bTime - aTime;
         });
-        document.getElementById('admin-video-list').innerHTML = videos.length ? videos.map((video) => {
+        const debugSummary = `<div class="rounded-2xl border border-sky-400/20 bg-sky-500/10 p-4 text-sm text-sky-100"><p class="font-semibold text-white">Admin video debug</p><p class="mt-2">Total shown: <span class="font-bold">${videos.length}</span> · Supabase public rows: <span class="font-bold">${supabaseVideosCache.length}</span> · Supabase admin rows: <span class="font-bold">${adminSupabaseVideosCache.length}</span> · Local fallback rows: <span class="font-bold">${storage.getCustomVideos().length}</span></p><p class="mt-1 text-sky-200/80">If admin rows stay at 0 while another admin uploaded videos, run the universal admin SQL and check RLS policies on <code>hg_videos</code>.</p>${lastAdminVideoLoadError ? `<p class="mt-2 break-all text-rose-200">Last Supabase error: ${escapeHtml(lastAdminVideoLoadError)}</p>` : ''}<button type="button" id="admin-reload-videos" class="mt-3 rounded-xl border border-white/15 px-4 py-2 text-sm font-semibold text-white">Reload videos</button></div>`;
+        document.getElementById('admin-video-list').innerHTML = debugSummary + (videos.length ? videos.map((video) => {
+
           const source = getVideoSource(video);
           const accessClass = video.access === 'vip' ? 'border-pink-400/30 bg-pink-500/10 text-pink-200' : 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200';
           const publishClass = video.isPublished === false ? 'border-amber-400/30 bg-amber-500/10 text-amber-200' : 'border-sky-400/30 bg-sky-500/10 text-sky-200';
           return `<div class="rounded-[1.75rem] border border-white/10 bg-neutral-900/80 p-4"><div class="grid gap-4 md:grid-cols-[180px_1fr]"><div class="overflow-hidden rounded-2xl border border-white/10 bg-black/30">${video.image ? `<img src="${escapeHtml(video.image)}" alt="${escapeHtml(video.title)}" class="h-40 w-full object-cover" />` : '<div class="flex h-40 items-center justify-center text-sm text-neutral-500">No thumbnail</div>'}</div><div><div class="flex flex-wrap items-start justify-between gap-3"><div><div class="flex flex-wrap items-center gap-2"><p class="text-lg font-semibold text-white">${escapeHtml(video.title)}</p><span class="rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${accessClass}">${video.access}</span><span class="rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${publishClass}">${video.isPublished === false ? 'draft' : 'published'}</span>${video.isCustom ? '<span class=\"rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-300\">Custom</span>' : '<span class=\"rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400\">Catalog</span>'}${video.previewImageEnabled !== false ? '<span class=\"rounded-full border border-sky-400/20 bg-sky-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-sky-200\">Image preview</span>' : ''}${video.previewVideoEnabled ? '<span class=\"rounded-full border border-fuchsia-400/20 bg-fuchsia-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-fuchsia-200\">Video preview asset</span>' : ''}</div><p class="mt-2 text-sm text-neutral-400">${escapeHtml(video.category)} · Price: ${escapeHtml(moneyLabelFromVideo(video))}</p></div><div class="text-sm text-neutral-400">${source.type === 'file' ? 'Uploaded file' : source.type === 'link' ? 'Video link' : 'No source'}</div></div><p class="mt-3 text-sm text-neutral-300">${escapeHtml(video.description || 'No description added yet.')}</p>${video.externalFileUrl ? `<p class="mt-2 text-xs text-pink-200 break-all">External file link saved</p>` : ''}<div class="mt-4 flex flex-wrap gap-3"><button data-edit-video="${video.id}" class="rounded-xl bg-pink-500 px-4 py-2 text-sm font-semibold text-white">Edit</button><button data-delete-video="${video.id}" class="rounded-xl border border-rose-400/20 bg-rose-500/10 px-4 py-2 text-sm text-rose-200">Delete</button></div></div></div></div>`;
-        }).join('') : `<div class="rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-6 text-neutral-300"><p class="font-semibold text-white">No videos found in the admin list.</p><p class="mt-2 text-sm text-neutral-400">This usually means the admin video query returned zero rows or Supabase blocked the read. Public videos loaded: ${supabaseVideosCache.length}. Admin rows loaded: ${adminSupabaseVideosCache.length}.</p>${lastAdminVideoLoadError ? `<p class="mt-2 break-all text-sm text-rose-200">Supabase error: ${escapeHtml(lastAdminVideoLoadError)}</p>` : ''}<button type="button" id="admin-reload-videos" class="mt-4 rounded-xl border border-white/15 px-4 py-2 text-sm font-semibold text-white">Reload videos</button></div>`;
+        }).join('') : `<div class="rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-6 text-neutral-300"><p class="font-semibold text-white">No videos found in the admin list.</p><p class="mt-2 text-sm text-neutral-400">This usually means the admin video query returned zero rows or Supabase blocked the read. Public videos loaded: ${supabaseVideosCache.length}. Admin rows loaded: ${adminSupabaseVideosCache.length}.</p>${lastAdminVideoLoadError ? `<p class="mt-2 break-all text-sm text-rose-200">Supabase error: ${escapeHtml(lastAdminVideoLoadError)}</p>` : ''}<button type="button" id="admin-reload-videos" class="mt-4 rounded-xl border border-white/15 px-4 py-2 text-sm font-semibold text-white">Reload videos</button></div>`);
 
         document.querySelectorAll('[data-edit-video]').forEach((button) => button.addEventListener('click', () => {
           const video = getAdminVideo(button.dataset.editVideo);
@@ -2165,6 +2223,32 @@ window.HiddenGemsApp = (() => {
     mount();
   }
 
+  function renderSettingsPage() {
+    applyBg();
+    const prefs = storage.getUserPreferences ? storage.getUserPreferences() : {};
+    document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-5xl px-6 py-14"><div class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Settings</p><h1 class="mt-3 text-4xl font-black">Personalize your Hidden Gems experience</h1><p class="mt-4 max-w-3xl text-neutral-300">Choose simple viewing preferences for this device. These settings are saved locally, so they will not affect other users.</p></div><form id="settings-form" class="mt-8 grid gap-6"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">Display</h2><div class="mt-6 grid gap-4 md:grid-cols-2"><label class="block"><span class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Theme style</span><select name="theme" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"><option value="dark">Pink neon</option><option value="midnight">Midnight blue</option></select></label><label class="block"><span class="mb-2 block text-xs font-semibold uppercase tracking-[0.2em] text-neutral-400">Card spacing</span><select name="cardDensity" class="w-full rounded-2xl border border-white/10 bg-black/40 px-4 py-3 text-white"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label></div></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">Playback quality of life</h2><div class="mt-5 space-y-4"><label class="flex items-center gap-3 text-sm text-neutral-300"><input type="checkbox" name="autoplayPreviews" class="h-4 w-4 rounded border-white/20 bg-black/40 text-pink-500" /> Allow preview videos to autoplay when the browser permits it</label><label class="flex items-center gap-3 text-sm text-neutral-300"><input type="checkbox" name="reducedMotion" class="h-4 w-4 rounded border-white/20 bg-black/40 text-pink-500" /> Reduce motion and visual effects</label></div></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><h2 class="text-2xl font-bold">Account & membership</h2><div id="settings-account-summary" class="mt-4 rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-neutral-300">Loading account status...</div></div><div class="flex flex-wrap gap-3"><button class="rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white transition hover:bg-pink-400">Save Settings</button><a href="index.html" class="rounded-2xl border border-white/15 px-6 py-3 font-semibold text-white transition hover:bg-white/5">Back Home</a></div></form></main>` + shellFooter();
+    bindCommonUi();
+    const form = document.getElementById('settings-form');
+    if (form) {
+      form.elements.theme.value = prefs.theme || 'dark';
+      form.elements.cardDensity.value = prefs.cardDensity || 'comfortable';
+      form.elements.autoplayPreviews.checked = prefs.autoplayPreviews !== false;
+      form.elements.reducedMotion.checked = !!prefs.reducedMotion;
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        storage.setUserPreferences({ theme: form.elements.theme.value, cardDensity: form.elements.cardDensity.value, autoplayPreviews: !!form.elements.autoplayPreviews.checked, reducedMotion: !!form.elements.reducedMotion.checked });
+        applyUserPreferences();
+        toast('Settings saved for this device.', 'success');
+      });
+    }
+    getState().then((state) => {
+      const summary = document.getElementById('settings-account-summary');
+      if (!summary) return;
+      if (!state.user?.id) summary.innerHTML = 'You are currently browsing as a guest. Sign in to connect library and VIP access.';
+      else summary.innerHTML = `Signed in as <span class="font-bold text-white">${escapeHtml(state.email)}</span> · Access: <span class="font-bold text-pink-300 uppercase">${escapeHtml(state.role)}</span>`;
+    });
+  }
+
   function renderSimplePage(title, eyebrow, copy) { applyBg(); document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-5xl px-6 py-14"><div class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">${eyebrow}</p><h1 class="mt-3 text-4xl font-black">${title}</h1><div class="mt-6 max-w-none space-y-4 text-neutral-300">${copy}</div></div></main>` + shellFooter(); bindCommonUi(); }
   function initHomePage() { Promise.all([refreshSupabaseVideos(true), refreshSupabaseCategories(true), refreshSiteSettings(true)]).then(() => getState().then(updateHomeStateUi)); window.addEventListener('hg:state-changed', async () => { await refreshSupabaseVideos(true); await refreshSupabaseCategories(true); await refreshSiteSettings(true); updateHomeStateUi(await getState()); }); }
   function initVipCheckoutPage() { renderVipCheckoutPage(); }
@@ -2179,6 +2263,7 @@ window.HiddenGemsApp = (() => {
     if (key === 'my-library') { renderLibraryPage(); return; }
     if (key === 'all-videos') { renderAllVideosPage(); return; }
     if (key === 'admin') { renderAdminPage(); return; }
+    if (key === 'settings') { renderSettingsPage(); return; }
     if (key === 'about') { renderSimplePage('About Hidden Gems', 'About', '<p>Hidden Gems is built for direct per-video access, VIP vault content, and admin-managed catalog updates.</p><p>Guests buy individual videos through the PayPal link attached to each video. VIP opens the VIP vault for on-site playback. Downloads stay disabled for customer roles.</p>'); return; }
     if (key === 'contact') { renderSimplePage('Contact Hidden Gems', 'Support', `<p>Need help with access, VIP status, or a video purchase? Email support anytime at <a class="break-all font-semibold text-pink-300" href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a>.</p><p>Please include the email used for your Hidden Gems account, the video title, and a short description of the issue so support can review it faster.</p><p class="text-sm text-neutral-400">Typical response window: 1–3 business days.</p>`); return; }
     if (key === 'privacy') { renderSimplePage('Privacy Policy', 'Privacy', '<p>This site stores account and catalog settings needed to power purchase access, VIP activation, and admin management features.</p>'); return; }

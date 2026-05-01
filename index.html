@@ -23,15 +23,6 @@
           <p class="text-xs text-neutral-400">View-only video access with VIP vault</p>
         </div>
       </a>
-
-      <nav class="hidden gap-6 text-sm text-neutral-300 md:flex">
-        <a href="#featured" class="transition hover:text-pink-300">Featured</a>
-        <a href="#categories" class="transition hover:text-pink-300">Categories</a>
-        <a href="all-videos.html" class="transition hover:text-pink-300">Videos</a>
-        <a href="#vip" class="transition hover:text-pink-300">VIP</a>
-        <a href="#dashboard" class="transition hover:text-pink-300">Dashboard</a>
-      </nav>
-
       <div class="relative flex items-center gap-3">
         <div id="logged-out-actions" class="flex items-center gap-3">
           <a href="login.html" class="rounded-xl border border-white/15 px-4 py-2 text-sm text-white transition hover:bg-white/5">Log In</a>
@@ -57,6 +48,7 @@
               <a href="account.html" class="block rounded-xl px-3 py-3 text-sm text-white transition hover:bg-white/5">Profile</a>
               <a href="#dashboard" class="block rounded-xl px-3 py-3 text-sm text-white transition hover:bg-white/5">Dashboard</a>
               <a href="my-library.html" class="block rounded-xl px-3 py-3 text-sm text-white transition hover:bg-white/5">My Library</a>
+              <a href="settings.html" class="block rounded-xl px-3 py-3 text-sm text-white transition hover:bg-white/5">Settings</a>
               <a href="vip-exclusives.html" class="block rounded-xl px-3 py-3 text-sm text-white transition hover:bg-white/5">VIP Exclusives</a>
               <button id="logout-button" class="block w-full rounded-xl px-3 py-3 text-left text-sm text-rose-300 transition hover:bg-white/5">Log Out</button>
             </div>
@@ -91,12 +83,24 @@
               <div>
                 <p class="text-xs font-semibold uppercase tracking-[0.25em] text-pink-300">VIP ACCESS</p>
                 <h3 class="mt-2 text-2xl font-black text-white">VIP Membership</h3>
-                <p class="mt-1 text-sm text-neutral-300">
-                  <span class="font-semibold text-pink-300">VIP vault access</span>
-                </p>
+                <div class="mt-2 flex flex-wrap items-end gap-3">
+                  <span class="text-3xl font-black text-white">$19.99</span>
+                  <span class="pb-1 text-lg text-neutral-500 line-through">$39.99</span>
+                  <span class="mb-1 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3 py-1 text-xs font-black text-emerald-200">50% OFF</span>
+                </div>
+                <p class="mt-1 text-sm text-neutral-300"><span class="font-semibold text-pink-300">30 days of VIP vault access</span> · limited discount</p>
+                <p class="mt-2 text-xs uppercase tracking-[0.2em] text-neutral-400">Deal ends in <span data-vip-countdown class="font-mono font-bold text-pink-200">Loading...</span></p>
               </div>
               <a href="vip-checkout.html" class="rounded-2xl bg-pink-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-pink-400">Get VIP Deal</a>
             </div>
+          <div id="home-main-buttons" class="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <a href="#featured" class="rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-center text-sm font-semibold text-white transition hover:border-pink-400/30 hover:bg-pink-500/10">Featured</a>
+            <a href="#categories" class="rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-center text-sm font-semibold text-white transition hover:border-pink-400/30 hover:bg-pink-500/10">Categories</a>
+            <a href="all-videos.html" class="rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-center text-sm font-semibold text-white transition hover:border-pink-400/30 hover:bg-pink-500/10">Videos</a>
+            <a href="#vip" class="rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-center text-sm font-semibold text-white transition hover:border-pink-400/30 hover:bg-pink-500/10">VIP</a>
+            <a href="#dashboard" class="rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-center text-sm font-semibold text-white transition hover:border-pink-400/30 hover:bg-pink-500/10">Dashboard</a>
+          </div>
+
           </div>
 
           <div id="home-stats" class="mt-10 flex flex-wrap gap-6 text-sm text-neutral-400">
@@ -192,11 +196,13 @@
         <div class="rounded-[2rem] border border-white/10 bg-black/30 p-6 backdrop-blur">
           <div class="mb-5 rounded-2xl border border-pink-400/30 bg-pink-500/10 p-4">
             <p class="text-xs font-semibold uppercase tracking-[0.25em] text-pink-300">VIP ACCESS</p>
-            <div class="mt-2 flex items-center gap-3">
-              <p class="text-3xl font-black text-white">VIP</p>
-              <p class="text-lg text-neutral-500 line-through">VIP</p>
+            <div class="mt-2 flex flex-wrap items-end gap-3">
+              <p class="text-3xl font-black text-white">$19.99</p>
+              <p class="text-lg text-neutral-500 line-through">$39.99</p>
+              <span class="mb-1 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-3 py-1 text-xs font-black text-emerald-200">50% OFF</span>
             </div>
-            <p class="mt-1 text-sm font-medium text-pink-300">Limited access</p>
+            <p class="mt-1 text-sm font-medium text-pink-300">30 days of VIP access · limited discount</p>
+            <p class="mt-2 text-xs uppercase tracking-[0.2em] text-neutral-400">Deal ends in <span data-vip-countdown class="font-mono font-bold text-pink-200">Loading...</span></p>
           </div>
           <p class="text-sm uppercase tracking-[0.25em] text-neutral-400">VIP Preview</p>
           <div class="mt-6 space-y-4">
@@ -252,112 +258,5 @@
     <div class="border-t border-white/10 px-6 py-4 text-center text-sm text-neutral-500">© 2026 Hidden Gems. All rights reserved.</div>
   </footer>
 
-  <script>
-    const loggedOutActions = document.getElementById('logged-out-actions');
-    const loggedInActions = document.getElementById('logged-in-actions');
-    const accountMenuButton = document.getElementById('account-menu-button');
-    const accountDropdown = document.getElementById('account-dropdown');
-    const logoutButton = document.getElementById('logout-button');
-    const accountEmailShort = document.getElementById('account-email-short');
-    const accountEmailFull = document.getElementById('account-email-full');
-    const accountAvatar = document.getElementById('account-avatar');
-
-    const heroVipStatus = document.getElementById('hero-vip-status');
-    const heroAccessText = document.getElementById('hero-access-text');
-    const heroAccessText = document.getElementById('hero-access-text');
-    const dashboardVipStatus = document.getElementById('dashboard-vip-status');
-    const dashboardDownloadAccess = document.getElementById('dashboard-download-access');
-    const dashboardPurchaseModel = document.getElementById('dashboard-purchase-model');
-
-    const vipCategoryCard = document.getElementById('vip-category-card');
-    const vipCategoryOverlay = document.getElementById('vip-category-overlay');
-    const vipCategoryLink = document.getElementById('vip-category-link');
-    const vipFeatureCard = document.getElementById('vip-feature-card');
-    const vipFeatureOverlay = document.getElementById('vip-feature-overlay');
-    const vipFeaturePrimary = document.getElementById('vip-feature-primary');
-
-    function initialsFromEmail(email) {
-      if (!email) return 'HG';
-      return email.slice(0, 2).toUpperCase();
-    }
-
-    function applyVipLocks(isVip) {
-      if (isVip) {
-        vipCategoryCard.classList.remove('grayscale', 'opacity-80');
-        vipCategoryOverlay.classList.add('hidden');
-        vipCategoryLink.textContent = 'View category →';
-        vipFeatureCard.classList.remove('grayscale', 'opacity-80');
-        vipFeatureOverlay.classList.add('hidden');
-        vipFeaturePrimary.textContent = 'Watch / Download';
-        vipFeaturePrimary.href = 'vip-exclusives.html';
-      } else {
-        vipCategoryCard.classList.add('grayscale', 'opacity-80');
-        vipCategoryOverlay.classList.remove('hidden');
-        vipCategoryLink.textContent = 'VIP required';
-        vipFeatureCard.classList.add('grayscale', 'opacity-80');
-        vipFeatureOverlay.classList.remove('hidden');
-        vipFeaturePrimary.textContent = 'Join VIP';
-        vipFeaturePrimary.href = 'vip-checkout.html';
-      }
-    }
-
-    function setLoggedOutView() {
-      loggedOutActions.classList.remove('hidden');
-      loggedInActions.classList.add('hidden');
-      heroVipStatus.textContent = 'Guest';
-      heroAccessText.textContent = 'View / VIP';
-      heroAccessText.textContent = 'Per-video';
-      dashboardVipStatus.textContent = 'Guest';
-      dashboardDownloadAccess.textContent = 'VIP only';
-      dashboardPurchaseModel.textContent = 'Direct';
-      applyVipLocks(false);
-    }
-
-    function setLoggedInView(profile) {
-      loggedOutActions.classList.add('hidden');
-      loggedInActions.classList.remove('hidden');
-      const email = profile.email || '';
-      accountEmailShort.textContent = email;
-      accountEmailFull.textContent = email;
-      accountAvatar.textContent = initialsFromEmail(email);
-      const normalizedRole = String(profile.role || (profile.is_vip ? 'vip' : 'guest')).toLowerCase();
-      const vipText = normalizedRole === 'admin' ? 'Admin' : (profile.is_vip ? 'VIP' : 'Guest');
-      heroVipStatus.textContent = vipText;
-      heroAccessText.textContent = profile.is_vip || normalizedRole === 'admin' ? 'VIP / Download' : 'View / VIP';
-      heroAccessText.textContent = 'Per-video';
-      dashboardVipStatus.textContent = vipText;
-      dashboardDownloadAccess.textContent = profile.is_vip || normalizedRole === 'admin' ? 'Enabled' : 'VIP only';
-      dashboardPurchaseModel.textContent = 'Direct';
-      applyVipLocks(!!profile.is_vip || normalizedRole === 'admin');
-    }
-
-    // Account dropdown and logout handlers are bound once by assets/site.js.
-    // This avoids double-toggle issues after login.
-
-    async function syncHeaderState() {
-      try {
-        const app = window.HiddenGemsApp;
-        if (!app || typeof app.getState !== 'function') {
-          setLoggedOutView();
-          return;
-        }
-        const state = await app.getState();
-        if (!state?.user?.id) {
-          setLoggedOutView();
-          return;
-        }
-        setLoggedInView({
-          email: state.email || state.user.email || '',
-          is_vip: state.role === 'vip' || state.role === 'admin' || !!state.profile?.is_vip,
-          role: state.role || state.profile?.role || 'guest'
-        });
-      } catch (error) {
-        setLoggedOutView();
-      }
-    }
-
-    window.addEventListener('hg:state-changed', syncHeaderState);
-    syncHeaderState();
-  </script>
 </body>
 </html>
