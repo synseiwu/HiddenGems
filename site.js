@@ -1325,6 +1325,13 @@ window.HiddenGemsApp = (() => {
 
   function updateHomeStateUi(state) {
     syncLegacyHomeHeader(state);
+    if (!supabaseVideosLoaded) {
+      const featuredGrid = document.getElementById('featured-grid');
+      const categoryGrid = document.getElementById('category-grid-home');
+      if (featuredGrid) featuredGrid.innerHTML = '<div class="md:col-span-2 xl:col-span-3 rounded-[1.75rem] border border-white/10 bg-white/[0.03] p-8 text-center text-neutral-300">Loading your live videos...</div>';
+      if (categoryGrid) categoryGrid.innerHTML = '<div class="md:col-span-2 xl:col-span-4 rounded-[1.75rem] border border-white/10 bg-white/[0.03] p-8 text-center text-neutral-300">Loading live categories...</div>';
+      return;
+    }
     const access = document.getElementById('hero-access-text');
     const pricingText = document.getElementById('hero-pricing-text');
     const status = document.getElementById('hero-vip-status');
@@ -2190,7 +2197,8 @@ window.HiddenGemsApp = (() => {
       supabase.channel('hg-videos-live')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'hg_videos' }, async () => {
           supabaseVideosLoaded = false;
-          await refreshSupabaseVideos(true);
+          adminSupabaseVideosLoaded = false;
+          await Promise.all([refreshSupabaseVideos(true), refreshAdminSupabaseVideos(true)]);
           window.dispatchEvent(new CustomEvent('hg:state-changed'));
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'hg_categories' }, async () => {
