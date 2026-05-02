@@ -507,15 +507,36 @@ window.HiddenGemsApp = (() => {
 
 
   async function getPurchasedVideoIds(state = null) {
-    // Direct Stripe Payment Link mode: purchase unlocks are stored locally after the success redirect.
-    // This avoids Supabase purchase lookups during checkout.
     const currentState = state || await getState();
     const email = String(currentState?.email || '').trim().toLowerCase();
-    const localIds = email ? storage.getUserUnlocked(email) : storage.getUnlocked();
-    return Array.isArray(localIds) ? localIds : [];
+    const ids = new Set(email ? storage.getUserUnlocked(email) : storage.getUnlocked());
+    const supabase = getSupabaseClient();
+    const user = currentState?.user || await getSessionUser();
+
+    if (supabase && user?.id) {
+      try {
+        const result = await supabase
+          .from('hg_video_purchases')
+          .select('video_id,status')
+          .eq('user_id', user.id);
+        if (result?.error) throw result.error;
+        (result?.data || []).forEach((row) => {
+          const status = String(row.status || 'completed').toLowerCase();
+          if (!row.video_id || ['failed', 'canceled', 'cancelled', 'refunded'].includes(status)) return;
+          ids.add(String(row.video_id));
+        });
+      } catch (error) {
+        if (isInvalidJwtError(error)) await resetSupabaseSession(extractErrorMessage(error, 'Invalid JWT'));
+        else console.error('Failed to load Supabase purchases', error);
+      }
+    }
+
+    const list = Array.from(ids);
+    if (email) list.forEach((id) => storage.unlockForUser(email, id));
+    return list;
   }
 
-  async function unlockVideoForState(state, video) {
+  async function unlockVideoForState(state, video, paymentMeta = {}) {
     if (!video) return false;
     const currentState = state || await getState();
     const email = String(currentState?.email || '').trim().toLowerCase();
@@ -530,7 +551,11 @@ window.HiddenGemsApp = (() => {
           role_at_purchase: currentState?.role || 'guest',
           title_snapshot: video.title || '',
           amount_paid_cents: normalizePriceCents(video.priceCents),
-          created_at: new Date().toISOString()
+          payment_provider: paymentMeta.provider || PAYMENT_CONFIG.provider || 'stripe-link',
+          payment_id: paymentMeta.paymentId || paymentMeta.sessionId || paymentMeta.token || null,
+          status: paymentMeta.status || 'completed',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         };
         const result = await supabase.from('hg_video_purchases').upsert(payload, { onConflict: 'user_id,video_id' });
         if (result?.error) throw result.error;
@@ -1487,7 +1512,16 @@ window.HiddenGemsApp = (() => {
   function buildStripeVideoCheckoutUrl(video, state = {}) {
     const base = String(video?.paypalUrl || video?.paymentUrl || '').trim();
     if (!base || base.includes('REPLACE_WITH')) throw new Error('Purchase link coming soon.');
-    return base;
+    try {
+      const url = new URL(base, window.location.href);
+      if (state?.email && !url.searchParams.has('prefilled_email')) url.searchParams.set('prefilled_email', state.email);
+      if (video?.id && state?.user?.id && !url.searchParams.has('client_reference_id')) {
+        url.searchParams.set('client_reference_id', `hg_video:${video.id}:user:${state.user.id}`);
+      }
+      return url.toString();
+    } catch (_) {
+      return base;
+    }
   }
 
   function savePendingStripeVideo(video, state = {}) {
@@ -1505,14 +1539,15 @@ window.HiddenGemsApp = (() => {
   async function finalizeStripeVideoCheckoutFromLocalStorage() {
     const query = new URLSearchParams(window.location.search || '');
     const queryVideoId = String(query.get('video') || query.get('id') || '').trim();
+    const paymentId = String(query.get('session_id') || query.get('payment_intent') || query.get('token') || '').trim();
     const pending = readJson('hg_pending_stripe_video', {});
     const videoId = queryVideoId || String(pending?.id || '').trim();
     if (!videoId) return { status: 'idle' };
-    const video = getVideo(videoId) || { id: videoId, title: pending?.title || 'Purchased video' };
+    const video = getVideo(videoId) || { id: videoId, title: pending?.title || 'Purchased video', priceCents: pending?.amountCents || 0 };
     let state = { email: pending?.email || '', role: 'guest' };
     try { state = await getState(); } catch (_) {}
-    if (state?.email) storage.unlockForUser(state.email, videoId); else storage.unlock(videoId);
-    storage.addTransaction({ type: 'stripe-video', videoId, title: video.title || pending?.title || 'Purchased video', amountCents: 0 });
+    await unlockVideoForState(state, video, { provider: 'stripe-link', paymentId, status: 'completed' });
+    storage.addTransaction({ type: 'stripe-video', videoId, title: video.title || pending?.title || 'Purchased video', amountCents: normalizePriceCents(video.priceCents) });
     try { window.localStorage.removeItem('hg_pending_stripe_video'); } catch (_) {}
     window.dispatchEvent(new CustomEvent('hg:state-changed'));
     return { status: 'complete', videoUnlocked: true, title: video.title || pending?.title || '', videoId };
@@ -1522,18 +1557,26 @@ window.HiddenGemsApp = (() => {
     if (!video?.id) throw new Error('That video is not configured correctly yet.');
     let state = {};
     try { state = await getState(); } catch (_) {}
+    if (!state?.user?.id || !state?.email) {
+      try { sessionStorage.setItem('hg_return_after_login', `video.html?id=${encodeURIComponent(video.id)}`); } catch (_) {}
+      toast('Please sign in before purchasing so this video unlocks for the correct account.', 'error');
+      setTimeout(() => { window.location.href = 'login.html'; }, 900);
+      return false;
+    }
+    if (storage.isUnlockedForUser(state.email, video.id)) {
+      window.location.href = `video.html?id=${encodeURIComponent(video.id)}`;
+      return true;
+    }
     savePendingStripeVideo(video, state);
     window.location.href = buildStripeVideoCheckoutUrl(video, state);
     return true;
   }
 
-  function buyVideo(video) {
+  async function buyVideo(video) {
     if (!video) return;
     if (video.access === 'vip') { window.location.href = 'vip-checkout.html'; return; }
-    if (storage.isUnlocked(video.id)) { window.location.href = `video.html?id=${encodeURIComponent(video.id)}`; return; }
     try {
-      savePendingStripeVideo(video, {});
-      window.location.href = buildStripeVideoCheckoutUrl(video, {});
+      await startVideoCheckout(video);
     } catch (error) {
       toast(extractErrorMessage(error, 'Purchase link coming soon.'), 'error');
     }
@@ -1542,7 +1585,7 @@ window.HiddenGemsApp = (() => {
   
   function videoPrimaryAction(state, video) {
     if (!canAccessVideo(state.role, video)) return { text: 'Join VIP', href: 'vip-checkout.html', kind: 'link' };
-    if (state.role === 'admin' || state.role === 'vip' || storage.isUnlocked(video.id)) return { text: video.videoUrl ? 'Watch Now' : 'Open Video', href: `video.html?id=${video.id}`, kind: 'link' };
+    if (state.role === 'admin' || state.role === 'vip' || storage.isUnlockedForUser(state.email, video.id)) return { text: video.videoUrl ? 'Watch Now' : 'Open Video', href: `video.html?id=${video.id}`, kind: 'link' };
     return { text: 'Buy Access', href: '#', kind: 'buy' };
   }
 
@@ -1570,6 +1613,7 @@ window.HiddenGemsApp = (() => {
       document.getElementById('category-hero').innerHTML = `<div class="flex flex-wrap items-start justify-between gap-6"><div><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Category</p><h2 class="mt-3 text-4xl font-black">${escapeHtml(category.title)}</h2><p class="mt-4 max-w-2xl text-neutral-300">${escapeHtml(category.subtitle || 'Premium titles ready to unlock.')}</p></div><div class="rounded-2xl border border-white/10 bg-black/20 px-5 py-4 text-right"><p class="text-xs uppercase tracking-[0.25em] text-neutral-400">Access tier</p><p class="mt-2 text-2xl font-bold text-white">${category.vip ? 'VIP' : 'Guest'}</p><p class="mt-3 text-xs uppercase tracking-[0.25em] text-neutral-400">Videos in category</p><p class="mt-2 text-2xl font-bold text-white">${category.videos.length}</p><p class="text-sm text-neutral-400">Admin can access everything</p></div></div>`;
       const state = await getState();
       document.getElementById('access-summary').innerHTML = `Role: <span class="font-bold text-pink-300">${state.role}</span> · Purchases unlock per video · Signed in: <span class="font-bold text-white">${state.email || 'No'}</span>`;
+      await getPurchasedVideoIds(state);
       renderVideoCards(document.getElementById('category-grid'), category.videos, state);
     };
     mount(); window.addEventListener('hg:state-changed', mount);
