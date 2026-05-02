@@ -249,8 +249,32 @@ window.HiddenGemsApp = (() => {
     ].filter((map) => map && typeof map === 'object');
     return maps;
   }
+  function parseDollarsToCents(value) {
+    const raw = String(value ?? '').trim().replace(/[$,]/g, '');
+    if (!raw) return 0;
+    const amount = Number(raw);
+    return Number.isFinite(amount) && amount > 0 ? Math.round(amount * 100) : 0;
+  }
+  function checkoutPriceCentsFromVideo(video = {}) {
+    if (video.priceCents !== undefined && video.priceCents !== null && String(video.priceCents).trim() !== '') {
+      return normalizePriceCents(video.priceCents);
+    }
+    if (video.amountCents !== undefined && video.amountCents !== null && String(video.amountCents).trim() !== '') {
+      return normalizePriceCents(video.amountCents);
+    }
+    if (video.price !== undefined && video.price !== null && String(video.price).trim() !== '') {
+      return parseDollarsToCents(video.price);
+    }
+    if (video.amount !== undefined && video.amount !== null && String(video.amount).trim() !== '') {
+      return parseDollarsToCents(video.amount);
+    }
+    return 0;
+  }
   function stripeVideoLinkForPrice(video = {}) {
-    const cents = normalizePriceCents(video.priceCents || video.amountCents || video.price);
+    const perVideo = String(video?.paypalUrl || video?.paymentUrl || '').trim();
+    if (perVideo && !perVideo.includes('REPLACE_WITH')) return perVideo;
+
+    const cents = checkoutPriceCentsFromVideo(video);
     const dollars = cents > 0 ? String(cents / 100).replace(/\.0+$/, '') : '';
     const keys = [
       String(cents),
@@ -266,10 +290,11 @@ window.HiddenGemsApp = (() => {
         if (value && !value.includes('REPLACE_WITH')) return value;
       }
     }
+
     const shared = String(STRIPE_VIDEO_PAYMENT_LINK || '').trim();
-    if (shared && !shared.includes('REPLACE_WITH')) return shared;
-    const perVideo = String(video?.paypalUrl || video?.paymentUrl || '').trim();
-    if (perVideo && !perVideo.includes('REPLACE_WITH')) return perVideo;
+    // The global shared link is the $3/default link in this build. Only use it for
+    // $3 videos or videos with no configured price so $5/$7 videos never undercharge.
+    if (shared && !shared.includes('REPLACE_WITH') && (!cents || cents === 300)) return shared;
     return '';
   }
   function priceInputValueFromCents(cents) {
