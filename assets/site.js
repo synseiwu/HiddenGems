@@ -239,6 +239,39 @@ window.HiddenGemsApp = (() => {
     const cents = normalizePriceCents(video?.priceCents);
     return cents > 0 ? moneyFromCents(cents) : 'Price coming soon';
   }
+  function configuredStripeVideoPriceLinks() {
+    const maps = [
+      PAYMENT_CONFIG.stripeVideoLinksByPrice,
+      PAYMENT_CONFIG.stripePriceLinks,
+      APP_CONFIG.stripeVideoLinksByPrice,
+      APP_CONFIG.stripeLinks && APP_CONFIG.stripeLinks.videoPrices,
+      APP_CONFIG.stripeLinks && APP_CONFIG.stripeLinks.byPrice
+    ].filter((map) => map && typeof map === 'object');
+    return maps;
+  }
+  function stripeVideoLinkForPrice(video = {}) {
+    const cents = normalizePriceCents(video.priceCents || video.amountCents || video.price);
+    const dollars = cents > 0 ? String(cents / 100).replace(/\.0+$/, '') : '';
+    const keys = [
+      String(cents),
+      cents > 0 ? `cents_${cents}` : '',
+      cents > 0 ? `price_${cents}` : '',
+      dollars,
+      dollars ? `$${dollars}` : '',
+      dollars ? `usd_${dollars}` : ''
+    ].filter(Boolean);
+    for (const map of configuredStripeVideoPriceLinks()) {
+      for (const key of keys) {
+        const value = String(map[key] || '').trim();
+        if (value && !value.includes('REPLACE_WITH')) return value;
+      }
+    }
+    const shared = String(STRIPE_VIDEO_PAYMENT_LINK || '').trim();
+    if (shared && !shared.includes('REPLACE_WITH')) return shared;
+    const perVideo = String(video?.paypalUrl || video?.paymentUrl || '').trim();
+    if (perVideo && !perVideo.includes('REPLACE_WITH')) return perVideo;
+    return '';
+  }
   function priceInputValueFromCents(cents) {
     const normalized = normalizePriceCents(cents);
     return normalized > 0 ? (normalized / 100).toFixed(2) : '';
@@ -1568,8 +1601,11 @@ window.HiddenGemsApp = (() => {
     }
   }
 
+  const PENDING_STRIPE_VIDEO_KEY = 'hg_pending_stripe_video';
+  const PENDING_STRIPE_VIDEO_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+
   function buildStripeVideoCheckoutUrl(video, state = {}) {
-    const base = String(video?.paypalUrl || video?.paymentUrl || '').trim();
+    const base = stripeVideoLinkForPrice(video);
     if (!base || base.includes('REPLACE_WITH')) throw new Error('Purchase link coming soon.');
     try {
       const url = new URL(base, window.location.href);
@@ -1584,14 +1620,19 @@ window.HiddenGemsApp = (() => {
   }
 
   function savePendingStripeVideo(video, state = {}) {
+    const createdAt = new Date();
     const pending = {
       id: String(video?.id || ''),
       title: String(video?.title || 'Purchased video'),
-      amountCents: 0,
+      amountCents: normalizePriceCents(video?.priceCents || video?.amountCents || video?.price),
+      priceLabel: moneyLabelFromVideo(video),
       email: String(state?.email || '').trim().toLowerCase(),
-      createdAt: new Date().toISOString()
+      userId: String(state?.user?.id || '').trim(),
+      returnTo: `video.html?id=${encodeURIComponent(String(video?.id || ''))}`,
+      createdAt: createdAt.toISOString(),
+      expiresAt: new Date(createdAt.getTime() + PENDING_STRIPE_VIDEO_MAX_AGE_MS).toISOString()
     };
-    writeJson('hg_pending_stripe_video', pending);
+    writeJson(PENDING_STRIPE_VIDEO_KEY, pending);
     return pending;
   }
 
@@ -1599,15 +1640,35 @@ window.HiddenGemsApp = (() => {
     const query = new URLSearchParams(window.location.search || '');
     const queryVideoId = String(query.get('video') || query.get('id') || '').trim();
     const paymentId = String(query.get('session_id') || query.get('payment_intent') || query.get('token') || '').trim();
-    const pending = readJson('hg_pending_stripe_video', {});
-    const videoId = queryVideoId || String(pending?.id || '').trim();
+    const pending = readJson(PENDING_STRIPE_VIDEO_KEY, {});
+    const pendingVideoId = String(pending?.id || '').trim();
+    const videoId = queryVideoId || pendingVideoId;
     if (!videoId) return { status: 'idle' };
-    const video = getVideo(videoId) || { id: videoId, title: pending?.title || 'Purchased video', priceCents: pending?.amountCents || 0 };
+
+    if (!queryVideoId && pending?.createdAt) {
+      const createdAtMs = Date.parse(pending.createdAt);
+      if (Number.isFinite(createdAtMs) && Date.now() - createdAtMs > PENDING_STRIPE_VIDEO_MAX_AGE_MS) {
+        try { window.localStorage.removeItem(PENDING_STRIPE_VIDEO_KEY); } catch (_) {}
+        throw new Error('This pending Stripe unlock is too old. Please return to the video and click Buy Access again.');
+      }
+    }
+
     let state = { email: pending?.email || '', role: 'guest' };
     try { state = await getState(); } catch (_) {}
-    await unlockVideoForState(state, video, { provider: 'stripe-link', paymentId, status: 'completed' });
-    storage.addTransaction({ type: 'stripe-video', videoId, title: video.title || pending?.title || 'Purchased video', amountCents: normalizePriceCents(video.priceCents) });
-    try { window.localStorage.removeItem('hg_pending_stripe_video'); } catch (_) {}
+    if (!state?.user?.id || !state?.email) throw new Error('Please sign in again so Hidden Gems can attach this purchase to your account.');
+    const pendingEmail = String(pending?.email || '').trim().toLowerCase();
+    const pendingUserId = String(pending?.userId || '').trim();
+    if (!queryVideoId && pendingEmail && String(state.email || '').trim().toLowerCase() !== pendingEmail) {
+      throw new Error('This Stripe checkout was started by a different account on this browser. Please buy the video again while signed into the correct account.');
+    }
+    if (!queryVideoId && pendingUserId && String(state.user.id || '').trim() !== pendingUserId) {
+      throw new Error('This Stripe checkout was started by a different account on this browser. Please buy the video again while signed into the correct account.');
+    }
+
+    const video = getVideo(videoId) || { id: videoId, title: pending?.title || 'Purchased video', priceCents: pending?.amountCents || 0 };
+    await unlockVideoForState(state, video, { provider: 'stripe-link', paymentId, sessionId: paymentId, status: 'completed' });
+    storage.addTransaction({ type: 'stripe-video', videoId, title: video.title || pending?.title || 'Purchased video', amountCents: normalizePriceCents(video.priceCents || pending?.amountCents) });
+    try { window.localStorage.removeItem(PENDING_STRIPE_VIDEO_KEY); } catch (_) {}
     window.dispatchEvent(new CustomEvent('hg:state-changed'));
     return { status: 'complete', videoUnlocked: true, title: video.title || pending?.title || '', videoId };
   }
@@ -1652,7 +1713,7 @@ window.HiddenGemsApp = (() => {
     container.innerHTML = videos.map((video) => {
       const action = videoPrimaryAction(state, video);
       const lockedByVip = !canAccessVideo(state.role, video);
-      return `<article class="group overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/5 shadow-xl shadow-black/20 transition hover:-translate-y-1 hover:border-pink-400/30 ${lockedByVip ? 'opacity-80' : ''}"><div class="relative"><img src="${escapeHtml(video.image)}" alt="${escapeHtml(video.title)}" class="h-64 w-full object-cover transition duration-500 group-hover:scale-105" /><div class="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent"></div><span class="absolute left-4 top-4 rounded-full bg-black/60 px-3 py-1 text-xs text-white backdrop-blur">${escapeHtml(video.category)}</span>${lockedByVip ? '<div class="absolute inset-0 flex items-center justify-center bg-black/55 text-sm font-semibold uppercase tracking-[0.2em] text-pink-300">VIP Only</div>' : ''}</div><div class="p-5"><div class="flex items-start justify-between gap-4"><div><h4 class="text-xl font-semibold">${escapeHtml(video.title)}</h4><p class="mt-1 text-sm text-neutral-400">${escapeHtml(video.description)}</p></div><div class="rounded-xl bg-pink-500/10 px-3 py-2 text-right text-sm font-semibold text-pink-300">${video.access === 'vip' ? '<div>VIP</div><div class="text-[11px] text-neutral-400">VIP vault</div>' : '<div>' + escapeHtml(moneyLabelFromVideo(video)) + '</div><div class="text-[11px] text-neutral-400">Stripe payment link</div>'}</div></div><div class="mt-5 flex gap-3"><a href="${action.href}" data-video-primary="${video.id}" class="flex-1 rounded-xl bg-pink-500 px-4 py-3 text-center font-medium text-white transition hover:bg-pink-400">${action.text}</a><a href="video.html?id=${video.id}" class="rounded-xl border border-white/15 px-4 py-3 text-sm text-neutral-300 transition hover:bg-white/5">Preview</a></div></div></article>`;
+      return `<article class="group overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/5 shadow-xl shadow-black/20 transition hover:-translate-y-1 hover:border-pink-400/30 ${lockedByVip ? 'opacity-80' : ''}"><div class="relative"><img src="${escapeHtml(video.image)}" alt="${escapeHtml(video.title)}" class="h-64 w-full object-cover transition duration-500 group-hover:scale-105" /><div class="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent"></div><span class="absolute left-4 top-4 rounded-full bg-black/60 px-3 py-1 text-xs text-white backdrop-blur">${escapeHtml(video.category)}</span>${lockedByVip ? '<div class="absolute inset-0 flex items-center justify-center bg-black/55 text-sm font-semibold uppercase tracking-[0.2em] text-pink-300">VIP Only</div>' : ''}</div><div class="p-5"><div class="flex items-start justify-between gap-4"><div><h4 class="text-xl font-semibold">${escapeHtml(video.title)}</h4><p class="mt-1 text-sm text-neutral-400">${escapeHtml(video.description)}</p></div><div class="rounded-xl bg-pink-500/10 px-3 py-2 text-right text-sm font-semibold text-pink-300">${video.access === 'vip' ? '<div>VIP</div><div class="text-[11px] text-neutral-400">VIP vault</div>' : '<div>' + escapeHtml(moneyLabelFromVideo(video)) + '</div><div class="text-[11px] text-neutral-400">Stripe checkout</div>'}</div></div><div class="mt-5 flex gap-3"><a href="${action.href}" data-video-primary="${video.id}" class="flex-1 rounded-xl bg-pink-500 px-4 py-3 text-center font-medium text-white transition hover:bg-pink-400">${action.text}</a><a href="video.html?id=${video.id}" class="rounded-xl border border-white/15 px-4 py-3 text-sm text-neutral-300 transition hover:bg-white/5">Preview</a></div></div></article>`;
     }).join('');
     container.querySelectorAll('[data-video-primary]').forEach((button) => button.addEventListener('click', (event) => {
       const video = getVideo(button.dataset.videoPrimary);
@@ -1690,7 +1751,7 @@ window.HiddenGemsApp = (() => {
         bindCommonUi();
         return;
       }
-      document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-6xl px-6 py-14"><a href="${categoryPageHref(video.categorySlug)}" class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-300 transition hover:bg-white/10">← Back</a><div class="mt-8 grid gap-8 lg:grid-cols-[1.15fr_0.85fr]"><section class="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 shadow-xl shadow-black/20"><div class="relative"><img src="${escapeHtml(video.image)}" class="h-[420px] w-full object-cover" alt="${escapeHtml(video.title)}"><div class="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent"></div><div class="absolute bottom-6 left-6"><p class="text-xs uppercase tracking-[0.25em] text-pink-300">${escapeHtml(video.category)}</p><h1 class="mt-2 text-4xl font-black">${escapeHtml(video.title)}</h1></div></div><div class="p-6"><div id="video-access-banner" class="rounded-[1.5rem] border border-white/10 bg-neutral-950/70 p-5 text-neutral-300">Checking access...</div><div id="video-player-shell" class="mt-6 rounded-[1.5rem] border border-white/10 bg-black/20 p-5"></div><div id="video-description-shell" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-5"><p class="text-xs uppercase tracking-[0.25em] text-neutral-500">Description</p><p class="mt-3 text-neutral-200">${escapeHtml(video.description || 'No description added yet.')}</p></div><div id="video-external-file-shell" class="mt-4 hidden rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-5"><p class="text-xs uppercase tracking-[0.25em] text-neutral-500">External file link</p><div id="video-external-file-link" class="mt-3"></div></div></div></section><aside class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><p class="text-xs uppercase tracking-[0.25em] text-pink-300">Access details</p><div class="mt-5 space-y-4"><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Category</p><p class="mt-1 text-lg font-semibold text-white">${escapeHtml(video.category)}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Purchase</p><p class="mt-1 text-lg font-semibold text-white">${video.access === 'vip' ? 'VIP / Admin' : 'Per-video Stripe payment link'}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Price</p><p class="mt-1 text-lg font-semibold text-white">${escapeHtml(moneyLabelFromVideo(video))}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Role access</p><p class="mt-1 text-lg font-semibold text-white">Guest/VIP: preview and on-site playback only · Admin: full management access</p></div></div><div class="mt-6 flex flex-col gap-3"><a id="video-action-button" href="#" class="rounded-2xl bg-pink-500 px-6 py-3 text-center font-semibold text-white transition hover:bg-pink-400">Loading...</a><a href="all-videos.html" class="rounded-2xl border border-white/15 px-6 py-3 text-center font-semibold text-white transition hover:bg-white/5">Browse videos</a></div></aside></div></main>` + shellFooter();
+      document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-6xl px-6 py-14"><a href="${categoryPageHref(video.categorySlug)}" class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-300 transition hover:bg-white/10">← Back</a><div class="mt-8 grid gap-8 lg:grid-cols-[1.15fr_0.85fr]"><section class="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 shadow-xl shadow-black/20"><div class="relative"><img src="${escapeHtml(video.image)}" class="h-[420px] w-full object-cover" alt="${escapeHtml(video.title)}"><div class="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent"></div><div class="absolute bottom-6 left-6"><p class="text-xs uppercase tracking-[0.25em] text-pink-300">${escapeHtml(video.category)}</p><h1 class="mt-2 text-4xl font-black">${escapeHtml(video.title)}</h1></div></div><div class="p-6"><div id="video-access-banner" class="rounded-[1.5rem] border border-white/10 bg-neutral-950/70 p-5 text-neutral-300">Checking access...</div><div id="video-player-shell" class="mt-6 rounded-[1.5rem] border border-white/10 bg-black/20 p-5"></div><div id="video-description-shell" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-5"><p class="text-xs uppercase tracking-[0.25em] text-neutral-500">Description</p><p class="mt-3 text-neutral-200">${escapeHtml(video.description || 'No description added yet.')}</p></div><div id="video-external-file-shell" class="mt-4 hidden rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-5"><p class="text-xs uppercase tracking-[0.25em] text-neutral-500">External file link</p><div id="video-external-file-link" class="mt-3"></div></div></div></section><aside class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><p class="text-xs uppercase tracking-[0.25em] text-pink-300">Access details</p><div class="mt-5 space-y-4"><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Category</p><p class="mt-1 text-lg font-semibold text-white">${escapeHtml(video.category)}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Purchase</p><p class="mt-1 text-lg font-semibold text-white">${video.access === 'vip' ? 'VIP / Admin' : 'Shared Stripe checkout'}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Price</p><p class="mt-1 text-lg font-semibold text-white">${escapeHtml(moneyLabelFromVideo(video))}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Role access</p><p class="mt-1 text-lg font-semibold text-white">Guest/VIP: preview and on-site playback only · Admin: full management access</p></div></div><div class="mt-6 flex flex-col gap-3"><a id="video-action-button" href="#" class="rounded-2xl bg-pink-500 px-6 py-3 text-center font-semibold text-white transition hover:bg-pink-400">Loading...</a><a href="all-videos.html" class="rounded-2xl border border-white/15 px-6 py-3 text-center font-semibold text-white transition hover:bg-white/5">Browse videos</a></div></aside></div></main>` + shellFooter();
       bindCommonUi();
       const state = await getState();
       const actionButton = document.getElementById('video-action-button');
@@ -1716,8 +1777,8 @@ window.HiddenGemsApp = (() => {
         return;
       }
       if (!unlocked && state.role === 'guest' && video.access === 'guest') {
-        banner.innerHTML = `<p class="text-sm uppercase tracking-[0.2em] text-pink-300">Guest Preview</p><h3 class="mt-2 text-2xl font-bold text-white">Preview before buying</h3><p class="mt-3 text-neutral-300">Guests can preview this title before purchase. Buy direct access using the Stripe payment link added for this video. Current price: <span class="font-semibold text-white">${escapeHtml(moneyLabelFromVideo(video))}</span>.</p>`;
-        player.innerHTML = await renderPublicPreviewShell(video, `Preview only. Buy this title with its Stripe payment link to unlock full playback.`);
+        banner.innerHTML = `<p class="text-sm uppercase tracking-[0.2em] text-pink-300">Guest Preview</p><h3 class="mt-2 text-2xl font-bold text-white">Preview before buying</h3><p class="mt-3 text-neutral-300">Guests can preview this title before purchase. Buy direct access using the shared Stripe checkout for this price tier. Current price: <span class="font-semibold text-white">${escapeHtml(moneyLabelFromVideo(video))}</span>.</p>`;
+        player.innerHTML = await renderPublicPreviewShell(video, `Preview only. Buy this title with Stripe checkout to unlock full playback.`);
         actionButton.textContent = 'Buy Access'; actionButton.href = '#'; actionButton.onclick = (event) => { event.preventDefault(); buyVideo(video); setTimeout(mount, 350); };
         return;
       }
@@ -2440,7 +2501,7 @@ window.HiddenGemsApp = (() => {
     if (key === 'all-videos') { renderAllVideosPage(); return; }
     if (key === 'admin') { renderAdminPage(); return; }
     if (key === 'settings') { renderSettingsPage(); return; }
-    if (key === 'about') { renderSimplePage('About Hidden Gems', 'About', '<p>Hidden Gems is built for direct per-video access, VIP vault content, and admin-managed catalog updates.</p><p>Guests buy individual videos through the Stripe payment link attached to each video. VIP opens the VIP vault for on-site playback. Downloads stay disabled for customer roles.</p>'); return; }
+    if (key === 'about') { renderSimplePage('About Hidden Gems', 'About', '<p>Hidden Gems is built for direct per-video access, VIP vault content, and admin-managed catalog updates.</p><p>Guests buy individual videos through shared Stripe checkout links by price tier. VIP opens the VIP vault for on-site playback. Downloads stay disabled for customer roles.</p>'); return; }
     if (key === 'contact') { renderSimplePage('Contact Hidden Gems', 'Support', `<p>Need help with access, VIP status, or a video purchase? Email support anytime at <a class="break-all font-semibold text-pink-300" href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a>.</p><p>Please include the email used for your Hidden Gems account, the video title, and a short description of the issue so support can review it faster.</p><p class="text-sm text-neutral-400">Typical response window: 1–3 business days.</p>`); return; }
     if (key === 'privacy') { renderSimplePage('Privacy Policy', 'Privacy', '<p>This site stores account and catalog settings needed to power purchase access, VIP activation, and admin management features.</p>'); return; }
     if (key === 'terms') { renderSimplePage('Terms', 'Terms', '<p>Purchases, video access, and admin tools are intended to run against your configured live backend and payment flow.</p>'); return; }

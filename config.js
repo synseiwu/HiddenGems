@@ -11,7 +11,15 @@
     },
     payment: {
       provider: 'stripe-link',
+      // Default shared video checkout link. Used for any price tier that does not have its own link below.
       stripeVideoLink: 'https://buy.stripe.com/test_14A8wP3d24yj0Xa0143Ru00',
+      // Optional: paste separate shared Stripe links here as you create $3 / $5 / $7 payment links.
+      // Keys are video prices in cents.
+      stripeVideoLinksByPrice: {
+        300: '',
+        500: '',
+        700: ''
+      },
       stripeVipSubscriptionLink: 'https://buy.stripe.com/test_6oUcN57ti0i35dqcNQ3Ru01',
       edgeFunctionUrl: ''
     },
