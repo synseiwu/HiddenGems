@@ -859,7 +859,8 @@ window.HiddenGemsApp = (() => {
   }
 
   function buildThumbnailLibrary() {
-    const fromVideos = uniqueVideos([...Object.values(CATALOG).flatMap((category) => category.videos || []), ...storage.getCustomVideos(), ...supabaseVideosCache]).map((video) => ({ id: `video-${video.id}`, url: video.image, title: video.title || 'Video thumbnail', linkedVideoId: video.id })).filter((item) => item.url);
+    const baseCatalog = window.HIDDEN_GEMS_CATALOG || {};
+    const fromVideos = uniqueVideos([...Object.values(baseCatalog).flatMap((category) => category.videos || []), ...storage.getCustomVideos(), ...supabaseVideosCache, ...adminSupabaseVideosCache]).map((video) => ({ id: `video-${video.id}`, url: video.image, title: video.title || 'Video thumbnail', linkedVideoId: video.id })).filter((item) => item.url);
     return uniqueThumbnailItems([...supabaseThumbnailsCache, ...storage.getThumbnailLibrary(), ...fromVideos]);
   }
 
