@@ -18,6 +18,15 @@ window.HiddenGemsApp = (() => {
   const STRIPE_VIP_SUBSCRIPTION_LINK = (PAYMENT_CONFIG.stripeVipSubscriptionLink || (APP_CONFIG.stripeLinks && (APP_CONFIG.stripeLinks.vipSubscription || APP_CONFIG.stripeLinks.vip)) || '').trim();
   const PAYMENT_FUNCTION_URL = String(PAYMENT_CONFIG.edgeFunctionUrl || '').trim();
 
+  const THEME_LOGO_PATHS = {
+    dark: './assets/hidden-gems-logo.png',
+    light: './assets/hidden-gems-logo.png',
+    midnight: './assets/hg-blue.png',
+    gold: './assets/hg-gold.png'
+  };
+  let themeLogoObserverStarted = false;
+  let themeLogoRaf = null;
+
   const KEYS = {
     unlocked: 'hg_unlocked',
     transactions: 'hg_transactions',
@@ -595,29 +604,35 @@ window.HiddenGemsApp = (() => {
     const style = document.createElement('style');
     style.id = 'hg-global-theme-styles';
     style.textContent = `
-      :root[data-hg-theme="dark"] { color-scheme: dark; --hg-page-bg: radial-gradient(circle at top right, rgba(236,72,153,0.22), transparent 30%), radial-gradient(circle at left, rgba(217,70,239,0.14), transparent 24%), #000; --hg-text:#fff; --hg-muted:#d4d4d8; --hg-card:rgba(255,255,255,.05); --hg-card-strong:rgba(0,0,0,.42); --hg-border:rgba(255,255,255,.10); --hg-accent:#ec4899; --hg-accent-hover:#f472b6; --hg-accent-soft:rgba(236,72,153,.12); --hg-accent-border:rgba(244,114,182,.30); --hg-gradient-from:rgba(236,72,153,.14); --hg-gradient-via:rgba(217,70,239,.10); }
-      :root[data-hg-theme="midnight"] { color-scheme: dark; --hg-page-bg: radial-gradient(circle at top right, rgba(59,130,246,0.24), transparent 30%), radial-gradient(circle at left, rgba(168,85,247,0.16), transparent 24%), #020617; --hg-text:#fff; --hg-muted:#dbeafe; --hg-card:rgba(37,99,235,.10); --hg-card-strong:rgba(2,6,23,.62); --hg-border:rgba(147,197,253,.18); --hg-accent:#60a5fa; --hg-accent-hover:#93c5fd; --hg-accent-soft:rgba(37,99,235,.16); --hg-accent-border:rgba(96,165,250,.30); --hg-gradient-from:rgba(37,99,235,.14); --hg-gradient-via:rgba(96,165,250,.10); }
-      :root[data-hg-theme="light"] { color-scheme: light; --hg-page-bg: radial-gradient(circle at top right, rgba(236,72,153,0.12), transparent 30%), radial-gradient(circle at left, rgba(217,70,239,0.08), transparent 24%), #f8fafc; --hg-text:#0f172a; --hg-muted:#475569; --hg-card:rgba(255,255,255,.82); --hg-card-strong:rgba(255,255,255,.94); --hg-border:rgba(15,23,42,.12); --hg-accent:#db2777; --hg-accent-hover:#be185d; --hg-accent-soft:rgba(236,72,153,.08); --hg-accent-border:rgba(219,39,119,.25); --hg-gradient-from:rgba(236,72,153,.08); --hg-gradient-via:rgba(217,70,239,.06); }
-      :root[data-hg-theme="gold"] { color-scheme: dark; --hg-page-bg: radial-gradient(circle at top right, rgba(245,158,11,0.24), transparent 30%), radial-gradient(circle at left, rgba(217,119,6,0.16), transparent 24%), #050505; --hg-text:#fff7ed; --hg-muted:#d6d3d1; --hg-card:rgba(245,158,11,.08); --hg-card-strong:rgba(8,8,8,.72); --hg-border:rgba(251,191,36,.22); --hg-accent:#f59e0b; --hg-accent-hover:#fbbf24; --hg-accent-soft:rgba(245,158,11,.14); --hg-accent-border:rgba(251,191,36,.34); --hg-gradient-from:rgba(245,158,11,.16); --hg-gradient-via:rgba(217,119,6,.12); }
+      :root[data-hg-theme="dark"] { color-scheme: dark; --hg-page-bg: radial-gradient(circle at top right, rgba(236,72,153,0.22), transparent 30%), radial-gradient(circle at left, rgba(217,70,239,0.14), transparent 24%), #000; --hg-text:#fff; --hg-muted:#d4d4d8; --hg-card:rgba(255,255,255,.05); --hg-card-strong:rgba(0,0,0,.42); --hg-border:rgba(255,255,255,.10); --hg-accent:#ec4899; --hg-accent-contrast:#ffffff; --hg-accent-hover:#f472b6; --hg-accent-soft:rgba(236,72,153,.12); --hg-accent-border:rgba(244,114,182,.30); --hg-gradient-from:rgba(236,72,153,.14); --hg-gradient-via:rgba(217,70,239,.10); --hg-shadow:rgba(236,72,153,.22); }
+      :root[data-hg-theme="midnight"] { color-scheme: dark; --hg-page-bg: radial-gradient(circle at top right, rgba(59,130,246,0.24), transparent 30%), radial-gradient(circle at left, rgba(96,165,250,0.16), transparent 24%), #020617; --hg-text:#fff; --hg-muted:#dbeafe; --hg-card:rgba(37,99,235,.10); --hg-card-strong:rgba(2,6,23,.62); --hg-border:rgba(147,197,253,.18); --hg-accent:#60a5fa; --hg-accent-contrast:#06111f; --hg-accent-hover:#93c5fd; --hg-accent-soft:rgba(37,99,235,.16); --hg-accent-border:rgba(96,165,250,.34); --hg-gradient-from:rgba(37,99,235,.16); --hg-gradient-via:rgba(96,165,250,.12); --hg-shadow:rgba(96,165,250,.24); }
+      :root[data-hg-theme="light"] { color-scheme: light; --hg-page-bg: radial-gradient(circle at top right, rgba(236,72,153,0.12), transparent 30%), radial-gradient(circle at left, rgba(217,70,239,0.08), transparent 24%), #f8fafc; --hg-text:#0f172a; --hg-muted:#475569; --hg-card:rgba(255,255,255,.82); --hg-card-strong:rgba(255,255,255,.94); --hg-border:rgba(15,23,42,.12); --hg-accent:#db2777; --hg-accent-contrast:#ffffff; --hg-accent-hover:#be185d; --hg-accent-soft:rgba(236,72,153,.08); --hg-accent-border:rgba(219,39,119,.25); --hg-gradient-from:rgba(236,72,153,.08); --hg-gradient-via:rgba(217,70,239,.06); --hg-shadow:rgba(219,39,119,.16); }
+      :root[data-hg-theme="gold"] { color-scheme: dark; --hg-page-bg: radial-gradient(circle at top right, rgba(245,158,11,0.24), transparent 30%), radial-gradient(circle at left, rgba(217,119,6,0.16), transparent 24%), #050505; --hg-text:#fff7ed; --hg-muted:#d6d3d1; --hg-card:rgba(245,158,11,.08); --hg-card-strong:rgba(8,8,8,.72); --hg-border:rgba(251,191,36,.22); --hg-accent:#f59e0b; --hg-accent-contrast:#111827; --hg-accent-hover:#fbbf24; --hg-accent-soft:rgba(245,158,11,.14); --hg-accent-border:rgba(251,191,36,.34); --hg-gradient-from:rgba(245,158,11,.16); --hg-gradient-via:rgba(217,119,6,.12); --hg-shadow:rgba(245,158,11,.28); }
       html[data-hg-theme] body { background: var(--hg-page-bg) !important; color: var(--hg-text) !important; }
       html[data-hg-theme] header, html[data-hg-theme] footer { border-color: var(--hg-border) !important; color: var(--hg-text) !important; }
       html[data-hg-theme="light"] header, html[data-hg-theme="light"] footer { background: rgba(255,255,255,.86) !important; }
       html[data-hg-theme="gold"] header, html[data-hg-theme="gold"] footer { background: rgba(5,5,5,.82) !important; box-shadow: 0 0 45px rgba(245,158,11,.08) !important; }
-      html[data-hg-theme] [class*="bg-white/5"], html[data-hg-theme] [class*="bg-white/10"], html[data-hg-theme] [class*="bg-white/["] { background-color: var(--hg-card) !important; }
+      html[data-hg-theme="midnight"] header, html[data-hg-theme="midnight"] footer { background: rgba(2,6,23,.86) !important; box-shadow: 0 0 45px rgba(96,165,250,.08) !important; }
+      html[data-hg-theme] [class*="bg-white/5"], html[data-hg-theme] [class*="bg-white/10"], html[data-hg-theme] [class*="bg-white/["], html[data-hg-theme] [class*="bg-black/30"], html[data-hg-theme] [class*="bg-black/40"] { background-color: var(--hg-card) !important; }
       html[data-hg-theme="light"] [class*="bg-black"], html[data-hg-theme="light"] [class*="bg-neutral-950"], html[data-hg-theme="light"] [class*="bg-neutral-900"] { background-color: var(--hg-card-strong) !important; }
       html[data-hg-theme="gold"] [class*="bg-black"], html[data-hg-theme="gold"] [class*="bg-neutral-950"], html[data-hg-theme="gold"] [class*="bg-neutral-900"] { background-color: var(--hg-card-strong) !important; }
-      html[data-hg-theme] [class*="border-white/"], html[data-hg-theme] [class*="border-pink-"], html[data-hg-theme] [class*="border-fuchsia-"] { border-color: var(--hg-border) !important; }
-      html[data-hg-theme] .bg-pink-500, html[data-hg-theme] button.bg-pink-500, html[data-hg-theme] a.bg-pink-500, html[data-hg-theme] .bg-fuchsia-500 { background-color: var(--hg-accent) !important; }
-      html[data-hg-theme] .hover\:bg-pink-400:hover, html[data-hg-theme] .hover\:bg-pink-500\/10:hover, html[data-hg-theme] .hover\:bg-white\/10:hover { background-color: var(--hg-accent-hover) !important; color: #111827 !important; }
-      html[data-hg-theme] .bg-pink-500\/10, html[data-hg-theme] .bg-pink-500\/15, html[data-hg-theme] .bg-pink-500\/20, html[data-hg-theme] .bg-fuchsia-500\/10, html[data-hg-theme] .bg-amber-500\/10, html[data-hg-theme] .bg-amber-500\/20 { background-color: var(--hg-accent-soft) !important; }
-      html[data-hg-theme] .text-pink-200, html[data-hg-theme] .text-pink-300, html[data-hg-theme] .text-pink-400, html[data-hg-theme] .text-fuchsia-200, html[data-hg-theme] .text-amber-100, html[data-hg-theme] .text-amber-200 { color: var(--hg-accent-hover) !important; }
-      html[data-hg-theme] .border-pink-400\/20, html[data-hg-theme] .border-pink-400\/30, html[data-hg-theme] .border-amber-400\/20, html[data-hg-theme] .border-amber-400\/30 { border-color: var(--hg-accent-border) !important; }
-      html[data-hg-theme] .from-pink-500\/10, html[data-hg-theme] .via-fuchsia-500\/10, html[data-hg-theme] .from-amber-500\/10 { --tw-gradient-from: var(--hg-gradient-from) var(--tw-gradient-from-position) !important; --tw-gradient-to: rgba(0,0,0,0) var(--tw-gradient-to-position) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--hg-gradient-via) var(--tw-gradient-via-position), var(--tw-gradient-to) !important; }
+      html[data-hg-theme] [class*="border-white/"], html[data-hg-theme] [class*="border-neutral-"], html[data-hg-theme] [class*="border-pink-"], html[data-hg-theme] [class*="border-fuchsia-"] { border-color: var(--hg-border) !important; }
+      html[data-hg-theme] .bg-pink-500, html[data-hg-theme] button.bg-pink-500, html[data-hg-theme] a.bg-pink-500, html[data-hg-theme] [class*="bg-pink-500"], html[data-hg-theme] [class*="bg-fuchsia-500"] { background-color: var(--hg-accent) !important; color: var(--hg-accent-contrast) !important; }
+      html[data-hg-theme] [class*="bg-pink-500/"], html[data-hg-theme] [class*="bg-pink-400/"], html[data-hg-theme] [class*="bg-fuchsia-500/"], html[data-hg-theme] [class*="bg-fuchsia-400/"], html[data-hg-theme] [class*="bg-amber-500/"], html[data-hg-theme] [class*="bg-amber-400/"] { background-color: var(--hg-accent-soft) !important; color: var(--hg-text) !important; }
+      html[data-hg-theme] [class*="hover:bg-pink-400"]:hover, html[data-hg-theme] [class*="hover:bg-pink-500"]:hover, html[data-hg-theme] [class*="hover:bg-fuchsia-500"]:hover { background-color: var(--hg-accent-hover) !important; color: var(--hg-accent-contrast) !important; }
+      html[data-hg-theme] [class*="hover:bg-pink-500/"]:hover, html[data-hg-theme] [class*="hover:bg-white/10"]:hover, html[data-hg-theme] [class*="hover:bg-white/5"]:hover { background-color: var(--hg-accent-soft) !important; color: var(--hg-text) !important; }
+      html[data-hg-theme] [class*="text-pink-"], html[data-hg-theme] [class*="text-fuchsia-"], html[data-hg-theme] [class*="text-amber-100"], html[data-hg-theme] [class*="text-amber-200"], html[data-hg-theme] [class*="hover:text-pink-"]:hover, html[data-hg-theme] [class*="hover:text-fuchsia-"]:hover { color: var(--hg-accent-hover) !important; }
+      html[data-hg-theme] [class*="border-pink-"], html[data-hg-theme] [class*="border-fuchsia-"], html[data-hg-theme] [class*="border-amber-400/"] { border-color: var(--hg-accent-border) !important; }
+      html[data-hg-theme] [class*="ring-pink-"], html[data-hg-theme] [class*="ring-fuchsia-"] { --tw-ring-color: var(--hg-accent-border) !important; }
+      html[data-hg-theme] [class*="shadow-pink-"], html[data-hg-theme] [class*="shadow-fuchsia-"] { --tw-shadow-color: var(--hg-shadow) !important; --tw-shadow: var(--tw-shadow-colored) !important; }
+      html[data-hg-theme] [class*="from-pink-"], html[data-hg-theme] [class*="from-fuchsia-"], html[data-hg-theme] [class*="from-amber-"] { --tw-gradient-from: var(--hg-gradient-from) var(--tw-gradient-from-position) !important; --tw-gradient-to: rgba(0,0,0,0) var(--tw-gradient-to-position) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important; }
+      html[data-hg-theme] [class*="via-pink-"], html[data-hg-theme] [class*="via-fuchsia-"], html[data-hg-theme] [class*="via-amber-"] { --tw-gradient-via: var(--hg-gradient-via) var(--tw-gradient-via-position) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-via), var(--tw-gradient-to) !important; }
+      html[data-hg-theme] [class*="to-pink-"], html[data-hg-theme] [class*="to-fuchsia-"], html[data-hg-theme] [class*="to-amber-"] { --tw-gradient-to: transparent var(--tw-gradient-to-position) !important; }
       html[data-hg-theme] input, html[data-hg-theme] select, html[data-hg-theme] textarea { border-color: var(--hg-border) !important; }
       html[data-hg-theme="light"] input, html[data-hg-theme="light"] select, html[data-hg-theme="light"] textarea { background: rgba(255,255,255,.92) !important; color: #0f172a !important; }
-      html[data-hg-theme="gold"] input, html[data-hg-theme="gold"] select, html[data-hg-theme="gold"] textarea { background: rgba(0,0,0,.55) !important; color: var(--hg-text) !important; }
-      html[data-hg-theme] input[type="checkbox"] { accent-color: var(--hg-accent) !important; }
-      html[data-hg-theme] .file\:bg-pink-500::file-selector-button { background-color: var(--hg-accent) !important; }
+      html[data-hg-theme="gold"] input, html[data-hg-theme="gold"] select, html[data-hg-theme="gold"] textarea, html[data-hg-theme="midnight"] input, html[data-hg-theme="midnight"] select, html[data-hg-theme="midnight"] textarea { background: rgba(0,0,0,.55) !important; color: var(--hg-text) !important; }
+      html[data-hg-theme] input[type="checkbox"], html[data-hg-theme] input[type="radio"] { accent-color: var(--hg-accent) !important; }
+      html[data-hg-theme] .file\:bg-pink-500::file-selector-button, html[data-hg-theme] input[type="file"]::file-selector-button { background-color: var(--hg-accent) !important; color: var(--hg-accent-contrast) !important; border-color: var(--hg-accent-border) !important; }
       html[data-hg-theme="light"] [class*="text-white"], html[data-hg-theme="light"] h1, html[data-hg-theme="light"] h2, html[data-hg-theme="light"] h3, html[data-hg-theme="light"] h4 { color: var(--hg-text) !important; }
       html[data-hg-theme="light"] [class*="text-neutral-"] { color: var(--hg-muted) !important; }
       html[data-hg-theme="light"] .shadow-black\/40, html[data-hg-theme="light"] .shadow-black\/50, html[data-hg-theme="light"] .shadow-black\/60 { --tw-shadow-color: rgba(15,23,42,.16) !important; --tw-shadow: var(--tw-shadow-colored) !important; }
@@ -627,11 +642,55 @@ window.HiddenGemsApp = (() => {
     document.head.appendChild(style);
   }
 
+  function getThemeLogoPath(theme) {
+    return THEME_LOGO_PATHS[theme] || THEME_LOGO_PATHS.dark;
+  }
+
+  function isHiddenGemsLogoPath(value = '') {
+    return /hidden-gems-logo\.png|hg-blue\.png|hg-gold\.png/i.test(String(value));
+  }
+
+  function applyThemeLogos() {
+    const theme = document.documentElement.dataset.hgTheme || (storage.getUserPreferences ? storage.getUserPreferences().theme : 'dark') || 'dark';
+    const logoPath = getThemeLogoPath(theme);
+    document.querySelectorAll('img').forEach((img) => {
+      const src = img.getAttribute('src') || '';
+      if (!img.dataset.hgThemeLogo && !isHiddenGemsLogoPath(src)) return;
+      img.dataset.hgThemeLogo = 'true';
+      if (src !== logoPath) img.setAttribute('src', logoPath);
+      img.classList.toggle('shadow-pink-500/20', theme === 'dark' || theme === 'light');
+      img.classList.toggle('shadow-blue-500/20', theme === 'midnight');
+      img.classList.toggle('shadow-amber-500/20', theme === 'gold');
+    });
+    document.querySelectorAll('link[rel~="icon"]').forEach((link) => {
+      const href = link.getAttribute('href') || '';
+      if (!isHiddenGemsLogoPath(href)) return;
+      if (href !== logoPath) link.setAttribute('href', logoPath);
+    });
+  }
+
+  function scheduleThemeLogoSync() {
+    if (themeLogoRaf) return;
+    themeLogoRaf = window.requestAnimationFrame(() => {
+      themeLogoRaf = null;
+      applyThemeLogos();
+    });
+  }
+
+  function startThemeLogoObserver() {
+    if (themeLogoObserverStarted || !document.body || !window.MutationObserver) return;
+    themeLogoObserverStarted = true;
+    const observer = new MutationObserver(scheduleThemeLogoSync);
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
+
   function applyUserPreferences() {
     injectThemeStyles();
     const prefs = storage.getUserPreferences ? storage.getUserPreferences() : {};
     document.documentElement.dataset.hgTheme = prefs.theme || 'dark';
     document.documentElement.dataset.hgDensity = prefs.cardDensity || 'comfortable';
+    scheduleThemeLogoSync();
+    startThemeLogoObserver();
     if (prefs.reducedMotion) document.documentElement.classList.add('hg-reduced-motion');
     else document.documentElement.classList.remove('hg-reduced-motion');
   }
@@ -1338,7 +1397,7 @@ window.HiddenGemsApp = (() => {
       <header class="sticky top-0 z-50 border-b border-white/10 bg-black/75 backdrop-blur-xl">
         <div class="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
           <a href="index.html" class="flex items-center gap-4">
-            <img src="./assets/hidden-gems-logo.png" alt="${BRAND_NAME} logo" class="h-14 w-14 rounded-2xl object-contain shadow-lg shadow-pink-500/20" />
+            <img data-hg-theme-logo="true" src="./assets/hidden-gems-logo.png" alt="${BRAND_NAME} logo" class="h-14 w-14 rounded-2xl object-contain shadow-lg shadow-pink-500/20" />
             <div>
               <h1 class="text-2xl font-bold tracking-[0.08em] text-pink-400">${BRAND_NAME.toUpperCase()}</h1>
               <p class="text-xs text-neutral-400">Guest, VIP, and admin access built in</p>
@@ -1722,7 +1781,7 @@ window.HiddenGemsApp = (() => {
 
   function renderVipCheckoutPage() {
     applyBg();
-    document.body.innerHTML = shellHeader() + `<main class="mx-auto flex min-h-[75vh] max-w-3xl items-center px-6 py-16"><div class="w-full rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8 shadow-xl shadow-black/20"><div class="flex items-center gap-4"><img src="./assets/hidden-gems-logo.png" alt="${BRAND_NAME} logo" class="h-14 w-14 rounded-2xl object-contain" /><div><h1 class="text-3xl font-black text-pink-400">${BRAND_NAME} VIP</h1><p class="text-neutral-400">VIP vault access</p></div></div><p class="mt-6 text-neutral-300">Use the secure checkout below to start 30 days of VIP access. After payment, return to Hidden Gems to use the VIP vault.</p>${vipDealMarkup('mt-6')}<div id="vip-checkout-note" class="mt-8 rounded-2xl border border-white/10 bg-black/30 p-5 text-sm text-neutral-300">Checking VIP checkout status...</div><div class="mt-8 rounded-2xl border border-white/10 bg-black/30 p-5"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Secure checkout</p><div class="mt-4 flex flex-col gap-3 sm:flex-row"><button id="vip-checkout-button" class="inline-block rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white transition hover:bg-pink-400 text-center">Open VIP Checkout</button></div></div><div class="mt-8 grid gap-4 md:grid-cols-2"><div class="rounded-2xl bg-white/5 p-4"><p class="font-semibold">VIP-only vault</p><p class="mt-1 text-sm text-neutral-400">Special titles reserved for VIP members.</p></div><div class="rounded-2xl bg-white/5 p-4"><p class="font-semibold">On-site playback</p><p class="mt-1 text-sm text-neutral-400">VIP unlocks member videos for streaming on the site.</p></div></div><a href="index.html" class="mt-6 inline-block text-sm text-neutral-400 hover:text-white">← Back to ${BRAND_NAME}</a></div></main>` + shellFooter();
+    document.body.innerHTML = shellHeader() + `<main class="mx-auto flex min-h-[75vh] max-w-3xl items-center px-6 py-16"><div class="w-full rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8 shadow-xl shadow-black/20"><div class="flex items-center gap-4"><img data-hg-theme-logo="true" src="./assets/hidden-gems-logo.png" alt="${BRAND_NAME} logo" class="h-14 w-14 rounded-2xl object-contain" /><div><h1 class="text-3xl font-black text-pink-400">${BRAND_NAME} VIP</h1><p class="text-neutral-400">VIP vault access</p></div></div><p class="mt-6 text-neutral-300">Use the secure checkout below to start 30 days of VIP access. After payment, return to Hidden Gems to use the VIP vault.</p>${vipDealMarkup('mt-6')}<div id="vip-checkout-note" class="mt-8 rounded-2xl border border-white/10 bg-black/30 p-5 text-sm text-neutral-300">Checking VIP checkout status...</div><div class="mt-8 rounded-2xl border border-white/10 bg-black/30 p-5"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Secure checkout</p><div class="mt-4 flex flex-col gap-3 sm:flex-row"><button id="vip-checkout-button" class="inline-block rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white transition hover:bg-pink-400 text-center">Open VIP Checkout</button></div></div><div class="mt-8 grid gap-4 md:grid-cols-2"><div class="rounded-2xl bg-white/5 p-4"><p class="font-semibold">VIP-only vault</p><p class="mt-1 text-sm text-neutral-400">Special titles reserved for VIP members.</p></div><div class="rounded-2xl bg-white/5 p-4"><p class="font-semibold">On-site playback</p><p class="mt-1 text-sm text-neutral-400">VIP unlocks member videos for streaming on the site.</p></div></div><a href="index.html" class="mt-6 inline-block text-sm text-neutral-400 hover:text-white">← Back to ${BRAND_NAME}</a></div></main>` + shellFooter();
     bindCommonUi();
     startVipDealCountdown();
     const note = document.getElementById('vip-checkout-note');
