@@ -15,7 +15,8 @@
       stripeVipSubscriptionLink: 'https://buy.stripe.com/test_6oUcN57ti0i35dqcNQ3Ru01',
       edgeFunctionUrl: ''
     },
-    adminEmails: ['hayzerxsloth@gmail.com'],
+    adminEmails: ['hayzrxsloth@gmail.com', 'patrickkinshin223@gmail.com'],
+    adminUserIds: ['c5d8de69-a371-408f-a595-9aa026a6de45', '3ce8409c-f2d4-4372-8b2b-bb4e6f4a8b91'],
     auth: {
       provider: 'supabase',
       supabaseUrl: 'https://netolzyxnifogojwwesq.supabase.co',
