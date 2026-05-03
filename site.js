@@ -68,7 +68,18 @@ window.HiddenGemsApp = (() => {
   }
 
   function writeJson(key, value) {
-    localStorage.setItem(key, JSON.stringify(value));
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (error) {
+      if (key === KEYS.thumbnailLibrary) {
+        try {
+          const trimmed = uniqueThumbnailItems(value).filter((item) => !isEmbeddedDataUrl(item.url)).slice(0, THUMBNAIL_LIBRARY_LIMIT);
+          localStorage.setItem(key, JSON.stringify(trimmed));
+          return;
+        } catch (_) {}
+      }
+      throw error;
+    }
   }
 
   const MEDIA_DB_NAME = 'hidden_gems_media';
@@ -181,12 +192,12 @@ window.HiddenGemsApp = (() => {
       return deadline;
     },
     getThumbnailLibrary() { return readJson(KEYS.thumbnailLibrary, []); },
-    setThumbnailLibrary(items) { writeJson(KEYS.thumbnailLibrary, uniqueThumbnailItems(items)); },
+    setThumbnailLibrary(items) { writeJson(KEYS.thumbnailLibrary, compactThumbnailLibraryItems(items)); },
     addThumbnail(item = {}) {
       const library = this.getThumbnailLibrary();
       const url = String(item.url || item.imageUrl || item.image_url || '').trim();
-      if (!url) return library;
-      const next = uniqueThumbnailItems([{ id: item.id || `thumb-${Date.now()}`, url, title: item.title || item.fileName || item.file_name || 'Saved thumbnail', fileName: item.fileName || item.file_name || '', linkedVideoId: item.linkedVideoId || item.linked_video_id || '', createdAt: item.createdAt || item.created_at || new Date().toISOString() }, ...library]);
+      if (!url || isEmbeddedDataUrl(url)) return library;
+      const next = compactThumbnailLibraryItems([{ id: item.id || `thumb-${Date.now()}`, url, title: item.title || item.fileName || item.file_name || 'Saved thumbnail', fileName: item.fileName || item.file_name || '', linkedVideoId: item.linkedVideoId || item.linked_video_id || '', createdAt: item.createdAt || item.created_at || new Date().toISOString() }, ...library]);
       this.setThumbnailLibrary(next);
       return next;
     },
@@ -389,6 +400,12 @@ window.HiddenGemsApp = (() => {
     return [...seen.values()];
   }
 
+  const THUMBNAIL_LIBRARY_LIMIT = 36;
+
+  function isEmbeddedDataUrl(value = '') {
+    return /^data:/i.test(String(value || '').trim());
+  }
+
   function uniqueThumbnailItems(items = []) {
     const seen = new Map();
     for (const item of items || []) {
@@ -405,6 +422,12 @@ window.HiddenGemsApp = (() => {
       });
     }
     return [...seen.values()];
+  }
+
+  function compactThumbnailLibraryItems(items = []) {
+    return uniqueThumbnailItems(items)
+      .filter((item) => item.url && !isEmbeddedDataUrl(item.url))
+      .slice(0, THUMBNAIL_LIBRARY_LIMIT);
   }
 
   function hashString(value) {
@@ -709,6 +732,13 @@ window.HiddenGemsApp = (() => {
       html[data-hg-theme] [class*="via-pink-"], html[data-hg-theme] [class*="via-fuchsia-"], html[data-hg-theme] [class*="via-amber-"] { --tw-gradient-via: var(--hg-gradient-via) var(--tw-gradient-via-position) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-via), var(--tw-gradient-to) !important; }
       html[data-hg-theme] [class*="to-pink-"], html[data-hg-theme] [class*="to-fuchsia-"], html[data-hg-theme] [class*="to-amber-"] { --tw-gradient-to: transparent var(--tw-gradient-to-position) !important; }
       html[data-hg-theme] input, html[data-hg-theme] select, html[data-hg-theme] textarea { border-color: var(--hg-border) !important; }
+      html[data-hg-theme] select { background-color: var(--hg-card-strong) !important; color: var(--hg-text) !important; color-scheme: dark; }
+      html[data-hg-theme] select option, html[data-hg-theme] select optgroup { background-color: #050505 !important; color: #ffffff !important; }
+      html[data-hg-theme="midnight"] select option, html[data-hg-theme="midnight"] select optgroup { background-color: #020617 !important; color: #dbeafe !important; }
+      html[data-hg-theme="gold"] select option, html[data-hg-theme="gold"] select optgroup { background-color: #050505 !important; color: #fff7ed !important; }
+      html[data-hg-theme="light"] select { color-scheme: light; }
+      html[data-hg-theme="light"] select option, html[data-hg-theme="light"] select optgroup { background-color: #ffffff !important; color: #0f172a !important; }
+      html[data-hg-theme] select:focus, html[data-hg-theme] input:focus, html[data-hg-theme] textarea:focus { outline: 2px solid var(--hg-accent-border) !important; outline-offset: 2px !important; }
       html[data-hg-theme="light"] input, html[data-hg-theme="light"] select, html[data-hg-theme="light"] textarea { background: rgba(255,255,255,.92) !important; color: #0f172a !important; }
       html[data-hg-theme="gold"] input, html[data-hg-theme="gold"] select, html[data-hg-theme="gold"] textarea, html[data-hg-theme="midnight"] input, html[data-hg-theme="midnight"] select, html[data-hg-theme="midnight"] textarea { background: rgba(0,0,0,.55) !important; color: var(--hg-text) !important; }
       html[data-hg-theme] input[type="checkbox"], html[data-hg-theme] input[type="radio"] { accent-color: var(--hg-accent) !important; }
@@ -1075,6 +1105,7 @@ window.HiddenGemsApp = (() => {
   async function saveThumbnailToSupabase(item = {}) {
     const url = String(item.url || item.imageUrl || '').trim();
     if (!url) return false;
+    if (isEmbeddedDataUrl(url)) return false;
     storage.addThumbnail(item);
     const supabase = getSupabaseClient();
     const user = await getSessionUser();
@@ -1601,7 +1632,7 @@ window.HiddenGemsApp = (() => {
   function authButtonsMarkup() { return `<a href="login.html" class="rounded-xl border border-white/15 px-4 py-2 text-sm text-white transition hover:bg-white/5">Log In</a><a href="signup.html" class="rounded-xl bg-pink-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-pink-500/20 transition hover:bg-pink-400">Sign Up</a>`; }
 
   function desktopAccountMarkup(state) {
-    return `<div class="relative"><button id="account-menu-button" class="flex items-center gap-3 rounded-full border border-white/10 bg-white/5 py-1.5 pl-1.5 pr-3 text-left text-white transition hover:border-pink-400/30 hover:bg-white/10"><span class="flex h-10 w-10 items-center justify-center rounded-full bg-pink-500/20 text-sm font-bold text-pink-300">${initialsFromEmail(state.email)}</span><span class="hidden max-w-[160px] truncate text-sm font-medium xl:block">${escapeHtml(state.email)}</span><svg class="h-4 w-4 text-neutral-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.512a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg></button><div id="account-menu-dropdown" class="hidden absolute right-0 top-[calc(100%+12px)] z-50 w-72 overflow-hidden rounded-[1.5rem] border border-white/10 bg-neutral-950/95 p-2 shadow-2xl shadow-black/60"><div class="rounded-[1.25rem] border border-white/5 bg-white/[0.03] p-4"><div class="flex items-start justify-between gap-3"><div><p class="truncate text-sm font-semibold text-white">${escapeHtml(state.email)}</p><p class="mt-1 text-xs text-neutral-400">Signed in to ${BRAND_NAME}</p></div>${roleBadge(state.role)}</div><p class="mt-3 text-xs text-neutral-500">Use the header links for navigation. This menu is only for account status and logout.</p></div><button id="logout-button-menu" class="mt-2 w-full rounded-xl px-4 py-3 text-left text-sm text-rose-200 transition hover:bg-rose-500/10">Log Out</button></div></div>`;
+    return `<div class="relative"><button id="account-menu-button" class="flex items-center gap-3 rounded-full border border-white/10 bg-white/5 py-1.5 pl-1.5 pr-3 text-left text-white transition hover:border-pink-400/30 hover:bg-white/10"><span class="flex h-10 w-10 items-center justify-center rounded-full bg-pink-500/20 text-sm font-bold text-pink-300">${initialsFromEmail(state.email)}</span><span class="hidden max-w-[160px] truncate text-sm font-medium xl:block">${escapeHtml(state.email)}</span><svg class="h-4 w-4 text-neutral-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.512a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg></button><div id="account-menu-dropdown" class="hidden absolute right-0 top-[calc(100%+12px)] z-50 w-72 overflow-hidden rounded-[1.5rem] border border-white/10 bg-neutral-950/95 p-2 shadow-2xl shadow-black/60"><div class="rounded-[1.25rem] border border-white/5 bg-white/[0.03] p-4"><div class="flex items-start justify-between gap-3"><div><p class="truncate text-sm font-semibold text-white">${escapeHtml(state.email)}</p><p class="mt-1 text-xs text-neutral-400">Signed in to ${BRAND_NAME}</p></div>${roleBadge(state.role)}</div><p class="mt-3 text-xs text-neutral-500">Quick account actions are available below.</p></div><div class="mt-2 grid gap-1 text-sm"><a href="account.html" class="rounded-xl px-4 py-3 text-neutral-200 transition hover:bg-white/10 hover:text-pink-300">Account</a><a href="settings.html" class="rounded-xl px-4 py-3 text-neutral-200 transition hover:bg-white/10 hover:text-pink-300">Settings</a>${state.role === 'admin' ? '<a href="admin.html" class="rounded-xl px-4 py-3 text-amber-200 transition hover:bg-amber-500/10 hover:text-amber-100">Admin Controls</a>' : ''}</div><button id="logout-button-menu" class="mt-2 w-full rounded-xl px-4 py-3 text-left text-sm text-rose-200 transition hover:bg-rose-500/10">Log Out</button></div></div>`;
   }
 
   function mobileAccountMarkup(state) {
