@@ -1621,7 +1621,7 @@ window.HiddenGemsApp = (() => {
     const state = await getState();
     if (desktop) { desktop.innerHTML = state.email ? desktopAccountMarkup(state) : authButtonsMarkup(); desktop.classList.remove('hidden'); desktop.classList.add('flex'); }
     if (mobile) mobile.innerHTML = state.email ? mobileAccountMarkup(state) : '<a href="login.html">Log In</a><a href="signup.html">Create Account</a>';
-    document.querySelectorAll('#header-admin-link, #mobile-header-admin-link').forEach((link) => link.classList.toggle('hidden', state.role !== 'admin'));
+    document.querySelectorAll('#header-admin-link, #mobile-header-admin-link, #legacy-home-admin-link').forEach((link) => link.classList.toggle('hidden', state.role !== 'admin'));
     document.querySelectorAll('[data-nav-link]').forEach((link) => { if (link.dataset.navLink === currentPageKey()) link.classList.add('bg-white/10', 'text-pink-300'); });
     const menuButton = document.getElementById('account-menu-button');
     const dropdown = document.getElementById('account-menu-dropdown');
@@ -1654,7 +1654,8 @@ window.HiddenGemsApp = (() => {
     const button = document.getElementById('account-menu-button');
     button?.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); dropdown?.classList.toggle('hidden'); });
     document.addEventListener('click', (event) => { if (dropdown && button && !dropdown.contains(event.target) && !button.contains(event.target)) dropdown.classList.add('hidden'); });
-    if (state.role === 'admin' && !document.getElementById('legacy-admin-link')) {
+    if (document.getElementById('legacy-home-admin-link')) document.getElementById('legacy-home-admin-link').classList.toggle('hidden', state.role !== 'admin');
+    if (false && state.role === 'admin' && !document.getElementById('legacy-admin-link')) {
       const adminLink = document.createElement('a');
       adminLink.id = 'legacy-admin-link';
       adminLink.href = 'admin.html';
@@ -1662,7 +1663,7 @@ window.HiddenGemsApp = (() => {
       adminLink.textContent = 'Admin Portal';
       dropdown?.querySelector('.p-2')?.insertBefore(adminLink, document.getElementById('logout-button'));
     }
-    if (!document.getElementById('legacy-settings-link')) {
+    if (false && !document.getElementById('legacy-settings-link')) {
       const settingsLink = document.createElement('a');
       settingsLink.id = 'legacy-settings-link';
       settingsLink.href = 'settings.html';

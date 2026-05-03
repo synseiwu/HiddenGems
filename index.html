@@ -11,7 +11,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="./config.js"></script>
-  <script defer src="./assets/site.js?v=admin-links-header-v2"></script>
+  <script defer src="./assets/site.js?v=header-cleanup-v3"></script>
 </head>
 <body class="min-h-screen bg-black text-white" style="background:
   radial-gradient(circle at top right, rgba(236,72,153,0.22), transparent 30%),
@@ -26,6 +26,16 @@
           <p class="text-xs text-neutral-400">View-only video access with VIP vault</p>
         </div>
       </a>
+      <nav id="legacy-home-main-nav" class="hidden items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-2 py-2 text-sm text-neutral-300 xl:flex">
+        <a href="index.html" class="rounded-full bg-white/10 px-4 py-2 text-pink-300 transition hover:bg-white/10 hover:text-pink-300">Home</a>
+        <a href="all-videos.html" class="rounded-full px-4 py-2 transition hover:bg-white/10 hover:text-pink-300">All Videos</a>
+        <a href="index.html#categories" class="rounded-full px-4 py-2 transition hover:bg-white/10 hover:text-pink-300">Categories</a>
+        <a href="vip-exclusives.html" class="rounded-full px-4 py-2 transition hover:bg-white/10 hover:text-pink-300">VIP</a>
+        <a href="my-library.html" class="rounded-full px-4 py-2 transition hover:bg-white/10 hover:text-pink-300">Library</a>
+        <a href="account.html" class="rounded-full px-4 py-2 transition hover:bg-white/10 hover:text-pink-300">Account</a>
+        <a href="settings.html" class="rounded-full px-4 py-2 transition hover:bg-white/10 hover:text-pink-300">Settings</a>
+        <a id="legacy-home-admin-link" href="admin.html" class="hidden rounded-full px-4 py-2 text-amber-200 transition hover:bg-amber-500/10">Admin</a>
+      </nav>
       <div class="relative flex items-center gap-3">
         <div id="logged-out-actions" class="flex items-center gap-3">
           <a href="login.html" class="rounded-xl border border-white/15 px-4 py-2 text-sm text-white transition hover:bg-white/5">Log In</a>
@@ -48,11 +58,7 @@
               <p id="account-email-full" class="mt-1 break-all text-xs text-neutral-400"></p>
             </div>
             <div class="p-2">
-              <a href="account.html" class="block rounded-xl px-3 py-3 text-sm text-white transition hover:bg-white/5">Profile</a>
-              <a href="#dashboard" class="block rounded-xl px-3 py-3 text-sm text-white transition hover:bg-white/5">Dashboard</a>
-              <a href="my-library.html" class="block rounded-xl px-3 py-3 text-sm text-white transition hover:bg-white/5">My Library</a>
-              <a href="settings.html" class="block rounded-xl px-3 py-3 text-sm text-white transition hover:bg-white/5">Settings</a>
-              <a href="vip-exclusives.html" class="block rounded-xl px-3 py-3 text-sm text-white transition hover:bg-white/5">VIP Exclusives</a>
+              <a href="account.html" class="block rounded-xl px-3 py-3 text-sm text-white transition hover:bg-white/5">Account Profile</a>
               <button id="logout-button" class="block w-full rounded-xl px-3 py-3 text-left text-sm text-rose-300 transition hover:bg-white/5">Log Out</button>
             </div>
           </div>
@@ -97,23 +103,6 @@
               <a href="vip-checkout.html" class="rounded-2xl bg-pink-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-pink-400">Get VIP Deal</a>
             </div>
           </div>
-
-          <section id="home-main-buttons" class="mt-6 max-w-xl rounded-[1.75rem] border border-white/10 bg-neutral-950/70 p-5 shadow-xl shadow-black/20 backdrop-blur">
-            <div class="flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <p class="text-xs font-semibold uppercase tracking-[0.25em] text-pink-300">Explore Hidden Gems</p>
-                <h3 class="mt-2 text-xl font-black text-white">Choose where you want to go</h3>
-              </div>
-              <p class="text-sm text-neutral-400">Quick access</p>
-            </div>
-            <div class="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              <a href="#featured" class="rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-center text-sm font-semibold text-white transition hover:border-pink-400/30 hover:bg-pink-500/10">Featured</a>
-              <a href="#categories" class="rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-center text-sm font-semibold text-white transition hover:border-pink-400/30 hover:bg-pink-500/10">Categories</a>
-              <a href="all-videos.html" class="rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-center text-sm font-semibold text-white transition hover:border-pink-400/30 hover:bg-pink-500/10">Videos</a>
-              <a href="#vip" class="rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-center text-sm font-semibold text-white transition hover:border-pink-400/30 hover:bg-pink-500/10">VIP</a>
-              <a href="#dashboard" class="rounded-2xl border border-white/15 bg-white/5 px-4 py-3 text-center text-sm font-semibold text-white transition hover:border-pink-400/30 hover:bg-pink-500/10">Dashboard</a>
-            </div>
-          </section>
 
           <div id="home-stats" class="mt-10 flex flex-wrap gap-6 text-sm text-neutral-400">
             <div><p class="text-2xl font-bold text-white">Loading</p><p>Videos available</p></div>
