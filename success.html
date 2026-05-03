@@ -11,7 +11,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="./config.js"></script>
-  <script defer src="./assets/site.js?v=promotion-ready-v1"></script>
+  <script defer src="./assets/site.js?v=admin-links-header-v2"></script>
 </head>
 <body class="min-h-screen bg-black text-white" style="background:radial-gradient(circle at top right, rgba(236,72,153,0.22), transparent 30%),radial-gradient(circle at left, rgba(217,70,239,0.14), transparent 24%),#000;">
 <script>
@@ -38,10 +38,21 @@ document.addEventListener('DOMContentLoaded', async () => {
   const status = document.getElementById('success-status');
   const watch = document.getElementById('success-watch-link');
   try {
-    const result = await shell.finalizeStripeVideoCheckoutFromLocalStorage();
+    let result = await shell.finalizeStripeVideoCheckoutFromLocalStorage();
+    if (result.status === 'idle' && shell.finalizeStripeVipCheckoutFromLocalStorage) {
+      result = await shell.finalizeStripeVipCheckoutFromLocalStorage();
+    }
     if (result.status === 'idle') {
-      copy.textContent = 'No pending Stripe video unlock was found for this browser.';
-      status.textContent = 'Go back to the video, click Buy Access, complete Stripe checkout, then return here from the Stripe redirect.';
+      copy.textContent = 'No pending Stripe video or VIP unlock was found for this browser.';
+      status.textContent = 'Go back to the video or VIP page, start checkout while signed in, complete Stripe checkout, then return here from the Stripe redirect.';
+      return;
+    }
+    if (result.vipUnlocked) {
+      copy.textContent = 'VIP access is now active for your account.';
+      status.innerHTML = 'Stripe checkout finished.<br><span class="text-white">Access:</span> VIP membership unlocked';
+      watch.href = 'vip-exclusives.html';
+      watch.textContent = 'Open VIP vault';
+      setTimeout(() => { window.location.href = 'vip-exclusives.html'; }, 1800);
       return;
     }
     copy.textContent = result.title ? `${result.title} is now unlocked for your account.` : 'Your video is now unlocked for your account.';
@@ -52,7 +63,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       setTimeout(() => { window.location.href = `video.html?id=${encodeURIComponent(result.videoId)}`; }, 1800);
     }
   } catch (error) {
-    copy.textContent = 'Stripe checkout may have succeeded, but Hidden Gems could not unlock the video automatically for this account.';
+    copy.textContent = 'Stripe checkout may have succeeded, but Hidden Gems could not unlock access automatically for this account.';
     status.textContent = error && error.message ? error.message : 'Automatic account unlock failed.';
   }
 });
