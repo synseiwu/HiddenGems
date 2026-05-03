@@ -5,10 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Hidden Gems</title>
   <link rel="icon" href="./assets/hidden-gems-logo.png" />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+  <link rel="preconnect" href="https://netolzyxnifogojwwesq.supabase.co" crossorigin />
+  <link rel="preload" as="image" href="./assets/hidden-gems-logo.png" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="./config.js"></script>
-  <script defer src="./assets/site.js?v=admin-video-list-v3"></script>
+  <script defer src="./assets/site.js?v=promotion-ready-v1"></script>
 </head>
 <body class="min-h-screen bg-black text-white" style="background:
   radial-gradient(circle at top right, rgba(236,72,153,0.22), transparent 30%),
@@ -70,7 +73,7 @@
             Unlock rare videos inside <span class="text-pink-400">Hidden Gems</span>
           </h2>
           <p class="mt-6 max-w-xl text-lg text-neutral-300">
-            Buy videos through their individual PayPal links, or join VIP to access special vault videos. Guest and VIP playback stays view-only on the site.
+            Create a free account, browse premium video drops, and unlock individual titles through secure Stripe checkout. VIP members get access to exclusive vault releases, with downloads reserved for VIP access when a verified external file link is available.
           </p>
 
           <div class="mt-8 flex flex-wrap gap-4">
@@ -113,9 +116,9 @@
           </section>
 
           <div id="home-stats" class="mt-10 flex flex-wrap gap-6 text-sm text-neutral-400">
-            <div><p class="text-2xl font-bold text-white">1.2K+</p><p>Videos available</p></div>
+            <div><p class="text-2xl font-bold text-white">Loading</p><p>Videos available</p></div>
             <div><p class="text-2xl font-bold text-white">7</p><p>Categories</p></div>
-            <div><p class="text-2xl font-bold text-white">Per-video</p><p>PayPal links</p></div>
+            <div><p class="text-2xl font-bold text-white">Per-video</p><p>Stripe checkout</p></div>
           </div>
         </div>
 
@@ -129,8 +132,8 @@
             </div>
             <div class="rounded-2xl bg-neutral-900/80 p-4">
               <p class="text-xs uppercase tracking-[0.2em] text-neutral-500">Checkout</p>
-              <p id="hero-access-text" class="mt-2 text-2xl font-bold text-white">Per-video</p>
-              <p class="text-sm text-neutral-400">Direct PayPal links</p>
+              <p id="hero-pricing-text" class="mt-2 text-2xl font-bold text-white">Per-video</p>
+              <p class="text-sm text-neutral-400">Secure Stripe checkout</p>
             </div>
             <div class="rounded-2xl bg-neutral-900/80 p-4">
               <p class="text-xs uppercase tracking-[0.2em] text-neutral-500">Status</p>
@@ -148,7 +151,7 @@
           <p class="text-sm uppercase tracking-[0.25em] text-pink-300">Featured Drops</p>
           <h3 class="mt-2 text-3xl font-bold">Trending videos</h3>
         </div>
-        <a href="#featured" class="rounded-xl border border-white/15 px-4 py-2 text-sm text-neutral-300 transition hover:bg-white/5 hover:text-white">View All</a>
+        <a href="all-videos.html" class="rounded-xl border border-white/15 px-4 py-2 text-sm text-neutral-300 transition hover:bg-white/5 hover:text-white">View All</a>
       </div>
 
       <div id="featured-grid" class="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
@@ -176,7 +179,7 @@
         <div class="text-center">
           <p class="text-sm uppercase tracking-[0.25em] text-pink-300">Checkout</p>
           <h3 class="mt-2 text-3xl font-bold">Buy videos directly</h3>
-          <p class="mx-auto mt-4 max-w-2xl text-neutral-400">Browse the catalog and purchase individual videos directly from their video cards. VIP remains separate for exclusive content and download access.</p>
+          <p class="mx-auto mt-4 max-w-2xl text-neutral-400">Browse the catalog and purchase individual videos directly from their video pages. Purchases unlock viewing for the signed-in account, while VIP remains separate for exclusive vault content and download access.</p>
         </div>
         <div class="mt-8 flex flex-wrap items-center justify-center gap-4">
           <a href="all-videos.html" class="rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white transition hover:bg-pink-400">Browse All Videos</a>
@@ -245,9 +248,9 @@
             <a href="my-library.html" class="rounded-xl border border-white/15 px-4 py-2 text-sm text-neutral-300 transition hover:bg-white/5">View Library</a>
           </div>
           <div class="mt-6 space-y-4">
-            <div class="flex items-center justify-between rounded-2xl bg-neutral-900/80 px-4 py-4"><div><p class="font-medium text-white">Featured Video One</p><p class="text-sm text-neutral-400">Unlocked #1</p></div><button class="rounded-xl bg-pink-500/10 px-4 py-2 text-sm font-medium text-pink-300 transition hover:bg-pink-500/25">View</button></div>
-            <div class="flex items-center justify-between rounded-2xl bg-neutral-900/80 px-4 py-4"><div><p class="font-medium text-white">Featured Video Two</p><p class="text-sm text-neutral-400">Unlocked #2</p></div><button class="rounded-xl bg-pink-500/10 px-4 py-2 text-sm font-medium text-pink-300 transition hover:bg-pink-500/25">View</button></div>
-            <div class="flex items-center justify-between rounded-2xl bg-neutral-900/80 px-4 py-4"><div><p class="font-medium text-white">Featured Video Three</p><p class="text-sm text-neutral-400">Unlocked #3</p></div><button class="rounded-xl bg-pink-500/10 px-4 py-2 text-sm font-medium text-pink-300 transition hover:bg-pink-500/25">View</button></div>
+            <div class="rounded-2xl bg-neutral-900/80 px-4 py-4"><p class="font-medium text-white">Purchased videos save to My Library</p><p class="text-sm text-neutral-400">After checkout, unlocked titles stay attached to the signed-in account.</p></div>
+            <div class="rounded-2xl bg-neutral-900/80 px-4 py-4"><p class="font-medium text-white">VIP opens the vault</p><p class="text-sm text-neutral-400">VIP members can watch exclusive vault videos and access approved download links.</p></div>
+            <div class="rounded-2xl bg-neutral-900/80 px-4 py-4"><p class="font-medium text-white">PikPak / Mega links are official</p><p class="text-sm text-neutral-400">Approved external file links are shown clearly so members know they are trusted delivery sources.</p></div>
           </div>
         </div>
       </div>
@@ -258,7 +261,7 @@
     <div class="mx-auto grid max-w-7xl gap-10 px-6 py-12 md:grid-cols-[1.2fr_1fr_1fr_1fr]">
       <div>
         <h4 class="text-xl font-bold text-pink-400">Hidden Gems</h4>
-        <p class="mt-3 max-w-sm text-sm text-neutral-400">Premium digital video content sold through direct video purchases, with VIP reserved for exclusive vault releases and download access.</p>
+        <p class="mt-3 max-w-sm text-sm text-neutral-400">Premium digital video access with secure per-video purchases, VIP vault releases, and trusted external file partners like PikPak and Mega for approved downloads.</p>
       </div>
       <div><h5 class="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-300">Company</h5><div class="mt-4 space-y-3"><a href="about.html" class="block text-sm text-neutral-400 transition hover:text-white">About</a><a href="contact.html" class="block text-sm text-neutral-400 transition hover:text-white">Contact</a><a href="contact.html" class="block text-sm text-neutral-400 transition hover:text-white">Support</a></div></div>
       <div><h5 class="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-300">Explore</h5><div class="mt-4 space-y-3"><a href="#featured" class="block text-sm text-neutral-400 transition hover:text-white">Featured</a><a href="#categories" class="block text-sm text-neutral-400 transition hover:text-white">Categories</a><a href="#vip" class="block text-sm text-neutral-400 transition hover:text-white">VIP</a></div></div>
