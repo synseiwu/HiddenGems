@@ -1590,7 +1590,6 @@ window.HiddenGemsApp = (() => {
             <img data-hg-theme-logo="true" src="./assets/hidden-gems-logo.png" alt="${BRAND_NAME} logo" class="h-14 w-14 rounded-2xl object-contain shadow-lg shadow-pink-500/20" />
             <div>
               <h1 class="text-2xl font-bold tracking-[0.08em] text-pink-400">${BRAND_NAME.toUpperCase()}</h1>
-              <p class="text-xs text-neutral-400">Guest, VIP, and admin access built in</p>
             </div>
           </a>
           <nav class="hidden items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-2 py-2 text-sm text-neutral-300 lg:flex">
@@ -1632,7 +1631,7 @@ window.HiddenGemsApp = (() => {
   function authButtonsMarkup() { return `<a href="login.html" class="rounded-xl border border-white/15 px-4 py-2 text-sm text-white transition hover:bg-white/5">Log In</a><a href="signup.html" class="rounded-xl bg-pink-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-pink-500/20 transition hover:bg-pink-400">Sign Up</a>`; }
 
   function desktopAccountMarkup(state) {
-    return `<div class="relative"><button id="account-menu-button" class="flex items-center gap-3 rounded-full border border-white/10 bg-white/5 py-1.5 pl-1.5 pr-3 text-left text-white transition hover:border-pink-400/30 hover:bg-white/10"><span class="flex h-10 w-10 items-center justify-center rounded-full bg-pink-500/20 text-sm font-bold text-pink-300">${initialsFromEmail(state.email)}</span><span class="hidden max-w-[160px] truncate text-sm font-medium xl:block">${escapeHtml(state.email)}</span><svg class="h-4 w-4 text-neutral-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.512a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg></button><div id="account-menu-dropdown" class="hidden absolute right-0 top-[calc(100%+12px)] z-50 w-72 overflow-hidden rounded-[1.5rem] border border-white/10 bg-neutral-950/95 p-2 shadow-2xl shadow-black/60"><div class="rounded-[1.25rem] border border-white/5 bg-white/[0.03] p-4"><div class="flex items-start justify-between gap-3"><div><p class="truncate text-sm font-semibold text-white">${escapeHtml(state.email)}</p><p class="mt-1 text-xs text-neutral-400">Signed in to ${BRAND_NAME}</p></div>${roleBadge(state.role)}</div><p class="mt-3 text-xs text-neutral-500">Quick account actions are available below.</p></div><div class="mt-2 grid gap-1 text-sm"><a href="account.html" class="rounded-xl px-4 py-3 text-neutral-200 transition hover:bg-white/10 hover:text-pink-300">Account</a><a href="settings.html" class="rounded-xl px-4 py-3 text-neutral-200 transition hover:bg-white/10 hover:text-pink-300">Settings</a>${state.role === 'admin' ? '<a href="admin.html" class="rounded-xl px-4 py-3 text-amber-200 transition hover:bg-amber-500/10 hover:text-amber-100">Admin Controls</a>' : ''}</div><button id="logout-button-menu" class="mt-2 w-full rounded-xl px-4 py-3 text-left text-sm text-rose-200 transition hover:bg-rose-500/10">Log Out</button></div></div>`;
+    return `<div class="relative"><button id="account-menu-button" class="flex items-center gap-3 rounded-full border border-white/10 bg-white/5 py-1.5 pl-1.5 pr-3 text-left text-white transition hover:border-pink-400/30 hover:bg-white/10"><span class="flex h-10 w-10 items-center justify-center rounded-full bg-pink-500/20 text-sm font-bold text-pink-300">${initialsFromEmail(state.email)}</span><span class="hidden max-w-[160px] truncate text-sm font-medium xl:block">${escapeHtml(state.email)}</span><svg class="h-4 w-4 text-neutral-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.512a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clip-rule="evenodd"/></svg></button><div id="account-menu-dropdown" class="hidden absolute right-0 top-[calc(100%+12px)] z-50 w-72 overflow-hidden rounded-[1.5rem] border border-white/10 bg-neutral-950/95 p-2 shadow-2xl shadow-black/60"><div class="rounded-[1.25rem] border border-white/5 bg-white/[0.03] p-4"><div class="flex items-start justify-between gap-3"><div><p class="truncate text-sm font-semibold text-white">${escapeHtml(state.email)}</p><p class="mt-1 text-xs text-neutral-400">Signed in to ${BRAND_NAME}</p></div>${roleBadge(state.role)}</div><p class="mt-3 text-xs text-neutral-500">Account options</p></div><div class="mt-2 grid gap-1 text-sm"><a href="account.html" class="rounded-xl px-4 py-3 text-neutral-200 transition hover:bg-white/10 hover:text-pink-300">Account</a><a href="settings.html" class="rounded-xl px-4 py-3 text-neutral-200 transition hover:bg-white/10 hover:text-pink-300">Settings</a>${state.role === 'admin' ? '<a href="admin.html" class="rounded-xl px-4 py-3 text-amber-200 transition hover:bg-amber-500/10 hover:text-amber-100">Admin Controls</a>' : ''}</div><button id="logout-button-menu" class="mt-2 w-full rounded-xl px-4 py-3 text-left text-sm text-rose-200 transition hover:bg-rose-500/10">Log Out</button></div></div>`;
   }
 
   function mobileAccountMarkup(state) {
@@ -1686,7 +1685,8 @@ window.HiddenGemsApp = (() => {
     button?.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); dropdown?.classList.toggle('hidden'); });
     document.addEventListener('click', (event) => { if (dropdown && button && !dropdown.contains(event.target) && !button.contains(event.target)) dropdown.classList.add('hidden'); });
     if (document.getElementById('legacy-home-admin-link')) document.getElementById('legacy-home-admin-link').classList.toggle('hidden', state.role !== 'admin');
-    if (false && state.role === 'admin' && !document.getElementById('legacy-admin-link')) {
+    if (document.getElementById('legacy-admin-link')) document.getElementById('legacy-admin-link').classList.toggle('hidden', state.role !== 'admin');
+    if (state.role === 'admin' && !document.getElementById('legacy-admin-link')) {
       const adminLink = document.createElement('a');
       adminLink.id = 'legacy-admin-link';
       adminLink.href = 'admin.html';
@@ -1694,7 +1694,7 @@ window.HiddenGemsApp = (() => {
       adminLink.textContent = 'Admin Portal';
       dropdown?.querySelector('.p-2')?.insertBefore(adminLink, document.getElementById('logout-button'));
     }
-    if (false && !document.getElementById('legacy-settings-link')) {
+    if (!document.getElementById('legacy-settings-link')) {
       const settingsLink = document.createElement('a');
       settingsLink.id = 'legacy-settings-link';
       settingsLink.href = 'settings.html';

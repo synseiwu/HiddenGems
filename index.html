@@ -11,7 +11,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="./config.js"></script>
-  <script defer src="./assets/site.js?v=dropdown-storage-v4"></script>
+  <script defer src="./assets/site.js?v=header-menu-v6"></script>
 </head>
 <body class="min-h-screen bg-black text-white" style="background:
   radial-gradient(circle at top right, rgba(236,72,153,0.22), transparent 30%),
@@ -23,7 +23,6 @@
         <img src="./assets/hidden-gems-logo.png" alt="Hidden Gems logo" class="h-14 w-14 rounded-2xl object-contain shadow-lg shadow-pink-500/20" />
         <div>
           <h1 class="text-2xl font-bold tracking-[0.08em] text-pink-400">HIDDEN GEMS</h1>
-          <p class="text-xs text-neutral-400">View-only video access with VIP vault</p>
         </div>
       </a>
       <nav id="legacy-home-main-nav" class="hidden items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-2 py-2 text-sm text-neutral-300 xl:flex">
@@ -58,7 +57,9 @@
               <p id="account-email-full" class="mt-1 break-all text-xs text-neutral-400"></p>
             </div>
             <div class="p-2">
-              <a href="account.html" class="block rounded-xl px-3 py-3 text-sm text-white transition hover:bg-white/5">Account Profile</a>
+              <a href="account.html" class="block rounded-xl px-3 py-3 text-sm text-white transition hover:bg-white/5">Account</a>
+              <a id="legacy-settings-link" href="settings.html" class="block rounded-xl px-3 py-3 text-sm text-white transition hover:bg-white/5">Settings</a>
+              <a id="legacy-admin-link" href="admin.html" class="hidden block rounded-xl px-3 py-3 text-sm text-amber-200 transition hover:bg-amber-500/10">Admin Panel</a>
               <button id="logout-button" class="block w-full rounded-xl px-3 py-3 text-left text-sm text-rose-300 transition hover:bg-white/5">Log Out</button>
             </div>
           </div>
