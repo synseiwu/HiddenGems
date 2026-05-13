@@ -1314,13 +1314,18 @@ window.HiddenGemsApp = (() => {
   function getRoleForAccount(user, email, profile) {
     const normalized = String(email || user?.email || '').trim().toLowerCase();
     const userId = String(user?.id || profile?.id || '').trim().toLowerCase();
-    if (userId && ADMIN_USER_IDS.includes(userId)) return 'admin';
-    if (normalized && ADMIN_EMAILS.includes(normalized)) return 'admin';
+    const isConfiguredAdmin = (userId && ADMIN_USER_IDS.includes(userId)) || (normalized && ADMIN_EMAILS.includes(normalized));
+    if (isConfiguredAdmin) return 'admin';
+
+    // SECURITY: Never trust browser/localStorage role overrides for admin access.
+    // Admin access is allowlist-only through config.js plus database RLS policies.
     const override = normalized ? storage.getRoleOverride(normalized) : '';
-    if (override === 'admin') return 'admin';
     if (override === 'vip') return 'vip';
     if (override === 'guest') return 'guest';
-    if (profile?.role && ['guest','vip','admin'].includes(String(profile.role).toLowerCase())) return String(profile.role).toLowerCase();
+
+    const profileRole = String(profile?.role || '').toLowerCase();
+    if (profileRole === 'vip') return 'vip';
+    // SECURITY: Ignore profile.role='admin' unless the account is allowlisted above.
     if (profile?.is_vip) return 'vip';
     return 'guest';
   }
@@ -1362,14 +1367,17 @@ window.HiddenGemsApp = (() => {
     const next = { ...cached, ...patch, email };
     const isConfiguredAdmin = ADMIN_EMAILS.includes(email) || ADMIN_USER_IDS.includes(String(user.id || '').toLowerCase());
     if (isConfiguredAdmin) next.role = 'admin';
-    else if (typeof next.is_vip !== 'undefined' && next.role !== 'admin') next.role = next.is_vip ? 'vip' : 'guest';
+    else if (next.role === 'admin') next.role = next.is_vip ? 'vip' : 'guest';
+
+    // SECURITY: Profile role/VIP changes must not be written from browser JavaScript.
+    // They should only be changed by Supabase SQL/admin action or a verified payment webhook/Edge Function.
     storage.cacheProfile(email, next);
     const supabase = getSupabaseClient();
     if (supabase) {
-      const payload = { id: user.id, email, is_vip: !!next.is_vip, role: next.role || (next.is_vip ? 'vip' : 'guest') };
-      const result = await supabase.from('profiles').upsert(payload).select('email, is_vip, role').single();
+      const result = await supabase.from('profiles').select('email, is_vip, role').eq('id', user.id).maybeSingle();
       if (result?.error) throw result.error;
-      const merged = { ...next, ...(result.data || {}), email };
+      const safeRole = getRoleForAccount(user, email, result.data || next);
+      const merged = { ...next, ...(result.data || {}), email, role: safeRole };
       storage.cacheProfile(email, merged);
       window.dispatchEvent(new CustomEvent('hg:state-changed'));
       return merged;
@@ -1462,11 +1470,9 @@ window.HiddenGemsApp = (() => {
     if (!user?.email) return false;
     const email = user.email;
     const cached = storage.getCachedProfile(email) || { email, is_vip: false, role: 'guest' };
-    storage.cacheProfile(email, { ...cached, email, is_vip: !!isVip });
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      try { await supabase.from('profiles').upsert({ id: user.id, email, is_vip: !!isVip, role: isVip ? 'vip' : (cached.role || 'guest') }); } catch (error) {}
-    }
+    // SECURITY: Do not grant VIP/admin from client-side JavaScript.
+    // This keeps local UI responsive after checkout, but the database must be updated by a trusted webhook/admin action.
+    storage.cacheProfile(email, { ...cached, email, is_vip: !!isVip, role: isVip ? 'vip' : (cached.role === 'admin' ? 'guest' : (cached.role || 'guest')) });
     window.dispatchEvent(new CustomEvent('hg:state-changed'));
     return true;
   }
@@ -2581,11 +2587,15 @@ window.HiddenGemsApp = (() => {
         event.preventDefault();
         const formData = new FormData(event.currentTarget);
         const email = String(formData.get('email') || '').trim().toLowerCase();
-        const role = String(formData.get('role') || 'guest').trim();
-        storage.setRoleOverride(email, role);
+        const role = String(formData.get('role') || 'guest').trim().toLowerCase();
+        if (role === 'admin') {
+          toast('Admin access is locked to the two allowlisted emails. Add/remove admins in Supabase, not the browser.', 'error');
+          return;
+        }
+        storage.setRoleOverride(email, role === 'vip' ? 'vip' : 'guest');
         const cached = storage.getCachedProfile(email) || { email, is_vip: false, role: 'guest' };
-        storage.cacheProfile(email, { ...cached, email, is_vip: role === 'vip' || role === 'admin', role });
-        toast('Role saved.', 'success'); event.currentTarget.reset(); renderRoleList(); window.dispatchEvent(new CustomEvent('hg:state-changed'));
+        storage.cacheProfile(email, { ...cached, email, is_vip: role === 'vip', role: role === 'vip' ? 'vip' : 'guest' });
+        toast('Guest/VIP display role saved locally. Admin is database-locked.', 'success'); event.currentTarget.reset(); renderRoleList(); window.dispatchEvent(new CustomEvent('hg:state-changed'));
       });
 
       document.getElementById('admin-category-create-form')?.addEventListener('submit', async (event) => {
