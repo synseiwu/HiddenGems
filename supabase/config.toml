@@ -2,3 +2,6 @@ project_id = "netolzyxnifogojwwesq"
 
 [functions.hg-paypal-checkout]
 verify_jwt = false
+
+[functions.hg-stripe-webhook]
+verify_jwt = false

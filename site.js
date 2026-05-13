@@ -656,6 +656,33 @@ window.HiddenGemsApp = (() => {
     return false;
   }
 
+  function delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  async function waitForVerifiedVideoPurchase(videoId, state = null, timeoutMs = 30000) {
+    const id = String(videoId || '').trim();
+    if (!id) return false;
+    const deadline = Date.now() + timeoutMs;
+    do {
+      const ids = await getPurchasedVideoIds(state);
+      if (ids.map(String).includes(id)) return true;
+      await delay(2000);
+    } while (Date.now() < deadline);
+    return false;
+  }
+
+  async function waitForVerifiedVipAccess(timeoutMs = 30000) {
+    const deadline = Date.now() + timeoutMs;
+    do {
+      const profile = await getProfile();
+      const role = String(profile?.role || '').toLowerCase();
+      if (role === 'vip' || role === 'admin' || profile?.is_vip === true) return true;
+      await delay(2000);
+    } while (Date.now() < deadline);
+    return false;
+  }
+
   function toast(message, type = 'info') {
     const colors = {
       info: 'border-white/15 bg-white/10 text-white',
@@ -1803,6 +1830,13 @@ window.HiddenGemsApp = (() => {
     }
 
     const video = getVideo(videoId) || { id: videoId, title: pending?.title || 'Purchased video', priceCents: pending?.amountCents || 0 };
+    const verified = await waitForVerifiedVideoPurchase(videoId, state, 30000);
+    if (verified) {
+      storage.addTransaction({ type: 'stripe-video-verified', videoId, title: video.title || pending?.title || 'Purchased video', amountCents: normalizePriceCents(video.priceCents || pending?.amountCents) });
+      try { window.localStorage.removeItem(PENDING_STRIPE_VIDEO_KEY); } catch (_) {}
+      window.dispatchEvent(new CustomEvent('hg:state-changed'));
+      return { status: 'verified', videoUnlocked: true, title: video.title || pending?.title || '', videoId };
+    }
     await unlockVideoForState(state, video, { provider: 'stripe-link', paymentId, sessionId: paymentId, status: 'pending-verification' });
     storage.addTransaction({ type: 'stripe-video-pending', videoId, title: video.title || pending?.title || 'Purchased video', amountCents: normalizePriceCents(video.priceCents || pending?.amountCents) });
     try { window.localStorage.removeItem(PENDING_STRIPE_VIDEO_KEY); } catch (_) {}
@@ -1829,6 +1863,13 @@ window.HiddenGemsApp = (() => {
     const pendingUserId = String(pending?.userId || '').trim();
     if (pendingEmail && String(state.email || '').trim().toLowerCase() !== pendingEmail) throw new Error('This VIP checkout was started by a different account on this browser. Please buy VIP again while signed into the correct account.');
     if (pendingUserId && String(state.user.id || '').trim() !== pendingUserId) throw new Error('This VIP checkout was started by a different account on this browser. Please buy VIP again while signed into the correct account.');
+    const verified = await waitForVerifiedVipAccess(30000);
+    if (verified) {
+      storage.addTransaction({ type: 'stripe-vip-verified', title: 'VIP Subscription', paymentId, amountCents: 1999 });
+      try { window.localStorage.removeItem(PENDING_STRIPE_VIP_KEY); } catch (_) {}
+      window.dispatchEvent(new CustomEvent('hg:state-changed'));
+      return { status: 'verified', vipUnlocked: true, title: 'VIP Subscription' };
+    }
     await syncVipForCurrentUser(true);
     storage.addTransaction({ type: 'stripe-vip-pending', title: 'VIP Subscription', paymentId, amountCents: 1999 });
     try { window.localStorage.removeItem(PENDING_STRIPE_VIP_KEY); } catch (_) {}
@@ -1990,7 +2031,7 @@ window.HiddenGemsApp = (() => {
 
   function renderPointsStore() {
     applyBg();
-    document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-7xl px-6 py-14"><div class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Access</p><h1 class="mt-3 text-4xl font-black">Per-video access checkout</h1><p class="mt-4 max-w-3xl text-neutral-300">Hidden Gems uses secure Stripe checkout links by price tier. Pick a video, complete checkout, and the site unlocks that title for your signed-in account.</p></div><div id="pricing-access-banner" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300">Loading account status...</div><div class="mt-10 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">How it works</p><ol class="mt-5 space-y-4 text-neutral-300"><li>1. Sign in to your Hidden Gems account.</li><li>2. Open any guest-access video and click <span class="font-semibold text-white">Buy Access</span>.</li><li>3. Complete checkout on the Stripe payment link for that price tier.</li><li>4. After Stripe returns you to Hidden Gems, the site unlocks the selected video for the same signed-in account.</li></ol><div class="mt-6 flex flex-wrap gap-3"><a href="all-videos.html" class="rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white transition hover:bg-pink-400">Browse all videos</a><a href="contact.html" class="rounded-2xl border border-white/15 px-6 py-3 font-semibold text-white transition hover:bg-white/5">Contact support</a></div></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">VIP vault</p><p class="mt-4 text-neutral-300">VIP access remains separate from individual video purchases. Guest and VIP accounts use on-site playback only; downloads stay disabled for customer roles.</p><a href="vip-checkout.html" class="mt-6 inline-flex rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Open VIP checkout</a></div></div></main>` + shellFooter();
+    document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-7xl px-6 py-14"><div class="rounded-[2rem] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-fuchsia-500/10 to-transparent p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">Access</p><h1 class="mt-3 text-4xl font-black">Per-video access checkout</h1><p class="mt-4 max-w-3xl text-neutral-300">Hidden Gems uses secure Stripe checkout links by price tier. Pick a video, complete checkout, and the site unlocks that title for your signed-in account.</p></div><div id="pricing-access-banner" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/5 px-5 py-4 text-sm text-neutral-300">Loading account status...</div><div class="mt-10 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]"><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">How it works</p><ol class="mt-5 space-y-4 text-neutral-300"><li>1. Sign in to your Hidden Gems account.</li><li>2. Open any guest-access video and click <span class="font-semibold text-white">Buy Access</span>.</li><li>3. Complete checkout on the Stripe payment link for that price tier.</li><li>4. The Stripe webhook verifies payment, then Hidden Gems unlocks the selected video for the same signed-in account.</li></ol><div class="mt-6 flex flex-wrap gap-3"><a href="all-videos.html" class="rounded-2xl bg-pink-500 px-6 py-3 font-semibold text-white transition hover:bg-pink-400">Browse all videos</a><a href="contact.html" class="rounded-2xl border border-white/15 px-6 py-3 font-semibold text-white transition hover:bg-white/5">Contact support</a></div></div><div class="rounded-[2rem] border border-white/10 bg-white/5 p-8"><p class="text-sm uppercase tracking-[0.25em] text-pink-300">VIP vault</p><p class="mt-4 text-neutral-300">VIP access remains separate from individual video purchases. Guest and VIP accounts use on-site playback only; downloads stay disabled for customer roles.</p><a href="vip-checkout.html" class="mt-6 inline-flex rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Open VIP checkout</a></div></div></main>` + shellFooter();
     bindCommonUi();
     const mount = async () => {
       const state = await getState();
