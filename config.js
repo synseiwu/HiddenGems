@@ -7,7 +7,7 @@
     // Stripe is the active payment provider for this build.
     stripeLinks: {
       defaultVideo: 'https://buy.stripe.com/bJefZhaGd9rgduCfz5bo40f',
-      vipSubscription: 'https://buy.stripe.com/bJefZhaGd9rgduCfz5bo40f'
+      vipSubscription: 'https://buy.stripe.com/5kQ3cv7u16f49em3Qnbo40g'
     },
     payment: {
       provider: 'stripe-link',
@@ -39,9 +39,9 @@
         { name: '$60 Video Link', amountCents: 6000, kind: 'video', url: 'https://buy.stripe.com/8x2aEXaGd1YOfCKcmTbo402' },
         { name: '$90 Video Link', amountCents: 9000, kind: 'video', url: 'https://buy.stripe.com/bJeaEX6pX46W0HQ72zbo40e' },
         { name: '$120 Video Link', amountCents: 12000, kind: 'video', url: 'https://buy.stripe.com/4gM00jbKh46W4Y60Ebbo40d' },
-        { name: 'VIP Subscription Link', amountCents: 0, kind: 'vip', url: 'https://buy.stripe.com/bJefZhaGd9rgduCfz5bo40f' }
+        { name: 'VIP Subscription Link', amountCents: 1999, kind: 'vip', url: 'https://buy.stripe.com/5kQ3cv7u16f49em3Qnbo40g' }
       ],
-      stripeVipSubscriptionLink: 'https://buy.stripe.com/bJefZhaGd9rgduCfz5bo40f',
+      stripeVipSubscriptionLink: 'https://buy.stripe.com/5kQ3cv7u16f49em3Qnbo40g',
       edgeFunctionUrl: ''
     },
     adminEmails: ['hayzrxsloth@gmail.com', 'patrickkinshin223@gmail.com'],
