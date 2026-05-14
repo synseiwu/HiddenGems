@@ -506,6 +506,20 @@ window.HiddenGemsApp = (() => {
     return { type: 'none', value: '' };
   }
 
+  function isSupabaseFullVideoStoragePath(value = '') {
+    return /^videos\/[^/]+\/main\.(mp4|webm|mov)$/i.test(String(value || '').trim());
+  }
+
+  function isSupabaseFullVideoUrl(value = '') {
+    const url = String(value || '').trim();
+    return /\/storage\/v1\/object\/(sign|public)\/hg-videos\/videos\/[^?#]+\/main\.(mp4|webm|mov)/i.test(url);
+  }
+
+  function isBlockedSupabaseFullVideoSource(value = '') {
+    const text = String(value || '').trim();
+    return isSupabaseFullVideoStoragePath(text) || isSupabaseFullVideoUrl(text);
+  }
+
   function isPlayableVideoFile(video) {
     return getVideoSource(video).type === 'file';
   }
@@ -567,27 +581,8 @@ window.HiddenGemsApp = (() => {
     const preview = getVideoPreviewConfig(video);
     if (preview.imageUrl) return preview.imageUrl;
     if (preview.generatedFrame) return preview.generatedFrame;
-    const source = getVideoSource(video);
-    try {
-      let playableSrc = '';
-      if (source.type === 'file' && source.storagePath) playableSrc = await createSignedVideoUrl(source.storagePath);
-      else if (source.type === 'file' && source.ref) {
-        const blob = await getVideoBlob(source.ref);
-        if (blob) playableSrc = URL.createObjectURL(blob);
-      } else if (source.type === 'link') {
-        playableSrc = source.value;
-      }
-      if (playableSrc) {
-        const frame = await captureVideoFrame(playableSrc, 0.37);
-        if (frame && storage.setVideoOverride) storage.setVideoOverride(video.id, { generatedPreviewFrame: frame });
-        if (source.type === 'file' && source.ref && playableSrc.startsWith('blob:')) {
-          try { URL.revokeObjectURL(playableSrc); } catch (error) {}
-        }
-        if (frame) return frame;
-      }
-    } catch (error) {
-      console.error(error);
-    }
+    // Do not generate preview frames from full videos. That creates signed Supabase
+    // Storage URLs for main.mp4 files and burns egress before the user clicks play.
     return video.image || './assets/hidden-gems-logo.png';
   }
 
@@ -597,11 +592,11 @@ window.HiddenGemsApp = (() => {
 
   async function renderPublicPreviewShell(video, caption = '') {
     const preview = getVideoPreviewConfig(video);
-    const previewVideo = preview.videoEnabled && preview.videoUrl ? preview.videoUrl : '';
+    const previewVideo = preview.videoEnabled && preview.videoUrl && !isBlockedSupabaseFullVideoSource(preview.videoUrl) ? preview.videoUrl : '';
     const safeCaption = caption || 'Preview is available before purchase so guests can see what they are about to unlock. Full playback, downloads, and external file links stay locked until purchase or VIP access.';
     if (previewVideo) {
       const mimeType = previewVideo.startsWith('data:video/webm') ? 'video/webm' : (previewVideo.startsWith('data:video/quicktime') || /\.mov(\?.*)?$/i.test(previewVideo) ? 'video/quicktime' : 'video/mp4');
-      return `<div class="space-y-4"><div class="relative overflow-hidden rounded-2xl border border-white/10 bg-black"><video controls playsinline preload="metadata" poster="${escapeHtml(preview.imageUrl || video.image || './assets/hidden-gems-logo.png')}" class="w-full rounded-2xl bg-black"><source src="${escapeHtml(previewVideo)}" type="${escapeHtml(mimeType)}" />Your browser does not support preview playback.</video><div class="pointer-events-none absolute right-4 top-4 rounded-full border border-white/10 bg-black/60 px-3 py-1 text-xs uppercase tracking-[0.2em] text-pink-200">Preview</div></div><p class="text-sm text-neutral-400">${escapeHtml(safeCaption)}</p></div>`;
+      return `<div class="space-y-4"><div class="relative overflow-hidden rounded-2xl border border-white/10 bg-black"><video controls playsinline preload="none" poster="${escapeHtml(preview.imageUrl || video.image || './assets/hidden-gems-logo.png')}" class="w-full rounded-2xl bg-black"><source src="${escapeHtml(previewVideo)}" type="${escapeHtml(mimeType)}" />Your browser does not support preview playback.</video><div class="pointer-events-none absolute right-4 top-4 rounded-full border border-white/10 bg-black/60 px-3 py-1 text-xs uppercase tracking-[0.2em] text-pink-200">Preview</div></div><p class="text-sm text-neutral-400">${escapeHtml(safeCaption)}</p></div>`;
     }
     const previewImage = await resolveStillPreviewImage(video);
     return renderStillPreviewShell(previewImage || video.image, video.title, safeCaption);
@@ -1231,6 +1226,10 @@ window.HiddenGemsApp = (() => {
   async function createSignedVideoUrl(path) {
     const supabase = getSupabaseClient();
     if (!supabase || !path) return '';
+    if (isSupabaseFullVideoStoragePath(path)) {
+      console.warn('Blocked signed URL creation for Supabase full video source to prevent egress overages:', path);
+      return '';
+    }
     const result = await supabase.storage.from('hg-videos').createSignedUrl(path, 60 * 60);
     if (result?.error) throw result.error;
     return result?.data?.signedUrl || '';
@@ -1957,7 +1956,7 @@ window.HiddenGemsApp = (() => {
         bindCommonUi();
         return;
       }
-      document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-6xl px-6 py-14"><a href="${categoryPageHref(video.categorySlug)}" class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-300 transition hover:bg-white/10">← Back</a><div class="mt-8 grid gap-8 lg:grid-cols-[1.15fr_0.85fr]"><section class="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 shadow-xl shadow-black/20"><div class="relative"><img src="${escapeHtml(video.image)}" class="h-[420px] w-full object-cover" alt="${escapeHtml(video.title)}" fetchpriority="high" decoding="async"><div class="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent"></div><div class="absolute bottom-6 left-6"><p class="text-xs uppercase tracking-[0.25em] text-pink-300">${escapeHtml(video.category)}</p><h1 class="mt-2 text-4xl font-black">${escapeHtml(video.title)}</h1></div></div><div class="p-6"><div id="video-access-banner" class="rounded-[1.5rem] border border-white/10 bg-neutral-950/70 p-5 text-neutral-300">Checking access...</div><div id="video-player-shell" class="mt-6 rounded-[1.5rem] border border-white/10 bg-black/20 p-5"></div><div id="video-description-shell" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-5"><p class="text-xs uppercase tracking-[0.25em] text-neutral-500">Description</p><p class="mt-3 text-neutral-200">${escapeHtml(video.description || 'No description added yet.')}</p>${trustedExternalHostNotice('mt-4')}</div><div id="video-external-file-shell" class="mt-4 hidden rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-5"><p class="text-xs uppercase tracking-[0.25em] text-neutral-500">Official download/file link</p><div id="video-external-file-link" class="mt-3"></div><p class="mt-3 text-xs text-neutral-400">PikPak and Mega links are approved Hidden Gems file sources.</p></div></div></section><aside class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><p class="text-xs uppercase tracking-[0.25em] text-pink-300">Access details</p><div class="mt-5 space-y-4"><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Category</p><p class="mt-1 text-lg font-semibold text-white">${escapeHtml(video.category)}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Purchase</p><p class="mt-1 text-lg font-semibold text-white">${video.access === 'vip' ? 'VIP / Admin' : 'Shared Stripe checkout'}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Price</p><p class="mt-1 text-lg font-semibold text-white">${escapeHtml(moneyLabelFromVideo(video))}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Role access</p><p class="mt-1 text-lg font-semibold text-white">Guest/VIP: preview and on-site playback only · Admin: full management access</p></div></div><div class="mt-6 flex flex-col gap-3"><a id="video-action-button" href="#" class="rounded-2xl bg-pink-500 px-6 py-3 text-center font-semibold text-white transition hover:bg-pink-400">Loading...</a><a href="all-videos.html" class="rounded-2xl border border-white/15 px-6 py-3 text-center font-semibold text-white transition hover:bg-white/5">Browse videos</a></div></aside></div></main>` + shellFooter();
+      document.body.innerHTML = shellHeader() + `<main class="mx-auto max-w-6xl px-6 py-14"><a href="${categoryPageHref(video.categorySlug)}" class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-neutral-300 transition hover:bg-white/10">← Back</a><div class="mt-8 grid gap-8 lg:grid-cols-[1.15fr_0.85fr]"><section class="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 shadow-xl shadow-black/20"><div class="relative"><img src="${escapeHtml(video.image)}" class="h-[420px] w-full object-cover" alt="${escapeHtml(video.title)}" fetchpriority="high" decoding="async"><div class="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent"></div><div class="absolute bottom-6 left-6"><p class="text-xs uppercase tracking-[0.25em] text-pink-300">${escapeHtml(video.category)}</p><h1 class="mt-2 text-4xl font-black">${escapeHtml(video.title)}</h1></div></div><div class="p-6"><div id="video-access-banner" class="rounded-[1.5rem] border border-white/10 bg-neutral-950/70 p-5 text-neutral-300">Checking access...</div><div id="video-player-shell" class="mt-6 rounded-[1.5rem] border border-white/10 bg-black/20 p-5"></div><div id="video-description-shell" class="mt-6 rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-5"><p class="text-xs uppercase tracking-[0.25em] text-neutral-500">Description</p><p class="mt-3 text-neutral-200">${escapeHtml(video.description || 'No description added yet.')}</p>${trustedExternalHostNotice('mt-4')}</div><div id="video-external-file-shell" class="mt-4 hidden rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-5"><p class="text-xs uppercase tracking-[0.25em] text-neutral-500">Official external file link</p><div id="video-external-file-link" class="mt-3"></div><p class="mt-3 text-xs text-neutral-400">PikPak and Mega links are approved Hidden Gems file sources for verified access. Do not redistribute content.</p></div></div></section><aside class="rounded-[2rem] border border-white/10 bg-white/5 p-6"><p class="text-xs uppercase tracking-[0.25em] text-pink-300">Access details</p><div class="mt-5 space-y-4"><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Category</p><p class="mt-1 text-lg font-semibold text-white">${escapeHtml(video.category)}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Purchase</p><p class="mt-1 text-lg font-semibold text-white">${video.access === 'vip' ? 'VIP / Admin' : 'Shared Stripe checkout'}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Price</p><p class="mt-1 text-lg font-semibold text-white">${escapeHtml(moneyLabelFromVideo(video))}</p></div><div class="rounded-2xl bg-neutral-900/80 p-4"><p class="text-sm text-neutral-400">Role access</p><p class="mt-1 text-lg font-semibold text-white">Guest/VIP: preview and on-site playback only · Admin: full management access</p></div></div><div class="mt-6 flex flex-col gap-3"><a id="video-action-button" href="#" class="rounded-2xl bg-pink-500 px-6 py-3 text-center font-semibold text-white transition hover:bg-pink-400">Loading...</a><a href="all-videos.html" class="rounded-2xl border border-white/15 px-6 py-3 text-center font-semibold text-white transition hover:bg-white/5">Browse videos</a></div></aside></div></main>` + shellFooter();
       bindCommonUi();
       const state = await getState();
       const actionButton = document.getElementById('video-action-button');
@@ -1969,7 +1968,7 @@ window.HiddenGemsApp = (() => {
       const purchasedIds = new Set(await getPurchasedVideoIds(state));
       const unlocked = state.role === 'admin' || state.role === 'vip' || purchasedIds.has(String(video.id));
       const hasPlaybackAccess = accessible && (state.role === 'guest' ? unlocked : true);
-      const canRevealExternalFile = !!video.externalFileUrl && hasPlaybackAccess && state.role === 'admin';
+      const canRevealExternalFile = !!video.externalFileUrl && hasPlaybackAccess;
       if (externalFileShell) {
         externalFileShell.classList.toggle('hidden', !canRevealExternalFile);
       }
@@ -1991,10 +1990,9 @@ window.HiddenGemsApp = (() => {
       const source = getVideoSource(video);
       banner.innerHTML = `<p class="text-sm uppercase tracking-[0.2em] ${state.role === 'guest' ? 'text-pink-300' : 'text-emerald-300'}">${state.role === 'guest' ? 'Guest preview access' : 'Access granted'}</p><h3 class="mt-2 text-2xl font-bold text-white">${state.role === 'guest' ? 'Protected preview enabled' : 'You can open this video'}</h3><p class="mt-3 text-neutral-300">${state.role === 'guest' ? 'Guest and VIP accounts can watch unlocked videos on-site only. Downloads stay disabled for customer roles.' : 'Unlocked customer accounts can watch on-site only. Admin can manage source files.'}</p>`;
       if (source.type === 'file' && hasPlaybackAccess) {
-        let playableSrc = source.value;
-        if (!playableSrc && video.videoStoragePath) {
-          try { playableSrc = await createSignedVideoUrl(video.videoStoragePath); } catch (error) { console.error(error); }
-        }
+        let playableSrc = source.value && !isBlockedSupabaseFullVideoSource(source.value) ? source.value : '';
+        // Full Supabase Storage videos are intentionally not signed/streamed from the browser.
+        // This prevents main.mp4 files from burning through the Supabase egress quota.
         if (!playableSrc && source.ref) {
           try {
             const blob = await getVideoBlob(source.ref);
@@ -2003,15 +2001,20 @@ window.HiddenGemsApp = (() => {
         }
         if (playableSrc) {
           const downloadButton = state.role === 'admin' ? `<a href="${escapeHtml(playableSrc)}" download="${escapeHtml(source.fileName || `${video.id}.mp4`)}" class="inline-flex rounded-2xl border border-white/15 px-4 py-2 text-sm text-white transition hover:bg-white/5">Admin download source</a>` : '<p class="text-sm text-neutral-500">Downloads are disabled for guest and VIP accounts. Playback stays on-site only.</p>';
-          player.innerHTML = `<div class="space-y-4"><div class="relative overflow-hidden rounded-2xl border border-white/10 bg-black"><video controls playsinline preload="metadata" class="w-full rounded-2xl bg-black"><source src="${escapeHtml(playableSrc)}" type="${escapeHtml(source.mimeType || 'video/mp4')}" />Your browser does not support embedded video playback for this file.</video></div><div class="flex flex-wrap items-center justify-between gap-3">${source.fileName ? `<p class="text-sm text-neutral-500 break-all">${escapeHtml(source.fileName)}</p>` : '<span></span>'}${downloadButton}</div></div>`;
+          player.innerHTML = `<div class="space-y-4"><div class="relative overflow-hidden rounded-2xl border border-white/10 bg-black"><video controls playsinline preload="none" class="w-full rounded-2xl bg-black"><source src="${escapeHtml(playableSrc)}" type="${escapeHtml(source.mimeType || 'video/mp4')}" />Your browser does not support embedded video playback for this file.</video></div><div class="flex flex-wrap items-center justify-between gap-3">${source.fileName ? `<p class="text-sm text-neutral-500 break-all">${escapeHtml(source.fileName)}</p>` : '<span></span>'}${downloadButton}</div></div>`;
+        } else if (video.externalFileUrl) {
+          player.innerHTML = `<div class="space-y-4 rounded-2xl border border-white/10 bg-white/[0.03] p-5"><p class="text-neutral-300">This title uses an approved external file host instead of Supabase video streaming.</p><a href="${escapeHtml(video.externalFileUrl)}" target="_blank" rel="noopener noreferrer" class="inline-flex rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Open verified file link</a><p class="text-xs text-neutral-500">Supabase full-video streaming is disabled to control bandwidth and protect the site.</p></div>`;
         } else {
-          player.innerHTML = '<p class="text-neutral-400">This uploaded video file could not be loaded. Re-save the file from the admin page.</p>';
+          player.innerHTML = '<div class="rounded-2xl border border-amber-400/20 bg-amber-500/10 p-5 text-amber-100"><p class="font-semibold text-white">Supabase full-video streaming is disabled.</p><p class="mt-2 text-sm">Add a PikPak, Mega, or other approved external video/file link in the admin portal so verified users can access this title without using Supabase egress.</p></div>';
         }
-        actionButton.textContent = 'Watching video'; actionButton.href = '#video-player-shell'; actionButton.target = '_self'; actionButton.rel = ''; actionButton.onclick = null;
+        actionButton.textContent = video.externalFileUrl ? 'Open verified file link' : 'Access granted'; actionButton.href = video.externalFileUrl || '#video-player-shell'; actionButton.target = video.externalFileUrl ? '_blank' : '_self'; actionButton.rel = video.externalFileUrl ? 'noopener noreferrer' : ''; actionButton.onclick = null;
       } else if (source.type === 'link' && hasPlaybackAccess) {
         const directVideoLink = /\.(mp4|webm|mov)(\?.*)?$/i.test(String(source.value || ''));
-        if (directVideoLink) {
-          player.innerHTML = `<div class="space-y-4"><div class="relative overflow-hidden rounded-2xl border border-white/10 bg-black"><video controls playsinline preload="metadata" class="w-full rounded-2xl bg-black"><source src="${escapeHtml(source.value)}" type="video/mp4" />Your browser does not support embedded video playback for this link.</video></div><p class="text-sm text-neutral-500 break-all">${escapeHtml(source.value)}</p></div>`;
+        if (directVideoLink && isSupabaseFullVideoUrl(source.value)) {
+          player.innerHTML = '<div class="rounded-2xl border border-amber-400/20 bg-amber-500/10 p-5 text-amber-100"><p class="font-semibold text-white">Supabase video streaming is disabled for this title.</p><p class="mt-2 text-sm">Replace this Supabase Storage link with a PikPak/Mega/external link in the admin portal.</p></div>';
+          actionButton.textContent = 'Access granted'; actionButton.href = '#video-player-shell'; actionButton.target = '_self'; actionButton.rel = ''; actionButton.onclick = null;
+        } else if (directVideoLink) {
+          player.innerHTML = `<div class="space-y-4"><div class="relative overflow-hidden rounded-2xl border border-white/10 bg-black"><video controls playsinline preload="none" class="w-full rounded-2xl bg-black"><source src="${escapeHtml(source.value)}" type="video/mp4" />Your browser does not support embedded video playback for this link.</video></div><p class="text-sm text-neutral-500 break-all">${escapeHtml(source.value)}</p></div>`;
           actionButton.textContent = 'Watching video'; actionButton.href = '#video-player-shell'; actionButton.target = '_self'; actionButton.rel = ''; actionButton.onclick = null;
         } else {
           player.innerHTML = `<div class="space-y-4"><p class="text-neutral-300">This title uses an external video destination.</p><a href="${escapeHtml(source.value)}" target="_blank" rel="noopener noreferrer" class="inline-flex rounded-2xl bg-pink-500 px-5 py-3 font-semibold text-white transition hover:bg-pink-400">Open Video Link</a><p class="text-sm text-neutral-500 break-all">${escapeHtml(source.value)}</p></div>`;
@@ -2492,17 +2495,7 @@ window.HiddenGemsApp = (() => {
           const hasSharedBackend = !!getSupabaseClient();
           if (pickedVideoFile) {
             if (hasSharedBackend) {
-              const uploaded = await uploadVideoToSupabaseStorage(pickedVideoFile, id);
-              if (!uploaded?.path) {
-                throw new Error('Storage upload did not return a file path.');
-              }
-              item.videoStoragePath = uploaded.path;
-              item.videoFileName = uploaded.fileName;
-              item.videoMimeType = uploaded.mimeType;
-              item.videoFile = '';
-              item.videoFileRef = '';
-              item.videoUrl = '';
-              item.sourceType = 'file';
+              throw new Error('Full video uploads to Supabase Storage are disabled to prevent egress overages. Upload the full video to PikPak/Mega/external hosting, paste that link into Video URL or External File URL, and keep Supabase for metadata/thumbnails only.');
             } else {
               const blobRef = `hg-video-${id}`;
               await saveVideoBlob(blobRef, pickedVideoFile);
