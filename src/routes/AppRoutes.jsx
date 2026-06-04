@@ -1,0 +1,46 @@
+import { createBrowserRouter, RouterProvider } from 'react-router-dom'
+import Layout from '../components/Layout'
+import ProtectedRoute from '../components/ProtectedRoute'
+import Home from '../pages/Home'
+import Videos from '../pages/Videos'
+import VideoDetails from '../pages/VideoDetails'
+import Library from '../pages/Library'
+import Vip from '../pages/Vip'
+import Points from '../pages/Points'
+import About from '../pages/About'
+import AccessInfo from '../pages/AccessInfo'
+import PolicyPage from '../pages/PolicyPage'
+import Account from '../pages/Account'
+import Admin from '../pages/Admin'
+import { Login, Signup } from '../pages/Auth'
+
+const router = createBrowserRouter([
+  {
+    path: '/',
+    element: <Layout />,
+    children: [
+      { index: true, element: <Home /> },
+      { path: 'videos', element: <Videos /> },
+      { path: 'videos/:id', element: <VideoDetails /> },
+      { path: 'vip', element: <Vip /> },
+      { path: 'points', element: <Points /> },
+      { path: 'buy-points', element: <Points /> },
+      { path: 'about', element: <About /> },
+      { path: 'access-info', element: <AccessInfo /> },
+      { path: 'contact', element: <PolicyPage type="contact" /> },
+      { path: 'privacy', element: <PolicyPage type="privacy" /> },
+      { path: 'terms', element: <PolicyPage type="terms" /> },
+      { path: 'refund-policy', element: <PolicyPage type="refunds" /> },
+      { path: '2257-compliance', element: <PolicyPage type="compliance" /> },
+      { path: 'login', element: <Login /> },
+      { path: 'signup', element: <Signup /> },
+      { path: 'library', element: <ProtectedRoute><Library /></ProtectedRoute> },
+      { path: 'account', element: <ProtectedRoute><Account /></ProtectedRoute> },
+      { path: 'admin', element: <ProtectedRoute adminOnly><Admin /></ProtectedRoute> }
+    ]
+  }
+])
+
+export default function AppRoutes() {
+  return <RouterProvider router={router} />
+}

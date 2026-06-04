@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360" role="img" aria-label="Hidden Gems placeholder">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#1f1235"/><stop offset="1" stop-color="#08070d"/></linearGradient>
+  </defs>
+  <rect width="640" height="360" fill="url(#g)"/>
+  <circle cx="320" cy="180" r="82" fill="#f3c14b" opacity=".14"/>
+  <path d="M320 95 394 151 366 253H274L246 151Z" fill="none" stroke="#f3c14b" stroke-width="10"/>
+  <text x="320" y="310" fill="#fff" text-anchor="middle" font-family="Arial" font-size="28">Hidden Gems</text>
+</svg>

@@ -1,0 +1,10 @@
+project_id = "hidden-gems-marketplace"
+
+[functions.create-checkout-session]
+verify_jwt = true
+
+[functions.unlock-video-with-points]
+verify_jwt = true
+
+[functions.stripe-webhook]
+verify_jwt = false
