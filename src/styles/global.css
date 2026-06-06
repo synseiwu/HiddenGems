@@ -371,3 +371,10 @@ body:has(.floating-wallet) .page:first-of-type {
     padding-bottom: 2rem;
   }
 }
+
+
+.success-text {
+  color: #76f7a7;
+  font-weight: 700;
+  line-height: 1.5;
+}

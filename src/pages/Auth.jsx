@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
 export function Login() {
@@ -10,24 +10,83 @@ export function Signup() {
   return <AuthForm mode="signup" />
 }
 
+function getFriendlyAuthMessage(errorMessage) {
+  const message = String(errorMessage || '').toLowerCase()
+
+  if (message.includes('email rate limit')) {
+    return 'Too many signup emails were requested. Please wait about an hour before trying again, or contact support.'
+  }
+
+  if (message.includes('invalid login credentials')) {
+    return 'Invalid login credentials. Please check your email and password, or reset your password if needed.'
+  }
+
+  if (message.includes('email not confirmed')) {
+    return 'Please confirm your email first. Check your inbox/spam folder, then return here to log in.'
+  }
+
+  return errorMessage || 'Something went wrong. Please try again.'
+}
+
 function AuthForm({ mode }) {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [message, setMessage] = useState('')
+  const [messageType, setMessageType] = useState('error')
   const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    if (mode === 'login' && searchParams.get('confirmed')) {
+      setMessage('Email confirmed! You can log in now.')
+      setMessageType('success')
+    }
+  }, [mode, searchParams])
 
   async function submit(e) {
     e.preventDefault()
     setBusy(true)
     setMessage('')
-    const action = mode === 'login'
-      ? supabase.auth.signInWithPassword({ email, password })
-      : supabase.auth.signUp({ email, password })
-    const { error } = await action
+    setMessageType('error')
+
+    if (mode === 'login') {
+      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      setBusy(false)
+
+      if (error) {
+        setMessage(getFriendlyAuthMessage(error.message))
+        setMessageType('error')
+        return
+      }
+
+      navigate('/account')
+      return
+    }
+
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/login?confirmed=1`
+      }
+    })
+
     setBusy(false)
-    if (error) return setMessage(error.message)
-    navigate('/account')
+
+    if (error) {
+      setMessage(getFriendlyAuthMessage(error.message))
+      setMessageType('error')
+      return
+    }
+
+    if (data?.session) {
+      navigate('/account')
+      return
+    }
+
+    setMessage('Account created! Please check your email to confirm your account, then return to login.')
+    setMessageType('success')
   }
 
   return (
@@ -35,10 +94,40 @@ function AuthForm({ mode }) {
       <form className="card auth-card" onSubmit={submit}>
         <span className="eyebrow">{mode === 'login' ? 'Welcome back' : 'Create account'}</span>
         <h1>{mode === 'login' ? 'Login' : 'Sign Up'}</h1>
-        <label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
-        <label>Password<input type="password" minLength="6" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
-        <button className="button full" disabled={busy}>{busy ? 'Please wait...' : mode === 'login' ? 'Login' : 'Create Account'}</button>
-        {message && <p className="error-text">{message}</p>}
+
+        <label>
+          Email
+          <input
+            type="email"
+            value={email}
+            autoComplete="email"
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+        </label>
+
+        <label>
+          Password
+          <input
+            type="password"
+            minLength="6"
+            value={password}
+            autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+        </label>
+
+        <button className="button full" disabled={busy}>
+          {busy ? 'Please wait...' : mode === 'login' ? 'Login' : 'Create Account'}
+        </button>
+
+        {message && (
+          <p className={messageType === 'success' ? 'success-text' : 'error-text'}>
+            {message}
+          </p>
+        )}
+
         <p>
           {mode === 'login' ? 'Need an account?' : 'Already have an account?'}{' '}
           <Link to={mode === 'login' ? '/signup' : '/login'}>{mode === 'login' ? 'Sign up' : 'Login'}</Link>
