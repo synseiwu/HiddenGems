@@ -16,7 +16,7 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const siteUrl = Deno.env.get('SITE_URL') || 'http://localhost:5173'
-    const vipPriceId = Deno.env.get('VIP_STRIPE_PRICE_ID')
+    const fallbackVipPriceId = Deno.env.get('VIP_STRIPE_PRICE_ID')
 
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) throw new Error('Missing auth header')
@@ -26,20 +26,38 @@ serve(async (req) => {
     const { data: userData, error: userError } = await supabase.auth.getUser(token)
     if (userError || !userData.user) throw new Error('Unauthorized')
 
-    const { mode, packageId } = await req.json()
+    const { mode, packageId, tierKey = 'vip' } = await req.json()
     const user = userData.user
 
     let line_items: Stripe.Checkout.SessionCreateParams.LineItem[] = []
     const metadata: Record<string, string> = { user_id: user.id, mode }
     let checkoutMode: Stripe.Checkout.SessionCreateParams.Mode = 'payment'
     let cancelPath = '/points'
+    let successPath = '/points?checkout=success'
+    let subscriptionData: Stripe.Checkout.SessionCreateParams.SubscriptionData | undefined
 
     if (mode === 'vip') {
-      if (!vipPriceId) throw new Error('VIP_STRIPE_PRICE_ID is not configured')
-      line_items = [{ price: vipPriceId, quantity: 1 }]
+      const { data: tier, error } = await supabase
+        .from('vip_tiers')
+        .select('tier_key,name,stripe_price_id,tier_rank,active')
+        .eq('tier_key', tierKey)
+        .eq('active', true)
+        .single()
+
+      if (error || !tier) throw new Error('VIP tier not available')
+
+      const priceId = tier.stripe_price_id || (tier.tier_key === 'vip' ? fallbackVipPriceId : null)
+      if (!priceId) throw new Error(`${tier.name} is missing a Stripe Price ID`)
+
+      line_items = [{ price: priceId, quantity: 1 }]
       metadata.mode = 'vip'
+      metadata.vip_tier = tier.tier_key
+      metadata.vip_rank = String(tier.tier_rank)
+      metadata.stripe_price_id = priceId
+      subscriptionData = { metadata }
       checkoutMode = 'subscription'
       cancelPath = '/vip'
+      successPath = '/account?checkout=vip-success'
     } else if (mode === 'points') {
       const { data: pack, error } = await supabase
         .from('point_packages')
@@ -55,7 +73,9 @@ serve(async (req) => {
       metadata.mode = 'points'
       metadata.point_package_id = pack.id
       metadata.points_amount = String(pack.points_amount)
+      metadata.stripe_price_id = pack.stripe_price_id
       cancelPath = '/points'
+      successPath = '/points?checkout=success'
     } else {
       throw new Error('Unsupported checkout mode')
     }
@@ -64,9 +84,10 @@ serve(async (req) => {
       mode: checkoutMode,
       line_items,
       customer_email: user.email || undefined,
-      success_url: `${siteUrl}/library?checkout=success`,
+      success_url: `${siteUrl}${successPath}`,
       cancel_url: `${siteUrl}${cancelPath}?checkout=cancelled`,
-      metadata
+      metadata,
+      subscription_data: subscriptionData
     })
 
     return new Response(JSON.stringify({ url: session.url }), {

@@ -44,15 +44,20 @@ export function AuthProvider({ children }) {
   }, [])
 
   const value = useMemo(
-    () => ({
-      user,
-      profile,
-      loading,
-      isAdmin: profile?.role === 'admin',
-      isVip: Boolean(profile?.vip_status),
-      refreshProfile: () => user && hydrate(user),
-      signOut: () => supabase?.auth.signOut()
-    }),
+    () => {
+      const vipRank = Number(profile?.vip_rank || (profile?.vip_status ? 1 : 0))
+      return {
+        user,
+        profile,
+        loading,
+        isAdmin: profile?.role === 'admin',
+        isVip: vipRank >= 1 || Boolean(profile?.vip_status),
+        vipTier: profile?.subscription_tier || (profile?.vip_status ? 'vip' : 'none'),
+        vipRank,
+        refreshProfile: () => user && hydrate(user),
+        signOut: () => supabase?.auth.signOut()
+      }
+    },
     [user, profile, loading]
   )
 

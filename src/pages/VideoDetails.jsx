@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { Crown, ExternalLink, Gem, Lock, PlayCircle, XCircle } from 'lucide-react'
+import { Crown, ExternalLink, Gem, Lock, PlayCircle, ShieldCheck, XCircle } from 'lucide-react'
 import Loader from '../components/Loader'
 import EmptyState from '../components/EmptyState'
-import { getUnlockedVideo, getVideoDetails, getWallet, unlockVideoWithPoints } from '../lib/api'
+import { getAccessLabel, getAccessRank, getUnlockedVideo, getVideoDetails, getWallet, isVipAccessType, unlockVideoWithPoints } from '../lib/api'
 import { useAuth } from '../hooks/useAuth'
 
 function canEmbedPreview(url) {
@@ -18,7 +18,7 @@ function canEmbedPreview(url) {
 
 export default function VideoDetails() {
   const { id } = useParams()
-  const { user, isAdmin, isVip } = useAuth()
+  const { user, isAdmin, vipRank } = useAuth()
   const [video, setVideo] = useState(null)
   const [unlocked, setUnlocked] = useState(null)
   const [wallet, setWallet] = useState({ points_balance: 0 })
@@ -45,6 +45,7 @@ export default function VideoDetails() {
 
   useEffect(() => {
     setPreviewMode('idle')
+    setLoading(true)
     load()
   }, [id, user])
 
@@ -66,20 +67,22 @@ export default function VideoDetails() {
   if (!video) return <EmptyState title="Video not found" text={error || 'This listing may be unpublished.'} />
 
   const pointCost = video.point_cost ?? video.price_cents ?? 0
-  const costLabel = video.access_type === 'free' ? 'Free' : video.access_type === 'vip' ? 'VIP-only' : `${pointCost} points`
+  const requiredRank = getAccessRank(video.access_type)
+  const accessLabel = getAccessLabel(video.access_type)
+  const costLabel = video.access_type === 'free' ? 'Free' : isVipAccessType(video.access_type) ? accessLabel : `${pointCost} points`
   const canAfford = Number(wallet.points_balance || 0) >= Number(pointCost || 0)
   const missingPoints = Math.max(Number(pointCost || 0) - Number(wallet.points_balance || 0), 0)
   const canShowPreview = canEmbedPreview(video.preview_url)
   const hasFullAccess = Boolean(unlocked?.external_video_link)
-  const shouldBlurVipMedia = video.access_type === 'vip' && !hasFullAccess && !isAdmin && !isVip
+  const tierLocked = isVipAccessType(video.access_type) && !hasFullAccess && !isAdmin && Number(vipRank || 0) < requiredRank
 
   return (
     <div className="page details-page">
       <section className="grid-2 detail-grid">
         <div className="detail-media-stack">
-          <div className={shouldBlurVipMedia ? 'detail-image-shell vip-locked-media card' : 'detail-image-shell card'}>
+          <div className={tierLocked ? 'detail-image-shell vip-locked-media card' : 'detail-image-shell card'}>
             <img className="detail-image" src={video.thumbnail_url || '/placeholder.svg'} alt={video.title} />
-            {shouldBlurVipMedia && <div className="vip-media-overlay"><Crown size={18} /> VIP preview hidden</div>}
+            {tierLocked && <div className="vip-media-overlay"><Crown size={18} /> {accessLabel} preview hidden</div>}
           </div>
           {video.preview_url && (
             <div className="card preview-card">
@@ -90,7 +93,7 @@ export default function VideoDetails() {
 
               {previewMode === 'idle' && (
                 <div className="preview-shell">
-                  <img className={shouldBlurVipMedia ? 'vip-thumb-blur' : ''} src={video.thumbnail_url || '/placeholder.svg'} alt={`${video.title} preview thumbnail`} />
+                  <img className={tierLocked ? 'vip-thumb-blur' : ''} src={video.thumbnail_url || '/placeholder.svg'} alt={`${video.title} preview thumbnail`} />
                   <div className="preview-overlay">
                     <p>Preview available</p>
                     <button
@@ -134,9 +137,10 @@ export default function VideoDetails() {
           <span className="pill">{video.category_name || 'Gem'}</span>
           <h1>{video.title}</h1>
           <p>{video.description}</p>
-          <div className="price-line"><strong>{costLabel}</strong> <span>{video.access_type === 'vip' ? 'VIP subscription access' : 'Point unlock access'}</span></div>
+          <div className="price-line"><strong>{costLabel}</strong> <span>{isVipAccessType(video.access_type) ? 'Subscription tier access' : 'Point unlock access'}</span></div>
           {user && <p className="wallet-line"><Gem size={16} /> Your balance: <strong>{wallet.points_balance || 0} points</strong></p>}
-          {video.access_type === 'vip' && <p className="notice"><Crown size={16} /> VIP members can access this content while their subscription is active.</p>}
+          {isVipAccessType(video.access_type) && video.access_type !== 'admin_only' && <p className="notice"><Crown size={16} /> {accessLabel} members can access this content while their subscription is active.</p>}
+          {video.access_type === 'admin_only' && <p className="notice"><ShieldCheck size={16} /> Admin-only content. Full links stay hidden from customer roles.</p>}
 
           {hasFullAccess ? (
             <a className="button full" href={unlocked.external_video_link} target="_blank" rel="noreferrer">
@@ -144,8 +148,8 @@ export default function VideoDetails() {
             </a>
           ) : !user ? (
             <Link className="button full" to="/login"><Lock size={16} /> Login to Unlock</Link>
-          ) : video.access_type === 'vip' ? (
-            <Link className="button full" to="/vip"><Crown size={16} /> Upgrade to VIP</Link>
+          ) : isVipAccessType(video.access_type) ? (
+            <Link className="button full" to="/vip"><Crown size={16} /> Upgrade to {accessLabel}</Link>
           ) : video.access_type === 'free' ? (
             <button className="button full" onClick={unlock} disabled={busy}>{busy ? 'Unlocking...' : 'Unlock Free Video'}</button>
           ) : canAfford ? (
@@ -162,7 +166,7 @@ export default function VideoDetails() {
           )}
 
           {error && <p className="error-text">{error}</p>}
-          <small>Full external links stay hidden until points are spent, VIP access is active, or admin access is verified.</small>
+          <small>Full external links stay hidden until points are spent, the required VIP tier is active, or admin access is verified.</small>
         </div>
       </section>
     </div>

@@ -1,5 +1,37 @@
 import { supabase } from './supabase'
 
+export const VIP_RANKS = {
+  none: 0,
+  free: 0,
+  points: 0,
+  paid: 0,
+  vip: 1,
+  supervip: 2,
+  ultravip: 3,
+  admin_only: 99
+}
+
+export function getAccessRank(accessType) {
+  return VIP_RANKS[accessType] ?? 0
+}
+
+export function getAccessLabel(accessType) {
+  const labels = {
+    free: 'Free',
+    points: 'Points',
+    paid: 'Points',
+    vip: 'VIP',
+    supervip: 'Super VIP',
+    ultravip: 'Ultra VIP',
+    admin_only: 'Admin Only'
+  }
+  return labels[accessType] || accessType || 'Points'
+}
+
+export function isVipAccessType(accessType) {
+  return ['vip', 'supervip', 'ultravip', 'admin_only'].includes(accessType)
+}
+
 export async function getCurrentProfile(userId) {
   if (!supabase || !userId) return null
   const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single()
@@ -37,6 +69,78 @@ export async function listPointPackages() {
   return data || []
 }
 
+export async function listPointPackagesAdmin() {
+  if (!supabase) return []
+  const { data, error } = await supabase
+    .from('point_packages')
+    .select('*')
+    .order('sort_order', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
+export async function savePointPackage(pointPackage) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const payload = {
+    name: pointPackage.name?.trim(),
+    description: pointPackage.description?.trim() || null,
+    points_amount: Number(pointPackage.points_amount || 0),
+    price_cents: Number(pointPackage.price_cents || 0),
+    stripe_price_id: pointPackage.stripe_price_id?.trim() || null,
+    active: Boolean(pointPackage.active),
+    sort_order: Number(pointPackage.sort_order || 0)
+  }
+  if (!payload.name) throw new Error('Package name is required.')
+  if (payload.points_amount <= 0) throw new Error('Points amount must be greater than 0.')
+  if (payload.price_cents <= 0) throw new Error('Price must be greater than 0.')
+
+  const query = pointPackage.id
+    ? supabase.from('point_packages').update(payload).eq('id', pointPackage.id).select().single()
+    : supabase.from('point_packages').insert(payload).select().single()
+
+  const { data, error } = await query
+  if (error) throw error
+  return data
+}
+
+export async function listVipTiers(includeInactive = false) {
+  if (!supabase) return []
+  let query = supabase.from('vip_tiers').select('*').order('tier_rank', { ascending: true })
+  if (!includeInactive) query = query.eq('active', true)
+  const { data, error } = await query
+  if (error) throw error
+  return data || []
+}
+
+export async function saveVipTier(tier) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const payload = {
+    tier_key: tier.tier_key?.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_'),
+    name: tier.name?.trim(),
+    description: tier.description?.trim() || null,
+    price_cents: Number(tier.price_cents || 0),
+    stripe_price_id: tier.stripe_price_id?.trim() || null,
+    tier_rank: Number(tier.tier_rank || 1),
+    active: Boolean(tier.active),
+    sort_order: Number(tier.sort_order || tier.tier_rank || 1),
+    features: Array.isArray(tier.features)
+      ? tier.features
+      : String(tier.features || '').split('\n').map((item) => item.trim()).filter(Boolean)
+  }
+
+  if (!payload.tier_key) throw new Error('Tier key is required, for example vip or supervip.')
+  if (!payload.name) throw new Error('Tier name is required.')
+  if (payload.tier_rank < 1) throw new Error('Tier rank must be at least 1.')
+
+  const { data, error } = await supabase
+    .from('vip_tiers')
+    .upsert(payload, { onConflict: 'tier_key' })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
 export async function listPublishedVideos() {
   if (!supabase) return []
   const { data, error } = await supabase
@@ -71,9 +175,12 @@ export async function listLibrary() {
 
 export async function listAdminVideos() {
   if (!supabase) return []
-  const { data, error } = await supabase.from('videos').select('*').order('created_at', { ascending: false })
+  const { data, error } = await supabase
+    .from('videos')
+    .select('*, categories(name)')
+    .order('created_at', { ascending: false })
   if (error) throw error
-  return data || []
+  return (data || []).map((video) => ({ ...video, category_name: video.categories?.name }))
 }
 
 export async function listCategories() {
@@ -106,17 +213,18 @@ export async function deleteCategory(categoryId) {
   if (error) throw error
 }
 
-export async function createVipCheckoutSession() {
+export async function createVipCheckoutSession(tierKey = 'vip') {
   const { data: sessionData } = await supabase.auth.getSession()
   const token = sessionData?.session?.access_token
   if (!token) throw new Error('Please log in first.')
 
   const { data, error } = await supabase.functions.invoke('create-checkout-session', {
-    body: { mode: 'vip' },
+    body: { mode: 'vip', tierKey },
     headers: { Authorization: `Bearer ${token}` }
   })
 
   if (error) throw new Error(error.message || 'Unable to create Stripe checkout session.')
+  if (data?.error) throw new Error(data.error)
   if (!data?.url) throw new Error('Checkout session did not return a Stripe URL.')
   return data.url
 }
@@ -132,6 +240,7 @@ export async function createPointsCheckoutSession(packageId) {
   })
 
   if (error) throw new Error(error.message || 'Unable to open point pack checkout.')
+  if (data?.error) throw new Error(data.error)
   if (!data?.url) throw new Error('Checkout session did not return a Stripe URL.')
   return data.url
 }
@@ -147,23 +256,27 @@ export async function unlockVideoWithPoints(videoId) {
   })
 
   if (error) throw new Error(error.message || 'Unable to unlock video.')
+  if (data?.error) throw new Error(data.error)
   window.dispatchEvent(new Event('wallet:refresh'))
   return data
 }
 
 export async function saveVideo(video) {
   const payload = {
-    title: video.title,
-    description: video.description,
+    title: video.title?.trim(),
+    description: video.description?.trim() || '',
     category_id: video.category_id || null,
     point_cost: Number(video.point_cost ?? video.price_cents ?? 0),
     price_cents: Number(video.point_cost ?? video.price_cents ?? 0),
-    thumbnail_url: video.thumbnail_url,
-    preview_url: video.preview_url || null,
-    external_video_link: video.external_video_link,
-    access_type: video.access_type,
+    thumbnail_url: video.thumbnail_url?.trim() || null,
+    preview_url: video.preview_url?.trim() || null,
+    external_video_link: video.external_video_link?.trim(),
+    access_type: video.access_type || 'points',
     published: Boolean(video.published)
   }
+
+  if (!payload.title) throw new Error('Title is required.')
+  if (!payload.external_video_link) throw new Error('External video link is required.')
 
   const query = video.id
     ? supabase.from('videos').update(payload).eq('id', video.id).select().single()
@@ -177,4 +290,47 @@ export async function saveVideo(video) {
 export async function deleteVideo(videoId) {
   const { error } = await supabase.from('videos').delete().eq('id', videoId)
   if (error) throw error
+}
+
+export async function listAdminProfiles() {
+  if (!supabase) return []
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id,email,role,vip_status,subscription_tier,vip_rank,created_at,updated_at')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function adminAdjustUserPoints(userId, amount, description = 'Admin point adjustment') {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const { data, error } = await supabase.rpc('admin_adjust_user_points', {
+    target_user_id: userId,
+    adjustment_amount: Number(amount),
+    adjustment_description: description
+  })
+  if (error) throw error
+  window.dispatchEvent(new Event('wallet:refresh'))
+  return data
+}
+
+export async function listAdminSecurityOverview() {
+  if (!supabase) return { purchases: [], transactions: [], subscriptions: [], securityEvents: [] }
+  const [purchases, transactions, subscriptions, securityEvents] = await Promise.all([
+    supabase.from('purchases').select('*, profiles(email), videos(title)').order('purchased_at', { ascending: false }).limit(10),
+    supabase.from('point_transactions').select('*, profiles(email), videos(title)').order('created_at', { ascending: false }).limit(10),
+    supabase.from('vip_subscriptions').select('*, profiles(email), vip_tiers(name,tier_rank)').order('started_at', { ascending: false }).limit(10),
+    supabase.from('security_events').select('*').order('created_at', { ascending: false }).limit(10)
+  ])
+
+  for (const result of [purchases, transactions, subscriptions, securityEvents]) {
+    if (result.error) throw result.error
+  }
+
+  return {
+    purchases: purchases.data || [],
+    transactions: transactions.data || [],
+    subscriptions: subscriptions.data || [],
+    securityEvents: securityEvents.data || []
+  }
 }

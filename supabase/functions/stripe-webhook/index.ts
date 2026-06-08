@@ -2,6 +2,51 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts'
 import Stripe from 'https://esm.sh/stripe@16.8.0?target=deno'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
 
+async function findTierByPrice(supabase: any, priceId: string | null | undefined) {
+  if (!priceId) return null
+  const { data } = await supabase
+    .from('vip_tiers')
+    .select('tier_key,tier_rank,stripe_price_id')
+    .eq('stripe_price_id', priceId)
+    .maybeSingle()
+  return data
+}
+
+async function applySubscriptionStatus(supabase: any, subscription: Stripe.Subscription) {
+  const metadata = subscription.metadata || {}
+  const userId = metadata.user_id
+  const priceId = subscription.items?.data?.[0]?.price?.id || metadata.stripe_price_id
+  const tier = metadata.vip_tier
+    ? { tier_key: metadata.vip_tier, tier_rank: Number(metadata.vip_rank || 1), stripe_price_id: priceId }
+    : await findTierByPrice(supabase, priceId)
+
+  if (!userId || !tier) return
+
+  const activeStatuses = ['active', 'trialing']
+  const isActive = activeStatuses.includes(subscription.status)
+  const periodEnd = subscription.current_period_end
+    ? new Date(subscription.current_period_end * 1000).toISOString()
+    : null
+
+  await supabase.from('vip_subscriptions').upsert({
+    user_id: userId,
+    status: subscription.status,
+    tier_key: tier.tier_key,
+    stripe_price_id: priceId,
+    stripe_subscription_id: subscription.id,
+    current_period_end: periodEnd,
+    renews_at: periodEnd,
+    expires_at: isActive ? null : new Date().toISOString()
+  }, { onConflict: 'stripe_subscription_id' })
+
+  await supabase.from('profiles').update({
+    vip_status: isActive,
+    subscription_tier: isActive ? tier.tier_key : 'none',
+    vip_rank: isActive ? Number(tier.tier_rank || 1) : 0,
+    updated_at: new Date().toISOString()
+  }).eq('id', userId)
+}
+
 serve(async (req) => {
   const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, { apiVersion: '2024-06-20' })
   const signature = req.headers.get('stripe-signature')
@@ -30,72 +75,59 @@ serve(async (req) => {
 
       if (!userId) throw new Error('Missing user_id metadata')
 
-      if (mode === 'vip') {
-        await supabase.from('vip_subscriptions').upsert({
-          user_id: userId,
-          status: 'active',
-          stripe_subscription_id: typeof session.subscription === 'string' ? session.subscription : null,
-          stripe_session_id: session.id,
-          started_at: new Date().toISOString()
-        }, { onConflict: 'stripe_session_id' })
-
-        await supabase.from('profiles').update({ vip_status: true, updated_at: new Date().toISOString() }).eq('id', userId)
-      }
-
       if (mode === 'points') {
         const packageId = session.metadata?.point_package_id
-        if (!packageId) throw new Error('Missing point_package_id metadata')
+        const pointsAmount = Number(session.metadata?.points_amount || 0)
 
-        const { data: pack, error: packError } = await supabase
-          .from('point_packages')
-          .select('id,points_amount,name')
-          .eq('id', packageId)
-          .single()
+        if (!packageId || pointsAmount <= 0) throw new Error('Missing point package metadata')
 
-        if (packError || !pack) throw new Error('Point package not found')
+        const { data: existing } = await supabase
+          .from('point_transactions')
+          .select('id')
+          .eq('stripe_session_id', session.id)
+          .maybeSingle()
 
-        const { error: transactionError } = await supabase.from('point_transactions').insert({
-          user_id: userId,
-          amount: pack.points_amount,
-          transaction_type: 'purchase',
-          description: `Purchased ${pack.name}`,
-          point_package_id: pack.id,
-          stripe_session_id: session.id
-        })
-
-        // Unique violation means this webhook was already processed, so do not add points twice.
-        if (transactionError && transactionError.code !== '23505') throw transactionError
-
-        if (!transactionError) {
-          await supabase.from('user_wallets').upsert({ user_id: userId, points_balance: 0 }, { onConflict: 'user_id', ignoreDuplicates: true })
+        if (!existing) {
+          await supabase.from('user_wallets').upsert({ user_id: userId }, { onConflict: 'user_id' })
           const { data: wallet } = await supabase.from('user_wallets').select('points_balance').eq('user_id', userId).single()
-          await supabase
-            .from('user_wallets')
-            .update({
-              points_balance: Number(wallet?.points_balance || 0) + Number(pack.points_amount),
-              updated_at: new Date().toISOString()
-            })
-            .eq('user_id', userId)
+          await supabase.from('user_wallets').update({
+            points_balance: Number(wallet?.points_balance || 0) + pointsAmount,
+            updated_at: new Date().toISOString()
+          }).eq('user_id', userId)
+
+          await supabase.from('point_transactions').insert({
+            user_id: userId,
+            amount: pointsAmount,
+            transaction_type: 'purchase',
+            description: `Purchased ${pointsAmount} points`,
+            point_package_id: packageId,
+            stripe_session_id: session.id
+          })
         }
+      }
+
+      if (mode === 'vip' && typeof session.subscription === 'string') {
+        const subscription = await stripe.subscriptions.retrieve(session.subscription)
+        await applySubscriptionStatus(supabase, subscription)
       }
     }
 
-    if (event.type === 'customer.subscription.deleted') {
+    if (
+      event.type === 'customer.subscription.created' ||
+      event.type === 'customer.subscription.updated' ||
+      event.type === 'customer.subscription.deleted'
+    ) {
       const subscription = event.data.object as Stripe.Subscription
-      const { data } = await supabase
-        .from('vip_subscriptions')
-        .select('user_id')
-        .eq('stripe_subscription_id', subscription.id)
-        .single()
-
-      if (data?.user_id) {
-        await supabase.from('vip_subscriptions').update({ status: 'cancelled', expires_at: new Date().toISOString() }).eq('stripe_subscription_id', subscription.id)
-        await supabase.from('profiles').update({ vip_status: false, updated_at: new Date().toISOString() }).eq('id', data.user_id)
-      }
+      await applySubscriptionStatus(supabase, subscription)
     }
 
     return new Response(JSON.stringify({ received: true }), { headers: { 'Content-Type': 'application/json' } })
   } catch (err) {
+    await supabase.from('security_events').insert({
+      event_type: 'webhook_error',
+      details: { message: err.message, stripe_event: event.type }
+    }).catch(() => null)
+
     return new Response(`Webhook handler failed: ${err.message}`, { status: 500 })
   }
 })

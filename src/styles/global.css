@@ -432,3 +432,105 @@ body:has(.floating-wallet) .page:first-of-type {
     grid-template-columns: 1fr;
   }
 }
+
+/* Admin settings + VIP tiers security patch */
+.admin-heading-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.admin-panel-switcher {
+  min-width: min(320px, 100%);
+}
+
+.admin-panel-switcher select {
+  margin-top: 0.5rem;
+}
+
+.admin-message {
+  max-width: 1180px;
+  margin: 0 auto 1.25rem;
+}
+
+.admin-settings-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(320px, 1.1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.admin-row-wide {
+  grid-template-columns: 1fr auto auto;
+}
+
+.security-checklist {
+  display: grid;
+  gap: 0.75rem;
+  padding-left: 1.25rem;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.vip-tier-grid {
+  max-width: 1180px;
+  margin: 0 auto 2rem;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+
+.vip-tier-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: 100%;
+}
+
+.vip-tier-card h2 {
+  font-size: clamp(2.1rem, 4vw, 3.4rem);
+}
+
+.vip-tier-card h2 small {
+  font-size: 1rem;
+  color: var(--muted);
+  margin-left: 0.35rem;
+}
+
+.active-tier {
+  border-color: rgba(255, 205, 64, 0.75);
+  box-shadow: 0 0 34px rgba(255, 205, 64, 0.14);
+}
+
+.tier-features {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0;
+  margin: 0 0 auto;
+  list-style: none;
+  color: var(--muted);
+}
+
+.tier-features li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.centered-text {
+  text-align: center;
+}
+
+@media (max-width: 980px) {
+  .admin-heading-row,
+  .admin-settings-grid,
+  .vip-tier-grid {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .admin-heading-row {
+    align-items: stretch;
+  }
+}

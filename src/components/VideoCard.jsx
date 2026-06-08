@@ -1,11 +1,18 @@
 import { Link } from 'react-router-dom'
 import { Lock, Unlock, Crown, Gem } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
+import { getAccessLabel, getAccessRank, isVipAccessType } from '../lib/api'
 
 export default function VideoCard({ video, unlocked = false }) {
-  const { isAdmin, isVip } = useAuth()
-  const shouldBlurVip = video.access_type === 'vip' && !unlocked && !isAdmin && !isVip
-  const cost = video.access_type === 'free' ? 'Free' : video.access_type === 'vip' ? 'VIP' : `${video.point_cost ?? video.price_cents ?? 0} pts`
+  const { isAdmin, vipRank } = useAuth()
+  const requiredRank = getAccessRank(video.access_type)
+  const tierLocked = isVipAccessType(video.access_type) && !unlocked && !isAdmin && Number(vipRank || 0) < requiredRank
+  const cost = video.access_type === 'free'
+    ? 'Free'
+    : isVipAccessType(video.access_type)
+      ? getAccessLabel(video.access_type)
+      : `${video.point_cost ?? video.price_cents ?? 0} pts`
+
   return (
     <article className="video-card card">
       <Link to={`/videos/${video.id}`} className="thumb-link" aria-label={`Open ${video.title}`}>
@@ -15,10 +22,10 @@ export default function VideoCard({ video, unlocked = false }) {
           loading="lazy"
           width="640"
           height="360"
-          className={shouldBlurVip ? 'video-thumb vip-thumb-blur' : 'video-thumb'}
+          className={tierLocked ? 'video-thumb vip-thumb-blur' : 'video-thumb'}
         />
-        {shouldBlurVip && <span className="vip-thumb-overlay">VIP preview hidden</span>}
-        {video.access_type === 'vip' && <span className="pill vip"><Crown size={14} /> VIP</span>}
+        {tierLocked && <span className="vip-thumb-overlay">{getAccessLabel(video.access_type)} preview hidden</span>}
+        {isVipAccessType(video.access_type) && <span className="pill vip"><Crown size={14} /> {getAccessLabel(video.access_type)}</span>}
       </Link>
       <div className="video-content">
         <div className="split-line">
