@@ -1,6 +1,6 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
-import { getCurrentProfile } from '../lib/api'
+import { claimStarterBonus, getCurrentProfile } from '../lib/api'
 
 const AuthContext = createContext(null)
 
@@ -8,10 +8,23 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
+  const starterCheckedRef = useRef(new Set())
 
   async function hydrate(nextUser) {
     setUser(nextUser)
-    setProfile(nextUser ? await getCurrentProfile(nextUser.id) : null)
+
+    if (!nextUser) {
+      setProfile(null)
+      setLoading(false)
+      return
+    }
+
+    if (!starterCheckedRef.current.has(nextUser.id)) {
+      starterCheckedRef.current.add(nextUser.id)
+      await claimStarterBonus()
+    }
+
+    setProfile(await getCurrentProfile(nextUser.id))
     setLoading(false)
   }
 

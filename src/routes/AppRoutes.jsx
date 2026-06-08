@@ -20,11 +20,6 @@ const router = createBrowserRouter([
     element: <Layout />,
     children: [
       { index: true, element: <Home /> },
-      { path: 'videos', element: <Videos /> },
-      { path: 'videos/:id', element: <VideoDetails /> },
-      { path: 'vip', element: <Vip /> },
-      { path: 'points', element: <Points /> },
-      { path: 'buy-points', element: <Points /> },
       { path: 'about', element: <About /> },
       { path: 'access-info', element: <AccessInfo /> },
       { path: 'contact', element: <PolicyPage type="contact" /> },
@@ -34,6 +29,11 @@ const router = createBrowserRouter([
       { path: '2257-compliance', element: <PolicyPage type="compliance" /> },
       { path: 'login', element: <Login /> },
       { path: 'signup', element: <Signup /> },
+      { path: 'videos', element: <ProtectedRoute><Videos /></ProtectedRoute> },
+      { path: 'videos/:id', element: <ProtectedRoute><VideoDetails /></ProtectedRoute> },
+      { path: 'vip', element: <ProtectedRoute><Vip /></ProtectedRoute> },
+      { path: 'points', element: <ProtectedRoute><Points /></ProtectedRoute> },
+      { path: 'buy-points', element: <ProtectedRoute><Points /></ProtectedRoute> },
       { path: 'library', element: <ProtectedRoute><Library /></ProtectedRoute> },
       { path: 'account', element: <ProtectedRoute><Account /></ProtectedRoute> },
       { path: 'admin', element: <ProtectedRoute adminOnly><Admin /></ProtectedRoute> }

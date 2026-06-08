@@ -378,3 +378,57 @@ body:has(.floating-wallet) .page:first-of-type {
   font-weight: 700;
   line-height: 1.5;
 }
+
+
+/* Age gate */
+.age-gate-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  padding: clamp(1rem, 4vw, 2rem);
+  background: rgba(4, 3, 8, .86);
+  backdrop-filter: blur(18px);
+}
+
+.age-gate-card {
+  width: min(720px, 100%);
+  display: grid;
+  gap: 1rem;
+  padding: clamp(1.25rem, 4vw, 2.25rem);
+  text-align: left;
+}
+
+.age-gate-card svg {
+  color: var(--gold);
+}
+
+.age-gate-card h1 {
+  margin: 0;
+  font-size: clamp(2.2rem, 8vw, 4.75rem);
+  line-height: .9;
+}
+
+.age-gate-card p {
+  color: var(--muted);
+  line-height: 1.65;
+  margin: 0;
+}
+
+.age-gate-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .8rem;
+  margin-top: .5rem;
+}
+
+.locked-home-card {
+  max-width: 900px;
+}
+
+@media (max-width: 720px) {
+  .age-gate-actions {
+    grid-template-columns: 1fr;
+  }
+}

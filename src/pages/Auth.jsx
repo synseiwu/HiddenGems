@@ -41,6 +41,9 @@ function AuthForm({ mode }) {
     if (mode === 'login' && searchParams.get('confirmed')) {
       setMessage('Email confirmed! You can log in now.')
       setMessageType('success')
+    } else if (mode === 'login' && searchParams.get('protected')) {
+      setMessage('Please log in or create an account before viewing Hidden Gems video content.')
+      setMessageType('success')
     }
   }, [mode, searchParams])
 
@@ -60,7 +63,7 @@ function AuthForm({ mode }) {
         return
       }
 
-      navigate('/account')
+      navigate(searchParams.get('next') || '/account')
       return
     }
 
@@ -85,7 +88,7 @@ function AuthForm({ mode }) {
       return
     }
 
-    setMessage('Account created! Please check your email to confirm your account, then return to login.')
+    setMessage('Account created! Please check your email to confirm your account, then return to login. New users receive a one-time 300 point starter bonus after their first confirmed login.')
     setMessageType('success')
   }
 

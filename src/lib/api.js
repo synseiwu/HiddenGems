@@ -14,6 +14,18 @@ export async function getWallet() {
   return data?.[0] || { points_balance: 0 }
 }
 
+export async function claimStarterBonus() {
+  if (!supabase) return { granted: false, points_balance: 0 }
+  const { data, error } = await supabase.rpc('claim_starter_bonus')
+  if (error) {
+    console.warn('Starter bonus check failed:', error.message)
+    return { granted: false, points_balance: 0 }
+  }
+  const result = data?.[0] || { granted: false, points_balance: 0 }
+  if (result.granted) window.dispatchEvent(new Event('wallet:refresh'))
+  return result
+}
+
 export async function listPointPackages() {
   if (!supabase) return []
   const { data, error } = await supabase

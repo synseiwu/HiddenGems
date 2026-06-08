@@ -3,13 +3,19 @@ import { Crown, Gem, Search, ShieldCheck, Zap } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { listPublishedVideos } from '../lib/api'
 import VideoCard from '../components/VideoCard'
+import { useAuth } from '../hooks/useAuth'
 
 export default function Home() {
+  const { user } = useAuth()
   const [featured, setFeatured] = useState([])
 
   useEffect(() => {
+    if (!user) {
+      setFeatured([])
+      return
+    }
     listPublishedVideos().then((videos) => setFeatured(videos.slice(0, 3))).catch(() => setFeatured([]))
-  }, [])
+  }, [user])
 
   return (
     <div className="page">
@@ -37,11 +43,22 @@ export default function Home() {
       <section className="section">
         <div className="section-heading">
           <span className="eyebrow">Featured</span>
-          <h2>Latest Gems</h2>
+          <h2>{user ? 'Latest Gems' : 'Sign in to view videos'}</h2>
         </div>
-        <div className="video-grid">
-          {featured.map((video) => <VideoCard key={video.id} video={video} />)}
-        </div>
+        {user ? (
+          <div className="video-grid">
+            {featured.map((video) => <VideoCard key={video.id} video={video} />)}
+          </div>
+        ) : (
+          <div className="card info-card locked-home-card">
+            <h3>Video browsing is account-only</h3>
+            <p>Create a free account, confirm you are 18+, then log in to browse video listings, previews, points, VIP, and your personal library.</p>
+            <div className="actions">
+              <Link className="button" to="/signup">Create Account</Link>
+              <Link className="ghost-button" to="/login">Login</Link>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="section how-grid">
