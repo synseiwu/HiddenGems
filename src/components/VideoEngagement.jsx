@@ -10,8 +10,7 @@ import {
 import { useAuth } from '../hooks/useAuth'
 
 function displayName(comment) {
-  const email = comment.profiles?.email || 'Hidden Gems user'
-  return email.split('@')[0]
+  return comment.author_name || String(comment.author_email || 'Hidden Gems user').split('@')[0]
 }
 
 export default function VideoEngagement({ videoId }) {

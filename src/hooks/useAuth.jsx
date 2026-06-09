@@ -11,6 +11,45 @@ export function AuthProvider({ children }) {
   const [rewardNotice, setRewardNotice] = useState(null)
   const rewardCheckedRef = useRef(new Set())
 
+  async function runRewardChecks(nextUser) {
+    if (!nextUser?.id || rewardCheckedRef.current.has(nextUser.id)) return
+
+    rewardCheckedRef.current.add(nextUser.id)
+
+    const starterResult = await claimStarterBonus().catch((err) => {
+      console.warn('Starter bonus check failed:', err.message)
+      return { granted: false }
+    })
+
+    const dailyResult = await claimDailyLoginReward().catch((err) => {
+      console.warn('Daily login reward failed:', err.message)
+      return { granted: false }
+    })
+
+    if (starterResult?.granted) {
+      setRewardNotice({
+        title: 'Starter Bonus',
+        message: `You received ${Number(starterResult.amount || 300)} free starter points!`,
+        points: Number(starterResult.amount || 300),
+        balance: Number(starterResult.points_balance || 300),
+        cta: 'Buy More Points',
+        to: '/points'
+      })
+      return
+    }
+
+    if (dailyResult?.granted) {
+      setRewardNotice({
+        title: 'Daily Reward',
+        message: `Daily reward claimed! You received ${Number(dailyResult.amount || 0)} points.`,
+        points: Number(dailyResult.amount || 0),
+        balance: Number(dailyResult.points_balance || 0),
+        cta: 'Buy More Points',
+        to: '/points'
+      })
+    }
+  }
+
   async function hydrate(nextUser) {
     setUser(nextUser)
 
@@ -21,33 +60,7 @@ export function AuthProvider({ children }) {
       return
     }
 
-    if (!rewardCheckedRef.current.has(nextUser.id)) {
-      rewardCheckedRef.current.add(nextUser.id)
-
-      const starterResult = await claimStarterBonus()
-      const dailyResult = await claimDailyLoginReward()
-
-      if (starterResult?.granted) {
-        setRewardNotice({
-          title: 'Starter Bonus',
-          message: `You received ${Number(starterResult.amount || 300)} free starter points!`,
-          points: Number(starterResult.amount || 300),
-          balance: Number(starterResult.points_balance || 300),
-          cta: 'Buy More Points',
-          to: '/points'
-        })
-      } else if (dailyResult?.granted) {
-        setRewardNotice({
-          title: 'Daily Reward',
-          message: `Daily reward claimed! You received ${Number(dailyResult.amount || 0)} points.`,
-          points: Number(dailyResult.amount || 0),
-          balance: Number(dailyResult.points_balance || 0),
-          cta: 'Buy More Points',
-          to: '/points'
-        })
-      }
-    }
-
+    await runRewardChecks(nextUser)
     setProfile(await getCurrentProfile(nextUser.id))
     setLoading(false)
   }

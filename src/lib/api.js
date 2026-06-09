@@ -390,8 +390,8 @@ export async function saveRewardSettings(settings) {
 export async function listVideoComments(videoId) {
   if (!supabase) return []
   const { data, error } = await supabase
-    .from('video_comments')
-    .select('id, video_id, user_id, body, approved, created_at, profiles(email, role)')
+    .from('video_comments_public')
+    .select('*')
     .eq('video_id', videoId)
     .order('created_at', { ascending: false })
   if (error) throw error
@@ -440,8 +440,8 @@ export async function listForumPosts() {
   const settings = await getRewardSettings().catch(() => null)
   if (settings && settings.forum_enabled === false) return []
   const { data, error } = await supabase
-    .from('forum_posts')
-    .select('id, user_id, title, body, category, pinned, created_at, updated_at, profiles(email, role)')
+    .from('forum_posts_public')
+    .select('*')
     .order('pinned', { ascending: false })
     .order('created_at', { ascending: false })
   if (error) throw error
@@ -477,8 +477,8 @@ export async function deleteForumPost(postId) {
 export async function listForumReplies(postId) {
   if (!supabase) return []
   const { data, error } = await supabase
-    .from('forum_replies')
-    .select('id, post_id, user_id, body, created_at, profiles(email, role)')
+    .from('forum_replies_public')
+    .select('*')
     .eq('post_id', postId)
     .order('created_at', { ascending: true })
   if (error) throw error
@@ -512,9 +512,9 @@ export async function deleteForumReply(replyId) {
 export async function listAdminCommunityOverview() {
   if (!supabase) return { comments: [], forumPosts: [], forumReplies: [] }
   const [comments, forumPosts, forumReplies] = await Promise.all([
-    supabase.from('video_comments').select('id, body, approved, created_at, profiles(email), videos(title)').order('created_at', { ascending: false }).limit(10),
-    supabase.from('forum_posts').select('id, title, category, created_at, profiles(email)').order('created_at', { ascending: false }).limit(10),
-    supabase.from('forum_replies').select('id, body, created_at, forum_posts(title), profiles(email)').order('created_at', { ascending: false }).limit(10)
+    supabase.from('video_comments_public').select('*').order('created_at', { ascending: false }).limit(10),
+    supabase.from('forum_posts_public').select('*').order('created_at', { ascending: false }).limit(10),
+    supabase.from('forum_replies_public').select('*').order('created_at', { ascending: false }).limit(10)
   ])
 
   if (comments.error) throw comments.error

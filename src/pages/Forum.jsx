@@ -14,8 +14,7 @@ import Loader from '../components/Loader'
 const categories = ['General Discussion', 'Feedback', 'Requests', 'Site Issues', 'Video Suggestions']
 
 function displayName(row) {
-  const email = row.profiles?.email || 'Hidden Gems user'
-  return email.split('@')[0]
+  return row.author_name || String(row.author_email || 'Hidden Gems user').split('@')[0]
 }
 
 export default function Forum() {
@@ -43,7 +42,7 @@ export default function Forum() {
 
   useEffect(() => {
     loadPosts().catch((err) => {
-      setMessage(err.message || 'Unable to load forum. Make sure the forum migration ran in Supabase.')
+      setMessage(err.message)
       setLoading(false)
     })
   }, [])
