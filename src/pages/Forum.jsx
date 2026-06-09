@@ -43,7 +43,7 @@ export default function Forum() {
 
   useEffect(() => {
     loadPosts().catch((err) => {
-      setMessage(err.message)
+      setMessage(err.message || 'Unable to load forum. Make sure the forum migration ran in Supabase.')
       setLoading(false)
     })
   }, [])
@@ -123,6 +123,7 @@ export default function Forum() {
         </div>
 
         <div className="forum-list">
+          {!posts.length && <div className="card forum-post"><h3>No forum posts yet</h3><p>Start the first community discussion.</p></div>}
           {posts.map((post) => (
             <article className={selected?.id === post.id ? 'card forum-post active' : 'card forum-post'} key={post.id} onClick={() => setSelected(post)}>
               <div className="split-line">

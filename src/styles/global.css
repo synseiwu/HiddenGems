@@ -845,3 +845,15 @@ body:has(.floating-wallet) .page:first-of-type {
     flex-direction: column;
   }
 }
+
+
+/* Forum reliability polish */
+.forum-post .danger-button,
+.forum-thread .danger-button {
+  position: relative;
+  z-index: 2;
+}
+
+.forum-list .forum-post:first-child:last-child {
+  cursor: default;
+}

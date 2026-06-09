@@ -437,6 +437,8 @@ export async function setVideoReaction(videoId, reactionType) {
 
 export async function listForumPosts() {
   if (!supabase) return []
+  const settings = await getRewardSettings().catch(() => null)
+  if (settings && settings.forum_enabled === false) return []
   const { data, error } = await supabase
     .from('forum_posts')
     .select('id, user_id, title, body, category, pinned, created_at, updated_at, profiles(email, role)')
@@ -448,7 +450,13 @@ export async function listForumPosts() {
 
 export async function createForumPost(post) {
   if (!supabase) throw new Error('Supabase is not configured.')
+  const { data: userData, error: userError } = await supabase.auth.getUser()
+  if (userError) throw userError
+  const userId = userData?.user?.id
+  if (!userId) throw new Error('Please log in first.')
+
   const payload = {
+    user_id: userId,
     title: String(post.title || '').trim(),
     body: String(post.body || '').trim(),
     category: post.category || 'General Discussion'
@@ -479,11 +487,16 @@ export async function listForumReplies(postId) {
 
 export async function createForumReply(postId, body) {
   if (!supabase) throw new Error('Supabase is not configured.')
+  const { data: userData, error: userError } = await supabase.auth.getUser()
+  if (userError) throw userError
+  const userId = userData?.user?.id
+  if (!userId) throw new Error('Please log in first.')
+
   const cleanBody = String(body || '').trim()
   if (!cleanBody) throw new Error('Reply cannot be empty.')
   const { data, error } = await supabase
     .from('forum_replies')
-    .insert({ post_id: postId, body: cleanBody })
+    .insert({ post_id: postId, user_id: userId, body: cleanBody })
     .select()
     .single()
   if (error) throw error
