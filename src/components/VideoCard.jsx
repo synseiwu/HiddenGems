@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { Lock, Unlock, Crown, Gem } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { getAccessLabel, getAccessRank, isVipAccessType } from '../lib/api'
+import VideoStats from './VideoStats'
 
 export default function VideoCard({ video, unlocked = false }) {
   const { isAdmin, vipRank } = useAuth()
@@ -33,6 +34,7 @@ export default function VideoCard({ video, unlocked = false }) {
           <strong className="points-label"><Gem size={14} /> {cost}</strong>
         </div>
         <h3>{video.title}</h3>
+        <VideoStats video={video} variant="card" />
         <p>{video.description}</p>
         <Link className="button full" to={`/videos/${video.id}`}>
           {unlocked ? <Unlock size={16} /> : <Lock size={16} />}

@@ -3,8 +3,9 @@ import { Link, useParams } from 'react-router-dom'
 import { Crown, ExternalLink, Gem, Lock, PlayCircle, ShieldCheck, XCircle } from 'lucide-react'
 import Loader from '../components/Loader'
 import EmptyState from '../components/EmptyState'
-import { getAccessLabel, getAccessRank, getUnlockedVideo, getVideoDetails, getWallet, isVipAccessType, unlockVideoWithPoints } from '../lib/api'
+import { getAccessLabel, getAccessRank, getUnlockedVideo, getVideoDetails, getWallet, isVipAccessType, trackVideoView, unlockVideoWithPoints } from '../lib/api'
 import { useAuth } from '../hooks/useAuth'
+import VideoStats from '../components/VideoStats'
 import VideoEngagement from '../components/VideoEngagement'
 
 function canEmbedPreview(url) {
@@ -48,6 +49,13 @@ export default function VideoDetails() {
     setPreviewMode('idle')
     setLoading(true)
     load()
+  }, [id, user])
+
+  useEffect(() => {
+    if (!id || !user) return
+    trackVideoView(id).then((result) => {
+      if (result?.tracked) load()
+    }).catch(() => {})
   }, [id, user])
 
   async function unlock() {
@@ -139,6 +147,7 @@ export default function VideoDetails() {
           <h1>{video.title}</h1>
           <p>{video.description}</p>
           <div className="price-line"><strong>{costLabel}</strong> <span>{isVipAccessType(video.access_type) ? 'Subscription tier access' : 'Point unlock access'}</span></div>
+          <VideoStats video={video} variant="details" />
           {user && <p className="wallet-line"><Gem size={16} /> Your balance: <strong>{wallet.points_balance || 0} points</strong></p>}
           {isVipAccessType(video.access_type) && video.access_type !== 'admin_only' && <p className="notice"><Crown size={16} /> {accessLabel} members can access this content while their subscription is active.</p>}
           {video.access_type === 'admin_only' && <p className="notice"><ShieldCheck size={16} /> Admin-only content. Full links stay hidden from customer roles.</p>}

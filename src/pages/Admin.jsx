@@ -19,6 +19,7 @@ import { supabase } from '../lib/supabase'
 import Loader from '../components/Loader'
 import AdminHomepageShowcasePanel from '../components/AdminHomepageShowcasePanel'
 import AdminCommunityPanel from '../components/AdminCommunityPanel'
+import AdminEngagementPanel from '../components/AdminEngagementPanel'
 
 const emptyVideoForm = {
   title: '',
@@ -233,6 +234,7 @@ export default function Admin() {
             <option value="videos">Video Listings</option>
             <option value="settings">Site Settings</option>
             <option value="homepage">Homepage Showcase</option>
+            <option value="engagement">Engagement Stats</option>
             <option value="community">Community Rewards</option>
             <option value="security">Security Tools</option>
           </select>
@@ -287,6 +289,8 @@ export default function Admin() {
       )}
 
       {panel === 'homepage' && <AdminHomepageShowcasePanel />}
+
+      {panel === 'engagement' && <AdminEngagementPanel />}
 
       {panel === 'settings' && (
         <section className="admin-settings-grid">

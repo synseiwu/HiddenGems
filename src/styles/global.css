@@ -838,13 +838,177 @@ body:has(.floating-wallet) .page:first-of-type {
     justify-content: flex-start;
   }
 }
-
-
-/* Recently uploaded showcase admin hint */
-.category-picker .tiny-note {
-  margin: 0;
+/* Feature cards spacing polish */
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: stretch;
+  margin-top: 2rem;
 }
 
-.category-picker > .ghost-button.full {
-  justify-self: stretch;
+.feature-grid .card {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 0.75rem;
+  min-height: 210px;
+  padding: clamp(1.25rem, 2.5vw, 1.65rem) !important;
+  border-radius: 26px;
+  overflow: hidden;
+}
+
+.feature-grid .card svg {
+  width: 32px;
+  height: 32px;
+  margin: 0 0 0.25rem;
+  color: var(--gold);
+  flex: 0 0 auto;
+}
+
+.feature-grid .card h3 {
+  margin: 0;
+  line-height: 1.2;
+}
+
+.feature-grid .card p {
+  margin: 0;
+  max-width: 42rem;
+}
+
+@media (max-width: 900px) {
+  .feature-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .feature-grid .card {
+    min-height: auto;
+  }
+}
+/* Strong homepage feature-card alignment fix */
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.15rem;
+  align-items: stretch;
+  margin-top: 2rem;
+}
+
+.feature-grid .card {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 0.8rem;
+  min-height: 210px;
+  padding: clamp(1.35rem, 2.6vw, 1.8rem) !important;
+  border-radius: 26px;
+  overflow: hidden;
+}
+
+.feature-grid .card svg {
+  position: static;
+  display: block;
+  width: 34px;
+  height: 34px;
+  margin: 0 0 0.3rem;
+  color: var(--gold);
+}
+
+.feature-grid .card h3 {
+  margin: 0;
+  line-height: 1.2;
+}
+
+.feature-grid .card p {
+  margin: 0;
+  max-width: 44rem;
+}
+
+/* Video engagement stats */
+.video-stats {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  color: var(--muted);
+}
+
+.video-stats-card {
+  margin: 0.15rem 0 0.1rem;
+}
+
+.video-stats-details {
+  margin: 0.35rem 0 0.5rem;
+}
+
+.video-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 30px;
+  padding: 0.38rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.045);
+  white-space: nowrap;
+}
+
+.video-stat svg {
+  color: var(--gold);
+}
+
+.video-stat strong {
+  color: var(--text);
+  font-size: 0.92rem;
+}
+
+.video-stat small {
+  color: var(--muted);
+}
+
+/* Admin engagement controls */
+.engagement-admin-list .split-line input {
+  max-width: 320px;
+}
+
+.stats-admin-row {
+  align-items: flex-start;
+}
+
+.admin-stat-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.55rem;
+  color: var(--muted);
+}
+
+.view-edit-controls {
+  display: grid;
+  grid-template-columns: minmax(96px, 130px) repeat(4, auto);
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.view-edit-controls input {
+  padding: 0.65rem 0.8rem;
+}
+
+@media (max-width: 900px) {
+  .feature-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .feature-grid .card {
+    min-height: auto;
+  }
+
+  .view-edit-controls {
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+
+  .engagement-admin-list .split-line input {
+    max-width: none;
+  }
 }

@@ -630,3 +630,86 @@ export async function duplicateHomepageShowcaseRow(rowId) {
   await setHomepageShowcaseRowCategories(created.id, existing.category_ids || [])
   return created
 }
+
+
+// Video engagement stats, views, and admin controls
+
+export function formatStatCount(value) {
+  const count = Number(value || 0)
+  if (count >= 1000000) return `${(count / 1000000).toFixed(count >= 10000000 ? 0 : 1)}M`
+  if (count >= 1000) return `${(count / 1000).toFixed(count >= 10000 ? 0 : 1)}K`
+  return String(count)
+}
+
+export async function trackVideoView(videoId) {
+  if (!supabase || !videoId) return { tracked: false }
+  const { data, error } = await supabase.rpc('track_video_view', { target_video_id: videoId })
+  if (error) {
+    console.warn('View tracking failed:', error.message)
+    return { tracked: false }
+  }
+  return data?.[0] || { tracked: false }
+}
+
+export async function getEngagementSettings() {
+  if (!supabase) return null
+  const { data, error } = await supabase.from('engagement_settings').select('*').eq('id', true).single()
+  if (error) throw error
+  return data
+}
+
+export async function saveEngagementSettings(settings) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const payload = {
+    id: true,
+    show_likes: Boolean(settings.show_likes),
+    show_dislikes: Boolean(settings.show_dislikes),
+    show_views: Boolean(settings.show_views),
+    show_comments: Boolean(settings.show_comments),
+    show_stats_on_cards: Boolean(settings.show_stats_on_cards),
+    show_stats_on_details: Boolean(settings.show_stats_on_details),
+    show_stats_on_homepage: Boolean(settings.show_stats_on_homepage),
+    view_tracking_enabled: Boolean(settings.view_tracking_enabled),
+    view_cooldown_minutes: Number(settings.view_cooldown_minutes || 60),
+    compact_counts: Boolean(settings.compact_counts)
+  }
+
+  const { data, error } = await supabase
+    .from('engagement_settings')
+    .upsert(payload, { onConflict: 'id' })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function listAdminVideoStats() {
+  if (!supabase) return []
+  const { data, error } = await supabase
+    .from('admin_video_stats')
+    .select('*')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function adminSetVideoViewCount(videoId, viewCount) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const { data, error } = await supabase.rpc('admin_set_video_view_count', {
+    target_video_id: videoId,
+    new_view_count: Number(viewCount || 0)
+  })
+  if (error) throw error
+  return data?.[0] || null
+}
+
+export async function adminAdjustVideoViewCount(videoId, adjustment) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const { data, error } = await supabase.rpc('admin_adjust_video_view_count', {
+    target_video_id: videoId,
+    adjustment_amount: Number(adjustment || 0)
+  })
+  if (error) throw error
+  return data?.[0] || null
+}
