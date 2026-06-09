@@ -17,6 +17,7 @@ import {
 import { compressImage } from '../lib/image'
 import { supabase } from '../lib/supabase'
 import Loader from '../components/Loader'
+import AdminCommunityPanel from '../components/AdminCommunityPanel'
 
 const emptyVideoForm = {
   title: '',
@@ -230,6 +231,7 @@ export default function Admin() {
           <select value={panel} onChange={(e) => setPanel(e.target.value)}>
             <option value="videos">Video Listings</option>
             <option value="settings">Site Settings</option>
+            <option value="community">Community Rewards</option>
             <option value="security">Security Tools</option>
           </select>
         </label>
@@ -355,6 +357,8 @@ export default function Admin() {
           </div>
         </section>
       )}
+
+      {panel === 'community' && <AdminCommunityPanel />}
 
       {panel === 'security' && (
         <section className="admin-settings-grid">

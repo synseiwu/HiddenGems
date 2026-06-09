@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
-import { claimStarterBonus, getCurrentProfile } from '../lib/api'
+import { claimDailyLoginReward, claimStarterBonus, getCurrentProfile } from '../lib/api'
 
 const AuthContext = createContext(null)
 
@@ -8,27 +8,42 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [starterBonus, setStarterBonus] = useState(null)
-  const starterCheckedRef = useRef(new Set())
+  const [rewardNotice, setRewardNotice] = useState(null)
+  const rewardCheckedRef = useRef(new Set())
 
   async function hydrate(nextUser) {
     setUser(nextUser)
 
     if (!nextUser) {
       setProfile(null)
-      setStarterBonus(null)
+      setRewardNotice(null)
       setLoading(false)
       return
     }
 
-    if (!starterCheckedRef.current.has(nextUser.id)) {
-      starterCheckedRef.current.add(nextUser.id)
+    if (!rewardCheckedRef.current.has(nextUser.id)) {
+      rewardCheckedRef.current.add(nextUser.id)
 
-      const bonusResult = await claimStarterBonus()
-      if (bonusResult?.granted) {
-        setStarterBonus({
-          points: Number(bonusResult.amount || 300),
-          balance: Number(bonusResult.points_balance || 300)
+      const starterResult = await claimStarterBonus()
+      const dailyResult = await claimDailyLoginReward()
+
+      if (starterResult?.granted) {
+        setRewardNotice({
+          title: 'Starter Bonus',
+          message: `You received ${Number(starterResult.amount || 300)} free starter points!`,
+          points: Number(starterResult.amount || 300),
+          balance: Number(starterResult.points_balance || 300),
+          cta: 'Buy More Points',
+          to: '/points'
+        })
+      } else if (dailyResult?.granted) {
+        setRewardNotice({
+          title: 'Daily Reward',
+          message: `Daily reward claimed! You received ${Number(dailyResult.amount || 0)} points.`,
+          points: Number(dailyResult.amount || 0),
+          balance: Number(dailyResult.points_balance || 0),
+          cta: 'Buy More Points',
+          to: '/points'
         })
       }
     }
@@ -63,13 +78,14 @@ export function AuthProvider({ children }) {
         isVip: vipRank >= 1 || Boolean(profile?.vip_status),
         vipTier: profile?.subscription_tier || (profile?.vip_status ? 'vip' : 'none'),
         vipRank,
-        starterBonus,
-        clearStarterBonus: () => setStarterBonus(null),
+        rewardNotice,
+        showRewardNotice: setRewardNotice,
+        clearRewardNotice: () => setRewardNotice(null),
         refreshProfile: () => user && hydrate(user),
         signOut: () => supabase?.auth.signOut()
       }
     },
-    [user, profile, loading, starterBonus]
+    [user, profile, loading, rewardNotice]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

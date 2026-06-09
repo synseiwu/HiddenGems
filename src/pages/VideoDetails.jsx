@@ -5,6 +5,7 @@ import Loader from '../components/Loader'
 import EmptyState from '../components/EmptyState'
 import { getAccessLabel, getAccessRank, getUnlockedVideo, getVideoDetails, getWallet, isVipAccessType, unlockVideoWithPoints } from '../lib/api'
 import { useAuth } from '../hooks/useAuth'
+import VideoEngagement from '../components/VideoEngagement'
 
 function canEmbedPreview(url) {
   if (!url) return false
@@ -169,6 +170,7 @@ export default function VideoDetails() {
           <small>Full external links stay hidden until points are spent, the required VIP tier is active, or admin access is verified.</small>
         </div>
       </section>
+      <VideoEngagement videoId={id} />
     </div>
   )
 }

@@ -716,94 +716,132 @@ body:has(.floating-wallet) .page:first-of-type {
 }
 
 
-/* Starter bonus popup */
-.starter-bonus-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 9998;
+/* Daily rewards, comments, reactions, and forum */
+.engagement-card {
+  margin-top: 1.25rem;
+  padding: clamp(1rem, 3vw, 1.5rem);
   display: grid;
-  place-items: center;
-  padding: clamp(1rem, 4vw, 2rem);
-  background: rgba(4, 3, 8, 0.72);
-  backdrop-filter: blur(14px);
+  gap: 1rem;
 }
 
-.starter-bonus-card {
-  position: relative;
-  width: min(520px, 100%);
+.engagement-card h2,
+.forum-thread h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+}
+
+.reaction-actions {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+
+.active-reaction {
+  color: var(--gold) !important;
+  border-color: rgba(243,193,75,.55) !important;
+  background: rgba(243,193,75,.1) !important;
+}
+
+.comment-form {
   display: grid;
-  gap: 0.85rem;
-  padding: clamp(1.25rem, 4vw, 2rem);
-  text-align: center;
-  overflow: hidden;
-  border-color: rgba(243, 193, 75, 0.45);
-  box-shadow:
-    0 24px 80px rgba(0, 0, 0, 0.52),
-    0 0 45px rgba(255, 79, 171, 0.13),
-    0 0 36px rgba(243, 193, 75, 0.11);
+  gap: .8rem;
 }
 
-.starter-bonus-card::before {
-  content: '';
-  position: absolute;
-  inset: -30%;
-  background:
-    radial-gradient(circle at 50% 0%, rgba(243, 193, 75, 0.18), transparent 34%),
-    radial-gradient(circle at 80% 80%, rgba(255, 79, 171, 0.14), transparent 30%);
-  pointer-events: none;
+.comment-list {
+  display: grid;
+  gap: .8rem;
 }
 
-.starter-bonus-card > * {
-  position: relative;
-  z-index: 1;
-}
-
-.starter-bonus-close {
-  position: absolute;
-  top: 0.9rem;
-  right: 0.9rem;
-  z-index: 2;
-  display: inline-grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
+.comment-item {
+  display: grid;
+  gap: .5rem;
+  padding: 1rem;
   border: 1px solid var(--border);
-  border-radius: 999px;
-  background: rgba(255,255,255,0.07);
-  color: var(--text);
+  border-radius: 18px;
+  background: rgba(255,255,255,.04);
+}
+
+.comment-item > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .8rem;
+}
+
+.comment-item small {
+  color: var(--muted);
+}
+
+.comment-item p {
+  margin: 0;
+}
+
+.danger-button.tiny {
+  width: fit-content;
+  padding: .45rem .65rem;
+  font-size: .82rem;
+}
+
+.forum-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, .8fr) minmax(320px, 1fr) minmax(320px, 1.1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.forum-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.forum-post,
+.forum-thread {
+  padding: 1rem;
+}
+
+.forum-post {
   cursor: pointer;
-}
-
-.starter-bonus-icon {
-  width: 68px;
-  height: 68px;
-  margin: 0 auto 0.1rem;
   display: grid;
-  place-items: center;
-  border-radius: 999px;
-  color: #08070d;
-  background: linear-gradient(135deg, var(--gold), var(--pink));
-  box-shadow: 0 14px 32px rgba(255, 79, 171, 0.22);
+  gap: .65rem;
 }
 
-.starter-bonus-card h2 {
+.forum-post.active {
+  border-color: rgba(243,193,75,.55);
+  box-shadow: 0 0 30px rgba(243,193,75,.1);
+}
+
+.forum-post p {
   margin: 0;
-  font-size: clamp(1.8rem, 5vw, 2.7rem);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
-.starter-bonus-card p {
-  margin: 0;
-}
-
-.starter-bonus-actions {
+.forum-thread {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
-  margin-top: 0.45rem;
+  gap: 1rem;
 }
 
-@media (max-width: 560px) {
-  .starter-bonus-actions {
+.admin-form hr {
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: .5rem 0;
+}
+
+@media (max-width: 1100px) {
+  .forum-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .engagement-card .split-line,
+  .comment-item > div:first-child {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }

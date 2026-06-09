@@ -334,3 +334,183 @@ export async function listAdminSecurityOverview() {
     securityEvents: securityEvents.data || []
   }
 }
+
+
+// Daily rewards, comments, reactions, and forum
+
+export async function claimDailyLoginReward() {
+  if (!supabase) return { granted: false, points_balance: 0, amount: 0 }
+  const { data, error } = await supabase.rpc('claim_daily_login_reward')
+  if (error) {
+    console.warn('Daily login reward failed:', error.message)
+    return { granted: false, points_balance: 0, amount: 0 }
+  }
+  const result = data?.[0] || { granted: false, points_balance: 0, amount: 0 }
+  if (result.granted) window.dispatchEvent(new Event('wallet:refresh'))
+  return result
+}
+
+export async function getRewardSettings() {
+  if (!supabase) return null
+  const { data, error } = await supabase.from('reward_settings').select('*').eq('id', true).single()
+  if (error) throw error
+  return data
+}
+
+export async function saveRewardSettings(settings) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const payload = {
+    id: true,
+    rewards_enabled: Boolean(settings.rewards_enabled),
+    daily_user_points: Number(settings.daily_user_points || 0),
+    daily_vip_points: Number(settings.daily_vip_points || 0),
+    daily_supervip_points: Number(settings.daily_supervip_points || 0),
+    daily_ultravip_points: Number(settings.daily_ultravip_points || 0),
+    admin_daily_rewards_enabled: Boolean(settings.admin_daily_rewards_enabled),
+    admin_daily_points: Number(settings.admin_daily_points || 0),
+    comments_enabled: Boolean(settings.comments_enabled),
+    comment_rewards_enabled: Boolean(settings.comment_rewards_enabled),
+    comment_reward_points: Number(settings.comment_reward_points || 0),
+    min_comment_seconds: Number(settings.min_comment_seconds || 0),
+    require_comment_approval: Boolean(settings.require_comment_approval),
+    forum_enabled: Boolean(settings.forum_enabled),
+    daily_reward_message: settings.daily_reward_message || 'Daily reward claimed!',
+    comment_reward_message: settings.comment_reward_message || 'Thanks for commenting!'
+  }
+
+  const { data, error } = await supabase
+    .from('reward_settings')
+    .upsert(payload, { onConflict: 'id' })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function listVideoComments(videoId) {
+  if (!supabase) return []
+  const { data, error } = await supabase
+    .from('video_comments')
+    .select('id, video_id, user_id, body, approved, created_at, profiles(email, role)')
+    .eq('video_id', videoId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function submitVideoComment(videoId, body) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const cleanBody = String(body || '').trim()
+  if (!cleanBody) throw new Error('Comment cannot be empty.')
+  const { data, error } = await supabase.rpc('submit_video_comment', {
+    target_video_id: videoId,
+    comment_body: cleanBody
+  })
+  if (error) throw error
+  const result = data?.[0] || { reward_granted: false }
+  if (result.reward_granted) window.dispatchEvent(new Event('wallet:refresh'))
+  return result
+}
+
+export async function deleteVideoComment(commentId) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const { error } = await supabase.from('video_comments').delete().eq('id', commentId)
+  if (error) throw error
+}
+
+export async function getVideoReactionSummary(videoId) {
+  if (!supabase) return { likes: 0, dislikes: 0, my_reaction: null }
+  const { data, error } = await supabase.rpc('get_video_reaction_summary', { target_video_id: videoId })
+  if (error) throw error
+  return data?.[0] || { likes: 0, dislikes: 0, my_reaction: null }
+}
+
+export async function setVideoReaction(videoId, reactionType) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const { data, error } = await supabase.rpc('set_video_reaction', {
+    target_video_id: videoId,
+    reaction_value: reactionType
+  })
+  if (error) throw error
+  return data?.[0] || null
+}
+
+export async function listForumPosts() {
+  if (!supabase) return []
+  const { data, error } = await supabase
+    .from('forum_posts')
+    .select('id, user_id, title, body, category, pinned, created_at, updated_at, profiles(email, role)')
+    .order('pinned', { ascending: false })
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function createForumPost(post) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const payload = {
+    title: String(post.title || '').trim(),
+    body: String(post.body || '').trim(),
+    category: post.category || 'General Discussion'
+  }
+  if (!payload.title) throw new Error('Post title is required.')
+  if (!payload.body) throw new Error('Post body is required.')
+  const { data, error } = await supabase.from('forum_posts').insert(payload).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteForumPost(postId) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const { error } = await supabase.from('forum_posts').delete().eq('id', postId)
+  if (error) throw error
+}
+
+export async function listForumReplies(postId) {
+  if (!supabase) return []
+  const { data, error } = await supabase
+    .from('forum_replies')
+    .select('id, post_id, user_id, body, created_at, profiles(email, role)')
+    .eq('post_id', postId)
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
+export async function createForumReply(postId, body) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const cleanBody = String(body || '').trim()
+  if (!cleanBody) throw new Error('Reply cannot be empty.')
+  const { data, error } = await supabase
+    .from('forum_replies')
+    .insert({ post_id: postId, body: cleanBody })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteForumReply(replyId) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const { error } = await supabase.from('forum_replies').delete().eq('id', replyId)
+  if (error) throw error
+}
+
+export async function listAdminCommunityOverview() {
+  if (!supabase) return { comments: [], forumPosts: [], forumReplies: [] }
+  const [comments, forumPosts, forumReplies] = await Promise.all([
+    supabase.from('video_comments').select('id, body, approved, created_at, profiles(email), videos(title)').order('created_at', { ascending: false }).limit(10),
+    supabase.from('forum_posts').select('id, title, category, created_at, profiles(email)').order('created_at', { ascending: false }).limit(10),
+    supabase.from('forum_replies').select('id, body, created_at, forum_posts(title), profiles(email)').order('created_at', { ascending: false }).limit(10)
+  ])
+
+  if (comments.error) throw comments.error
+  if (forumPosts.error) throw forumPosts.error
+  if (forumReplies.error) throw forumReplies.error
+
+  return {
+    comments: comments.data || [],
+    forumPosts: forumPosts.data || [],
+    forumReplies: forumReplies.data || []
+  }
+}

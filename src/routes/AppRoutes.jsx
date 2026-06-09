@@ -12,6 +12,7 @@ import AccessInfo from '../pages/AccessInfo'
 import PolicyPage from '../pages/PolicyPage'
 import Account from '../pages/Account'
 import Admin from '../pages/Admin'
+import Forum from '../pages/Forum'
 import { Login, Signup } from '../pages/Auth'
 
 const router = createBrowserRouter([
@@ -35,6 +36,7 @@ const router = createBrowserRouter([
       { path: 'points', element: <ProtectedRoute><Points /></ProtectedRoute> },
       { path: 'buy-points', element: <ProtectedRoute><Points /></ProtectedRoute> },
       { path: 'library', element: <ProtectedRoute><Library /></ProtectedRoute> },
+      { path: 'forum', element: <ProtectedRoute><Forum /></ProtectedRoute> },
       { path: 'account', element: <ProtectedRoute><Account /></ProtectedRoute> },
       { path: 'admin', element: <ProtectedRoute adminOnly><Admin /></ProtectedRoute> }
     ]
