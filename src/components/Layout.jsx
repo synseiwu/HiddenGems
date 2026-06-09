@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import FloatingWallet from './FloatingWallet'
 import AgeGate from './AgeGate'
+import StarterBonusPopup from './StarterBonusPopup'
 
 export default function Layout() {
   const { user, isAdmin, signOut } = useAuth()
@@ -14,6 +15,7 @@ export default function Layout() {
   return (
     <>
       <AgeGate />
+      <StarterBonusPopup />
       <header className="site-header">
         <Link className="brand" to="/" onClick={close}>
           <Gem size={24} />

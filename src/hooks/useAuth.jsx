@@ -8,6 +8,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [starterBonus, setStarterBonus] = useState(null)
   const starterCheckedRef = useRef(new Set())
 
   async function hydrate(nextUser) {
@@ -15,13 +16,21 @@ export function AuthProvider({ children }) {
 
     if (!nextUser) {
       setProfile(null)
+      setStarterBonus(null)
       setLoading(false)
       return
     }
 
     if (!starterCheckedRef.current.has(nextUser.id)) {
       starterCheckedRef.current.add(nextUser.id)
-      await claimStarterBonus()
+
+      const bonusResult = await claimStarterBonus()
+      if (bonusResult?.granted) {
+        setStarterBonus({
+          points: Number(bonusResult.amount || 300),
+          balance: Number(bonusResult.points_balance || 300)
+        })
+      }
     }
 
     setProfile(await getCurrentProfile(nextUser.id))
@@ -54,11 +63,13 @@ export function AuthProvider({ children }) {
         isVip: vipRank >= 1 || Boolean(profile?.vip_status),
         vipTier: profile?.subscription_tier || (profile?.vip_status ? 'vip' : 'none'),
         vipRank,
+        starterBonus,
+        clearStarterBonus: () => setStarterBonus(null),
         refreshProfile: () => user && hydrate(user),
         signOut: () => supabase?.auth.signOut()
       }
     },
-    [user, profile, loading]
+    [user, profile, loading, starterBonus]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
