@@ -716,144 +716,125 @@ body:has(.floating-wallet) .page:first-of-type {
 }
 
 
-/* Daily rewards, comments, reactions, and forum */
-.engagement-card {
-  margin-top: 1.25rem;
-  padding: clamp(1rem, 3vw, 1.5rem);
-  display: grid;
+/* Homepage showcase rows + admin homepage controls */
+.homepage-showcase-section {
+  margin-top: 2rem;
+}
+
+.homepage-showcase-section .section-heading p {
+  max-width: 760px;
+  margin: .35rem 0 0;
+}
+
+.showcase-row-videos {
   gap: 1rem;
 }
 
-.engagement-card h2,
-.forum-thread h2 {
-  display: inline-flex;
-  align-items: center;
-  gap: .5rem;
-}
-
-.reaction-actions {
-  display: flex;
-  align-items: center;
-  gap: .5rem;
-  flex-wrap: wrap;
-}
-
-.active-reaction {
-  color: var(--gold) !important;
-  border-color: rgba(243,193,75,.55) !important;
-  background: rgba(243,193,75,.1) !important;
-}
-
-.comment-form {
+.showcase-horizontal,
+.showcase-compact {
   display: grid;
-  gap: .8rem;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(260px, 320px);
+  overflow-x: auto;
+  padding-bottom: .75rem;
+  scroll-snap-type: x proximity;
 }
 
-.comment-list {
-  display: grid;
-  gap: .8rem;
+.showcase-horizontal > *,
+.showcase-compact > * {
+  scroll-snap-align: start;
 }
 
-.comment-item {
+.showcase-grid {
   display: grid;
-  gap: .5rem;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+
+.showcase-featured {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(280px, 1fr));
+}
+
+.showcase-featured .video-card:first-child {
+  grid-row: span 2;
+}
+
+.showcase-compact {
+  grid-auto-columns: minmax(220px, 260px);
+}
+
+.category-picker {
+  display: grid;
+  gap: .75rem;
   padding: 1rem;
   border: 1px solid var(--border);
   border-radius: 18px;
-  background: rgba(255,255,255,.04);
+  background: rgba(255,255,255,.035);
 }
 
-.comment-item > div:first-child {
+.category-choice-list {
+  display: grid;
+  gap: .55rem;
+  max-height: 280px;
+  overflow: auto;
+  padding-right: .25rem;
+}
+
+.category-choice {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: .8rem;
-}
-
-.comment-item small {
-  color: var(--muted);
-}
-
-.comment-item p {
-  margin: 0;
-}
-
-.danger-button.tiny {
-  width: fit-content;
-  padding: .45rem .65rem;
-  font-size: .82rem;
-}
-
-.forum-grid {
-  display: grid;
-  grid-template-columns: minmax(280px, .8fr) minmax(320px, 1fr) minmax(320px, 1.1fr);
-  gap: 1rem;
-  align-items: start;
-}
-
-.forum-list {
-  display: grid;
-  gap: 1rem;
-}
-
-.forum-post,
-.forum-thread {
-  padding: 1rem;
-}
-
-.forum-post {
+  align-items: center;
+  gap: .75rem;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(255,255,255,.04);
+  color: var(--text);
+  padding: .75rem;
   cursor: pointer;
+}
+
+.category-choice.selected {
+  border-color: rgba(243,193,75,.65);
+  background: rgba(243,193,75,.1);
+}
+
+.category-choice small,
+.warning-text {
+  color: var(--gold);
+}
+
+.showcase-admin-row {
+  align-items: flex-start;
+}
+
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: .45rem;
+}
+
+.empty-state-inline {
   display: grid;
-  gap: .65rem;
+  gap: .4rem;
+  padding: 1rem;
+  border: 1px dashed var(--border);
+  border-radius: 18px;
+  background: rgba(255,255,255,.03);
 }
 
-.forum-post.active {
-  border-color: rgba(243,193,75,.55);
-  box-shadow: 0 0 30px rgba(243,193,75,.1);
-}
-
-.forum-post p {
-  margin: 0;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.forum-thread {
-  display: grid;
-  gap: 1rem;
-}
-
-.admin-form hr {
-  width: 100%;
-  border: 0;
-  border-top: 1px solid var(--border);
-  margin: .5rem 0;
-}
-
-@media (max-width: 1100px) {
-  .forum-grid {
+@media (max-width: 760px) {
+  .showcase-featured {
     grid-template-columns: 1fr;
   }
-}
 
-@media (max-width: 640px) {
-  .engagement-card .split-line,
-  .comment-item > div:first-child {
-    align-items: flex-start;
-    flex-direction: column;
+  .showcase-horizontal,
+  .showcase-compact {
+    grid-auto-columns: minmax(230px, 84vw);
   }
-}
 
-
-/* Forum reliability polish */
-.forum-post .danger-button,
-.forum-thread .danger-button {
-  position: relative;
-  z-index: 2;
-}
-
-.forum-list .forum-post:first-child:last-child {
-  cursor: default;
+  .row-actions {
+    justify-content: flex-start;
+  }
 }

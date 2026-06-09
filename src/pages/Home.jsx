@@ -1,21 +1,59 @@
 import { Link } from 'react-router-dom'
 import { Crown, Gem, Search, ShieldCheck, Zap } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { listPublishedVideos } from '../lib/api'
+import { useEffect, useMemo, useState } from 'react'
+import { listHomepageShowcaseRows, listPublishedVideos } from '../lib/api'
 import VideoCard from '../components/VideoCard'
 import { useAuth } from '../hooks/useAuth'
+
+function ShowcaseRow({ row }) {
+  const videos = row.videos || []
+  const layoutClass = `showcase-row-videos showcase-${row.layout_type || 'horizontal'}`
+
+  if (!videos.length) return null
+
+  return (
+    <section className="section homepage-showcase-section">
+      <div className="section-heading split-line">
+        <div>
+          <span className="eyebrow">{(row.category_names || []).join(' • ') || 'Featured'}</span>
+          <h2>{row.title}</h2>
+          {row.subtitle && <p>{row.subtitle}</p>}
+        </div>
+        <Link className="ghost-button" to="/videos">View All</Link>
+      </div>
+
+      <div className={layoutClass}>
+        {videos.map((video) => <VideoCard key={`${row.id}-${video.id}`} video={video} />)}
+      </div>
+    </section>
+  )
+}
 
 export default function Home() {
   const { user } = useAuth()
   const [featured, setFeatured] = useState([])
+  const [showcaseRows, setShowcaseRows] = useState([])
+  const [loadingRows, setLoadingRows] = useState(false)
 
   useEffect(() => {
     if (!user) {
       setFeatured([])
+      setShowcaseRows([])
       return
     }
-    listPublishedVideos().then((videos) => setFeatured(videos.slice(0, 3))).catch(() => setFeatured([]))
+
+    setLoadingRows(true)
+
+    Promise.all([
+      listHomepageShowcaseRows().catch(() => []),
+      listPublishedVideos().catch(() => [])
+    ]).then(([rows, videos]) => {
+      setShowcaseRows(rows)
+      setFeatured(videos.slice(0, 3))
+    }).finally(() => setLoadingRows(false))
   }, [user])
+
+  const hasShowcaseRows = useMemo(() => user && showcaseRows.some((row) => (row.videos || []).length), [user, showcaseRows])
 
   return (
     <div className="page">
@@ -40,16 +78,43 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="section">
-        <div className="section-heading">
-          <span className="eyebrow">Featured</span>
-          <h2>{user ? 'Latest Gems' : 'Sign in to view videos'}</h2>
-        </div>
-        {user ? (
-          <div className="video-grid">
-            {featured.map((video) => <VideoCard key={video.id} video={video} />)}
+      {user ? (
+        <>
+          {loadingRows && (
+            <section className="section">
+              <div className="card info-card">
+                <h3>Loading homepage showcase...</h3>
+                <p>Fetching admin-selected category rows.</p>
+              </div>
+            </section>
+          )}
+
+          {hasShowcaseRows ? (
+            showcaseRows.map((row) => <ShowcaseRow key={row.id} row={row} />)
+          ) : (
+            <section className="section">
+              <div className="section-heading">
+                <span className="eyebrow">Featured</span>
+                <h2>Latest Gems</h2>
+              </div>
+              <div className="video-grid">
+                {featured.map((video) => <VideoCard key={video.id} video={video} />)}
+              </div>
+              {!featured.length && (
+                <div className="card info-card">
+                  <h3>No homepage showcase rows yet</h3>
+                  <p>Admin can add homepage category rows from Admin Panel → Homepage Showcase.</p>
+                </div>
+              )}
+            </section>
+          )}
+        </>
+      ) : (
+        <section className="section">
+          <div className="section-heading">
+            <span className="eyebrow">Featured</span>
+            <h2>Sign in to view videos</h2>
           </div>
-        ) : (
           <div className="card info-card locked-home-card">
             <h3>Video browsing is account-only</h3>
             <p>Create a free account, confirm you are 18+, then log in to browse video listings, previews, points, VIP, and your personal library.</p>
@@ -58,22 +123,13 @@ export default function Home() {
               <Link className="ghost-button" to="/login">Login</Link>
             </div>
           </div>
-        )}
-      </section>
+        </section>
+      )}
 
-      <section className="section how-grid">
-        {[
-          ['Create an account', 'Sign up with secure Supabase Auth.', ShieldCheck],
-          ['Buy points', 'Stripe Checkout adds verified points to your wallet.', Gem],
-          ['Unlock videos', 'Spend points to unlock specific gems.', Zap],
-          ['Open from library', 'Unlocked and VIP links appear in your library through approved external partners.', Crown]
-        ].map(([title, text, Icon]) => (
-          <div className="card mini-card" key={title}>
-            <Icon />
-            <h3>{title}</h3>
-            <p>{text}</p>
-          </div>
-        ))}
+      <section className="feature-grid">
+        <div className="card"><Gem /><h3>Point-based access</h3><p>Buy points once, then spend them only on the videos you choose to unlock.</p></div>
+        <div className="card"><ShieldCheck /><h3>Protected links</h3><p>Full external links remain hidden until points, VIP, or admin access is verified.</p></div>
+        <div className="card"><Zap /><h3>Fast browsing</h3><p>Only optimized thumbnails and optional previews load on-site, keeping the marketplace lightweight.</p></div>
       </section>
     </div>
   )

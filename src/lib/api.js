@@ -185,8 +185,12 @@ export async function listAdminVideos() {
 
 export async function listCategories() {
   if (!supabase) return []
-  const { data, error } = await supabase.from('categories').select('*').order('name')
-  if (error) throw error
+  const { data, error } = await supabase.from('category_video_counts').select('*').order('name')
+  if (error) {
+    const fallback = await supabase.from('categories').select('*').order('name')
+    if (fallback.error) throw fallback.error
+    return fallback.data || []
+  }
   return data || []
 }
 
@@ -526,4 +530,103 @@ export async function listAdminCommunityOverview() {
     forumPosts: forumPosts.data || [],
     forumReplies: forumReplies.data || []
   }
+}
+
+
+// Homepage showcase rows and admin homepage controls
+
+export async function listHomepageShowcaseRowsAdmin() {
+  if (!supabase) return []
+  const { data, error } = await supabase
+    .from('homepage_showcase_rows_admin')
+    .select('*')
+    .order('sort_order', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
+export async function listHomepageShowcaseRows() {
+  if (!supabase) return []
+  const { data, error } = await supabase
+    .from('homepage_showcase_rows_public')
+    .select('*')
+    .order('sort_order', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
+export async function saveHomepageShowcaseRow(row) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+
+  const payload = {
+    title: String(row.title || '').trim(),
+    subtitle: String(row.subtitle || '').trim() || null,
+    layout_type: row.layout_type || 'horizontal',
+    sort_order: Number(row.sort_order || 1),
+    max_items: Number(row.max_items || 8),
+    active: Boolean(row.active),
+    sort_mode: row.sort_mode || 'newest'
+  }
+
+  if (!payload.title) throw new Error('Row title is required.')
+  if (payload.max_items < 1) throw new Error('Max items must be at least 1.')
+
+  const query = row.id
+    ? supabase.from('homepage_showcase_rows').update(payload).eq('id', row.id).select().single()
+    : supabase.from('homepage_showcase_rows').insert(payload).select().single()
+
+  const { data, error } = await query
+  if (error) throw error
+  return data
+}
+
+export async function deleteHomepageShowcaseRow(rowId) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const { error } = await supabase.from('homepage_showcase_rows').delete().eq('id', rowId)
+  if (error) throw error
+}
+
+export async function setHomepageShowcaseRowCategories(rowId, categoryIds) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const cleanIds = [...new Set((categoryIds || []).filter(Boolean))]
+
+  const { error: deleteError } = await supabase
+    .from('homepage_showcase_row_categories')
+    .delete()
+    .eq('row_id', rowId)
+
+  if (deleteError) throw deleteError
+
+  if (!cleanIds.length) return []
+
+  const payload = cleanIds.map((categoryId, index) => ({
+    row_id: rowId,
+    category_id: categoryId,
+    sort_order: index + 1
+  }))
+
+  const { data, error } = await supabase
+    .from('homepage_showcase_row_categories')
+    .insert(payload)
+    .select()
+
+  if (error) throw error
+  return data || []
+}
+
+export async function duplicateHomepageShowcaseRow(rowId) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const rows = await listHomepageShowcaseRowsAdmin()
+  const existing = rows.find((row) => row.id === rowId)
+  if (!existing) throw new Error('Showcase row not found.')
+
+  const created = await saveHomepageShowcaseRow({
+    ...existing,
+    id: undefined,
+    title: `${existing.title} Copy`,
+    sort_order: Number(existing.sort_order || 0) + 1
+  })
+
+  await setHomepageShowcaseRowCategories(created.id, existing.category_ids || [])
+  return created
 }

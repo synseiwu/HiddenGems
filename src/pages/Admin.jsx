@@ -17,6 +17,7 @@ import {
 import { compressImage } from '../lib/image'
 import { supabase } from '../lib/supabase'
 import Loader from '../components/Loader'
+import AdminHomepageShowcasePanel from '../components/AdminHomepageShowcasePanel'
 import AdminCommunityPanel from '../components/AdminCommunityPanel'
 
 const emptyVideoForm = {
@@ -231,6 +232,7 @@ export default function Admin() {
           <select value={panel} onChange={(e) => setPanel(e.target.value)}>
             <option value="videos">Video Listings</option>
             <option value="settings">Site Settings</option>
+            <option value="homepage">Homepage Showcase</option>
             <option value="community">Community Rewards</option>
             <option value="security">Security Tools</option>
           </select>
@@ -283,6 +285,8 @@ export default function Admin() {
           </div>
         </section>
       )}
+
+      {panel === 'homepage' && <AdminHomepageShowcasePanel />}
 
       {panel === 'settings' && (
         <section className="admin-settings-grid">
