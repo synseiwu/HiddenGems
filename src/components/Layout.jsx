@@ -30,7 +30,6 @@ export default function Layout() {
           <NavLink onClick={close} to="/videos">Videos</NavLink>
           <NavLink onClick={close} to="/points">Buy Points</NavLink>
           <NavLink onClick={close} to="/vip">VIP</NavLink>
-          <NavLink onClick={close} to="/about">About</NavLink>
           {user && <NavLink onClick={close} to="/forum">Forum</NavLink>}
           {user && <NavLink onClick={close} to="/library">Library</NavLink>}
           {isAdmin && <NavLink onClick={close} to="/admin">Admin Panel</NavLink>}
