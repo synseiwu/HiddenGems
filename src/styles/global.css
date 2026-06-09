@@ -1141,3 +1141,36 @@ body:has(.floating-wallet) .page:first-of-type {
     padding: 1rem !important;
   }
 }
+/* Forum reply button alignment fix */
+.forum-thread .comment-form {
+  display: grid;
+  justify-items: start;
+}
+
+.forum-thread .comment-form label {
+  width: 100%;
+}
+
+.forum-thread .comment-form textarea {
+  width: 100%;
+}
+
+.forum-thread .comment-form .button {
+  width: auto;
+  min-width: 112px;
+  min-height: 46px;
+  padding: 0.8rem 1.25rem;
+  justify-self: start;
+  border-radius: 999px;
+}
+
+.forum-thread .comment-form .button svg {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 560px) {
+  .forum-thread .comment-form .button {
+    width: 100%;
+    justify-self: stretch;
+  }
+}
