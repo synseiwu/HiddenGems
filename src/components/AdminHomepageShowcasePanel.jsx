@@ -183,8 +183,26 @@ export default function AdminHomepageShowcasePanel() {
         <div className="category-picker">
           <div className="split-line">
             <h3>Select Categories</h3>
-            <small>{(form.category_ids || []).length} selected</small>
+            <small>{(form.category_ids || []).length ? `${(form.category_ids || []).length} selected` : 'All categories / recent uploads'}</small>
           </div>
+          <p className="tiny-note">Leave this empty to showcase recently uploaded videos from all categories.</p>
+          <button
+            type="button"
+            className="ghost-button full"
+            onClick={() => setForm((p) => ({
+              ...p,
+              title: 'Recently Uploaded',
+              subtitle: 'Fresh videos added to Hidden Gems.',
+              layout_type: 'horizontal',
+              sort_order: 1,
+              max_items: 10,
+              sort_mode: 'newest',
+              active: true,
+              category_ids: []
+            }))}
+          >
+            Use Recently Uploaded preset
+          </button>
           <input value={categorySearch} onChange={(e) => setCategorySearch(e.target.value)} placeholder="Search categories..." />
 
           <div className="category-choice-list">
