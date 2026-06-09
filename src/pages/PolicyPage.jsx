@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import '../styles/policy-pages.css'
 
 const SITE_NAME = 'Hidden Gems'
 const SUPPORT_EMAIL = 'support@hiddengems.space'
@@ -197,23 +198,27 @@ export default function PolicyPage({ type }) {
   const page = content[type] || content.contact
 
   return (
-    <div className="page info-page narrow">
+    <div className="page info-page narrow policy-page-shell">
       <section className="card info-hero-card">
-        <span className="eyebrow">{page.eyebrow}</span>
-        <h1>{page.title}</h1>
-        <p>{page.intro}</p>
+        <div className="policy-card-inner info-hero-inner">
+          <span className="eyebrow">{page.eyebrow}</span>
+          <h1>{page.title}</h1>
+          <p>{page.intro}</p>
+        </div>
       </section>
 
       <section className="section policy-stack">
         {page.sections.map((section) => (
           <article className="card policy-card" key={section.heading}>
-            <h2>{section.heading}</h2>
-            {section.paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
+            <div className="policy-card-inner">
+              <h2>{section.heading}</h2>
+              {section.paragraphs.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
+            </div>
           </article>
         ))}
       </section>
 
-      <section className="section actions centered-text">
+      <section className="section actions centered-text policy-actions">
         <Link className="button" to="/access-info">Access Info</Link>
         <Link className="ghost-button" to="/about">About Hidden Gems</Link>
       </section>
