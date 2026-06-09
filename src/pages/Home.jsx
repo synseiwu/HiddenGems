@@ -1,9 +1,21 @@
 import { Link } from 'react-router-dom'
 import { Crown, Gem, Search, ShieldCheck, Zap } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { listHomepageShowcaseRows, listPublishedVideos } from '../lib/api'
+import { categorySlug, listHomepageShowcaseRows, listPublishedVideos } from '../lib/api'
 import VideoCard from '../components/VideoCard'
 import { useAuth } from '../hooks/useAuth'
+
+
+function buildViewAllLink(row) {
+  const categoryName = row.category_names?.[0]
+  const categoryId = row.category_ids?.[0]
+
+  if (categoryId && categoryName && categoryName !== 'Recently Uploaded') {
+    return `/videos?category=${encodeURIComponent(categoryId)}&categoryName=${encodeURIComponent(categorySlug(categoryName))}`
+  }
+
+  return '/videos?sort=newest'
+}
 
 function ShowcaseRow({ row }) {
   const videos = row.videos || []
@@ -19,7 +31,7 @@ function ShowcaseRow({ row }) {
           <h2>{row.title}</h2>
           {row.subtitle && <p>{row.subtitle}</p>}
         </div>
-        <Link className="ghost-button" to="/videos">View All</Link>
+        <Link className="ghost-button" to={buildViewAllLink(row)}>View All</Link>
       </div>
 
       <div className={layoutClass}>

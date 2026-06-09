@@ -713,3 +713,36 @@ export async function adminAdjustVideoViewCount(videoId, adjustment) {
   if (error) throw error
   return data?.[0] || null
 }
+
+
+export async function adminSetVideoEngagementStats(videoId, stats) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const { data, error } = await supabase.rpc('admin_set_video_engagement_stats', {
+    target_video_id: videoId,
+    new_like_count: Number(stats.like_count || 0),
+    new_dislike_count: Number(stats.dislike_count || 0),
+    new_view_count: Number(stats.view_count || 0)
+  })
+  if (error) throw error
+  return data?.[0] || null
+}
+
+export async function adminAdjustVideoEngagementStat(videoId, statName, adjustment) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const { data, error } = await supabase.rpc('admin_adjust_video_engagement_stat', {
+    target_video_id: videoId,
+    stat_name: statName,
+    adjustment_amount: Number(adjustment || 0)
+  })
+  if (error) throw error
+  return data?.[0] || null
+}
+
+export function categorySlug(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}

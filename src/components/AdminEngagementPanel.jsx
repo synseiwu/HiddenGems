@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  adminAdjustVideoViewCount,
-  adminSetVideoViewCount,
+  adminAdjustVideoEngagementStat,
+  adminSetVideoEngagementStats,
   getEngagementSettings,
   listAdminVideoStats,
   saveEngagementSettings
@@ -35,8 +35,17 @@ export default function AdminEngagementPanel() {
       getEngagementSettings().catch(() => defaultSettings),
       listAdminVideoStats().catch(() => [])
     ])
+
     setSettings({ ...defaultSettings, ...settingsData })
     setVideos(statsData)
+    setEdits(Object.fromEntries((statsData || []).map((video) => [
+      video.id,
+      {
+        like_count: Number(video.like_count || 0),
+        dislike_count: Number(video.dislike_count || 0),
+        view_count: Number(video.view_count || 0)
+      }
+    ])))
     setLoading(false)
   }
 
@@ -52,7 +61,16 @@ export default function AdminEngagementPanel() {
   }
 
   function setEdit(videoId, key, value) {
-    setEdits((prev) => ({ ...prev, [videoId]: { ...(prev[videoId] || {}), [key]: value } }))
+    setEdits((prev) => ({
+      ...prev,
+      [videoId]: {
+        like_count: 0,
+        dislike_count: 0,
+        view_count: 0,
+        ...(prev[videoId] || {}),
+        [key]: value
+      }
+    }))
   }
 
   async function submitSettings(e) {
@@ -70,13 +88,13 @@ export default function AdminEngagementPanel() {
     }
   }
 
-  async function setViews(videoId) {
+  async function saveStats(videoId) {
     setBusy(true)
     setMessage('')
     try {
-      await adminSetVideoViewCount(videoId, edits[videoId]?.set_count ?? 0)
+      await adminSetVideoEngagementStats(videoId, edits[videoId] || {})
       await load()
-      setMessage('View count updated.')
+      setMessage('Video stats updated.')
     } catch (err) {
       setMessage(err.message)
     } finally {
@@ -84,13 +102,35 @@ export default function AdminEngagementPanel() {
     }
   }
 
-  async function adjustViews(videoId, amount) {
+  async function adjustStat(videoId, statName, amount) {
     setBusy(true)
     setMessage('')
     try {
-      await adminAdjustVideoViewCount(videoId, amount)
+      await adminAdjustVideoEngagementStat(videoId, statName, amount)
       await load()
-      setMessage('View count adjusted.')
+      setMessage(`${statName.replace('_', ' ')} adjusted.`)
+    } catch (err) {
+      setMessage(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function resetStats(videoId, type = 'all') {
+    const current = edits[videoId] || {}
+    const next = {
+      like_count: type === 'all' || type === 'likes' ? 0 : Number(current.like_count || 0),
+      dislike_count: type === 'all' || type === 'likes' ? 0 : Number(current.dislike_count || 0),
+      view_count: type === 'all' || type === 'views' ? 0 : Number(current.view_count || 0)
+    }
+
+    setEdits((prev) => ({ ...prev, [videoId]: next }))
+    setBusy(true)
+    setMessage('')
+    try {
+      await adminSetVideoEngagementStats(videoId, next)
+      await load()
+      setMessage('Stats reset.')
     } catch (err) {
       setMessage(err.message)
     } finally {
@@ -101,15 +141,18 @@ export default function AdminEngagementPanel() {
   if (loading) return <Loader />
 
   return (
-    <section className="admin-settings-grid">
+    <section className="admin-settings-grid engagement-admin-panel">
       <form className="card admin-form" onSubmit={submitSettings}>
         <span className="eyebrow">Engagement</span>
-        <h2>Video Stats Settings</h2>
+        <h2>Stats Display Settings</h2>
 
         <label className="check"><input type="checkbox" checked={settings.show_likes} onChange={(e) => setField('show_likes', e.target.checked)} /> Show like counts</label>
         <label className="check"><input type="checkbox" checked={settings.show_dislikes} onChange={(e) => setField('show_dislikes', e.target.checked)} /> Show dislike counts</label>
         <label className="check"><input type="checkbox" checked={settings.show_views} onChange={(e) => setField('show_views', e.target.checked)} /> Show view counts</label>
         <label className="check"><input type="checkbox" checked={settings.show_comments} onChange={(e) => setField('show_comments', e.target.checked)} /> Show comment counts</label>
+
+        <hr />
+
         <label className="check"><input type="checkbox" checked={settings.show_stats_on_cards} onChange={(e) => setField('show_stats_on_cards', e.target.checked)} /> Show stats on video cards</label>
         <label className="check"><input type="checkbox" checked={settings.show_stats_on_details} onChange={(e) => setField('show_stats_on_details', e.target.checked)} /> Show stats on video details pages</label>
         <label className="check"><input type="checkbox" checked={settings.show_stats_on_homepage} onChange={(e) => setField('show_stats_on_homepage', e.target.checked)} /> Show stats on homepage showcase rows</label>
@@ -117,46 +160,79 @@ export default function AdminEngagementPanel() {
         <label>View cooldown minutes<input type="number" min="1" value={settings.view_cooldown_minutes} onChange={(e) => setField('view_cooldown_minutes', e.target.value)} /></label>
         <label className="check"><input type="checkbox" checked={settings.compact_counts} onChange={(e) => setField('compact_counts', e.target.checked)} /> Compact count display, like 1.2K</label>
 
-        <button className="button full" disabled={busy}>{busy ? 'Saving...' : 'Save Engagement Settings'}</button>
+        <button className="button full" disabled={busy}>{busy ? 'Saving...' : 'Save Settings'}</button>
         {message && <p className="notice-text">{message}</p>}
       </form>
 
       <div className="card admin-list engagement-admin-list">
-        <div className="split-line">
+        <div className="split-line engagement-heading">
           <div>
-            <span className="eyebrow">Admin controls</span>
-            <h2>Video Stats + View Counts</h2>
+            <span className="eyebrow">Easy edit</span>
+            <h2>Likes, Dislikes & Views</h2>
+            <p>Change the numbers here without touching SQL. Comment count stays based on real comments.</p>
           </div>
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search videos..." />
         </div>
 
-        {filteredVideos.map((video) => (
-          <article className="admin-row admin-row-wide stats-admin-row" key={video.id}>
-            <div>
-              <h3>{video.title}</h3>
-              <small>{video.category_name || 'No category'} · {video.access_type}</small>
-              <div className="admin-stat-line">
-                <span>👍 {video.like_count || 0}</span>
-                <span>👎 {video.dislike_count || 0}</span>
-                <span>💬 {video.comment_count || 0}</span>
-                <span>👁 {video.view_count || 0}</span>
-              </div>
-            </div>
+        <div className="engagement-table">
+          <div className="engagement-table-head">
+            <span>Video</span>
+            <span>Likes</span>
+            <span>Dislikes</span>
+            <span>Views</span>
+            <span>Comments</span>
+            <span>Actions</span>
+          </div>
 
-            <div className="view-edit-controls">
-              <input
-                type="number"
-                value={edits[video.id]?.set_count ?? video.view_count ?? 0}
-                onChange={(e) => setEdit(video.id, 'set_count', e.target.value)}
-                aria-label={`Set views for ${video.title}`}
-              />
-              <button className="ghost-button" onClick={() => setViews(video.id)} disabled={busy}>Set</button>
-              <button className="ghost-button" onClick={() => adjustViews(video.id, 100)} disabled={busy}>+100</button>
-              <button className="ghost-button" onClick={() => adjustViews(video.id, -100)} disabled={busy}>-100</button>
-              <button className="danger-button" onClick={() => setEdit(video.id, 'set_count', 0) || adminSetVideoViewCount(video.id, 0).then(load)} disabled={busy}>Reset</button>
-            </div>
-          </article>
-        ))}
+          {filteredVideos.map((video) => (
+            <article className="engagement-stat-row" key={video.id}>
+              <div className="engagement-video-title">
+                <strong>{video.title}</strong>
+                <small>{video.category_name || 'No category'} · {video.access_type}</small>
+              </div>
+
+              <label>
+                <span className="sr-only">Likes</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={edits[video.id]?.like_count ?? 0}
+                  onChange={(e) => setEdit(video.id, 'like_count', e.target.value)}
+                />
+              </label>
+
+              <label>
+                <span className="sr-only">Dislikes</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={edits[video.id]?.dislike_count ?? 0}
+                  onChange={(e) => setEdit(video.id, 'dislike_count', e.target.value)}
+                />
+              </label>
+
+              <label>
+                <span className="sr-only">Views</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={edits[video.id]?.view_count ?? 0}
+                  onChange={(e) => setEdit(video.id, 'view_count', e.target.value)}
+                />
+              </label>
+
+              <div className="comment-count-pill">💬 {video.comment_count || 0}</div>
+
+              <div className="engagement-actions">
+                <button className="button tiny" onClick={() => saveStats(video.id)} disabled={busy}>Save</button>
+                <button className="ghost-button" onClick={() => adjustStat(video.id, 'view_count', 100)} disabled={busy}>+100 views</button>
+                <button className="ghost-button" onClick={() => adjustStat(video.id, 'like_count', 100)} disabled={busy}>+100 likes</button>
+                <button className="ghost-button" onClick={() => resetStats(video.id, 'views')} disabled={busy}>Reset views</button>
+                <button className="danger-button" onClick={() => resetStats(video.id, 'likes')} disabled={busy}>Reset likes</button>
+              </div>
+            </article>
+          ))}
+        </div>
 
         {!filteredVideos.length && <p className="muted">No videos found.</p>}
       </div>
