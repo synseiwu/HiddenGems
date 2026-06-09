@@ -1,0 +1,25 @@
+/* Policy/legal page polish */
+.policy-stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.policy-card {
+  display: grid;
+  gap: 0.75rem;
+  padding: clamp(1.25rem, 2.4vw, 1.75rem) !important;
+}
+
+.policy-card h2 {
+  margin: 0;
+  font-size: clamp(1.35rem, 2.5vw, 2rem);
+}
+
+.policy-card p {
+  margin: 0;
+  line-height: 1.65;
+}
+
+.info-hero-card p {
+  line-height: 1.65;
+}
