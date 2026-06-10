@@ -143,6 +143,8 @@ export async function saveVipTier(tier) {
 
 export async function listPublishedVideos() {
   if (!supabase) return []
+  const settings = await getPublicSiteSettings()
+  if (settings.hide_all_videos || settings.safe_mode_enabled) return []
   const { data, error } = await supabase
     .from('videos_safe')
     .select('*')
@@ -154,6 +156,8 @@ export async function listPublishedVideos() {
 
 export async function getVideoDetails(videoId) {
   if (!supabase) return null
+  const settings = await getPublicSiteSettings()
+  if (settings.hide_all_videos || settings.safe_mode_enabled) throw new Error('Video content is temporarily unavailable.')
   const { data, error } = await supabase.from('videos_safe').select('*').eq('id', videoId).single()
   if (error) throw error
   return data
@@ -161,6 +165,8 @@ export async function getVideoDetails(videoId) {
 
 export async function getUnlockedVideo(videoId) {
   if (!supabase) return null
+  const settings = await getPublicSiteSettings()
+  if (settings.hide_all_videos || settings.safe_mode_enabled) return null
   const { data, error } = await supabase.rpc('get_unlocked_video', { target_video_id: videoId })
   if (error) throw error
   return data?.[0] || null
@@ -168,6 +174,8 @@ export async function getUnlockedVideo(videoId) {
 
 export async function listLibrary() {
   if (!supabase) return []
+  const settings = await getPublicSiteSettings()
+  if (settings.hide_all_videos || settings.safe_mode_enabled) return []
   const { data, error } = await supabase.rpc('get_my_library')
   if (error) throw error
   return data || []
@@ -547,6 +555,8 @@ export async function listHomepageShowcaseRowsAdmin() {
 
 export async function listHomepageShowcaseRows() {
   if (!supabase) return []
+  const settings = await getPublicSiteSettings()
+  if (settings.hide_all_videos || settings.safe_mode_enabled) return []
   const { data, error } = await supabase
     .from('homepage_showcase_rows_public')
     .select('*')
@@ -745,4 +755,117 @@ export function categorySlug(value) {
     .replace(/&/g, 'and')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
+}
+
+
+// Global site settings + editable page content
+
+const DEFAULT_SITE_SETTINGS = {
+  hide_all_videos: false,
+  disable_age_gate: false,
+  safe_mode_enabled: false
+}
+
+export async function getPublicSiteSettings() {
+  if (!supabase) return DEFAULT_SITE_SETTINGS
+  const { data, error } = await supabase
+    .from('site_settings_public')
+    .select('*')
+    .eq('id', true)
+    .maybeSingle()
+  if (error || !data) return DEFAULT_SITE_SETTINGS
+  return { ...DEFAULT_SITE_SETTINGS, ...data }
+}
+
+export async function getAdminSiteSettings() {
+  if (!supabase) return DEFAULT_SITE_SETTINGS
+  const { data, error } = await supabase
+    .from('site_settings')
+    .select('*')
+    .eq('id', true)
+    .maybeSingle()
+  if (error || !data) return DEFAULT_SITE_SETTINGS
+  return { ...DEFAULT_SITE_SETTINGS, ...data }
+}
+
+export async function saveAdminSiteSettings(settings) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const payload = {
+    id: true,
+    hide_all_videos: Boolean(settings.hide_all_videos),
+    disable_age_gate: Boolean(settings.disable_age_gate),
+    safe_mode_enabled: Boolean(settings.safe_mode_enabled),
+    updated_at: new Date().toISOString()
+  }
+
+  const { data, error } = await supabase
+    .from('site_settings')
+    .upsert(payload, { onConflict: 'id' })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function getSitePageContent(pageKey) {
+  if (!supabase) return []
+  const { data, error } = await supabase
+    .from('site_page_content_public')
+    .select('*')
+    .eq('page_key', pageKey)
+    .eq('active', true)
+    .order('sort_order', { ascending: true })
+  if (error) return []
+  return data || []
+}
+
+export async function listAdminPageContent(pageKey = '') {
+  if (!supabase) return []
+  let query = supabase
+    .from('site_page_content')
+    .select('*')
+    .order('page_key', { ascending: true })
+    .order('sort_order', { ascending: true })
+  if (pageKey) query = query.eq('page_key', pageKey)
+  const { data, error } = await query
+  if (error) throw error
+  return data || []
+}
+
+export async function savePageContent(section) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const payload = {
+    page_key: section.page_key,
+    section_key: section.section_key,
+    content_type: section.content_type || 'section',
+    title: String(section.title || '').trim(),
+    subtitle: String(section.subtitle || '').trim(),
+    eyebrow: String(section.eyebrow || '').trim(),
+    body: String(section.body || '').trim(),
+    button_text: String(section.button_text || '').trim(),
+    sort_order: Number(section.sort_order || 1),
+    active: Boolean(section.active),
+    updated_at: new Date().toISOString()
+  }
+
+  const { data, error } = await supabase
+    .from('site_page_content')
+    .upsert(payload, { onConflict: 'page_key,section_key' })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function resetPageContent(pageKey, sectionKey) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const { error } = await supabase
+    .from('site_page_content')
+    .delete()
+    .eq('page_key', pageKey)
+    .eq('section_key', sectionKey)
+  if (error) throw error
+  return true
 }

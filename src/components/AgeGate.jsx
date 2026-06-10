@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ShieldCheck, XCircle } from 'lucide-react'
+import { getPublicSiteSettings } from '../lib/api'
 
 const AGE_GATE_KEY = 'hidden_gems_age_verified_v1'
 
@@ -7,8 +8,27 @@ export default function AgeGate() {
   const [status, setStatus] = useState('checking')
 
   useEffect(() => {
-    const accepted = window.localStorage.getItem(AGE_GATE_KEY) === 'yes'
-    setStatus(accepted ? 'accepted' : 'pending')
+    let active = true
+
+    async function checkGate() {
+      const settings = await getPublicSiteSettings()
+      if (!active) return
+
+      if (settings.disable_age_gate || settings.hide_all_videos || settings.safe_mode_enabled) {
+        setStatus('accepted')
+        return
+      }
+
+      const accepted = window.localStorage.getItem(AGE_GATE_KEY) === 'yes'
+      setStatus(accepted ? 'accepted' : 'pending')
+    }
+
+    checkGate().catch(() => {
+      const accepted = window.localStorage.getItem(AGE_GATE_KEY) === 'yes'
+      setStatus(accepted ? 'accepted' : 'pending')
+    })
+
+    return () => { active = false }
   }, [])
 
   function enterSite() {

@@ -1,9 +1,10 @@
 import { Link } from 'react-router-dom'
 import { Crown, Gem, Search, ShieldCheck, Zap } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { categorySlug, listHomepageShowcaseRows, listPublishedVideos } from '../lib/api'
+import { categorySlug, getPublicSiteSettings, listHomepageShowcaseRows, listPublishedVideos } from '../lib/api'
 import VideoCard from '../components/VideoCard'
 import { useAuth } from '../hooks/useAuth'
+import useSiteContent from '../hooks/useSiteContent'
 
 
 function buildViewAllLink(row) {
@@ -46,6 +47,8 @@ export default function Home() {
   const [featured, setFeatured] = useState([])
   const [showcaseRows, setShowcaseRows] = useState([])
   const [loadingRows, setLoadingRows] = useState(false)
+  const [siteSettings, setSiteSettings] = useState({ hide_all_videos: false, safe_mode_enabled: false })
+  const { sections } = useSiteContent('home')
 
   useEffect(() => {
     if (!user) {
@@ -57,9 +60,11 @@ export default function Home() {
     setLoadingRows(true)
 
     Promise.all([
+      getPublicSiteSettings().catch(() => ({ hide_all_videos: false, safe_mode_enabled: false })),
       listHomepageShowcaseRows().catch(() => []),
       listPublishedVideos().catch(() => [])
-    ]).then(([rows, videos]) => {
+    ]).then(([settings, rows, videos]) => {
+      setSiteSettings(settings)
       setShowcaseRows(rows)
       setFeatured(videos.slice(0, 3))
     }).finally(() => setLoadingRows(false))
@@ -71,11 +76,9 @@ export default function Home() {
     <div className="page">
       <section className="hero grid-2">
         <div>
-          <span className="eyebrow">Premium video marketplace</span>
-          <h1>Unlock Exclusive Hidden Gems</h1>
-          <p>
-            Buy point packs, spend points on curated video drops, and open protected external links from your personal library after access is verified.
-          </p>
+          <span className="eyebrow">{sections.hero?.eyebrow || "Premium video marketplace"}</span>
+          <h1>{sections.hero?.title || "Unlock Exclusive Hidden Gems"}</h1>
+          <p>{sections.hero?.subtitle || "Buy point packs, spend points on curated video drops, and open protected external links from your personal library after access is verified."}</p>
           <div className="actions">
             <Link className="button" to="/videos">Browse Videos</Link>
             <Link className="ghost-button" to="/points">Buy Points</Link>

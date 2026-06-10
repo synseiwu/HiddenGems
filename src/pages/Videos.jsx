@@ -3,7 +3,8 @@ import { useSearchParams } from 'react-router-dom'
 import VideoCard from '../components/VideoCard'
 import Loader from '../components/Loader'
 import EmptyState from '../components/EmptyState'
-import { listPublishedVideos } from '../lib/api'
+import { getPublicSiteSettings, listPublishedVideos } from '../lib/api'
+import useSiteContent from '../hooks/useSiteContent'
 
 export default function Videos() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -12,9 +13,11 @@ export default function Videos() {
   const [query, setQuery] = useState(searchParams.get('q') || '')
   const [category, setCategory] = useState(searchParams.get('category') || 'all')
   const [sort, setSort] = useState(searchParams.get('sort') || 'newest')
+  const [siteSettings, setSiteSettings] = useState({ hide_all_videos: false, safe_mode_enabled: false })
+  const { sections } = useSiteContent('videos')
 
   useEffect(() => {
-    listPublishedVideos().then(setVideos).finally(() => setLoading(false))
+    Promise.all([getPublicSiteSettings(), listPublishedVideos()]).then(([settings, data]) => { setSiteSettings(settings); setVideos(data) }).finally(() => setLoading(false))
   }, [])
 
   const categories = useMemo(() => {
@@ -86,9 +89,9 @@ export default function Videos() {
   return (
     <div className="page">
       <section className="section-heading">
-        <span className="eyebrow">Browse</span>
-        <h1>All Videos</h1>
-        <p>Search, sort, and filter by category. Protected links stay hidden until access is verified.</p>
+        <span className="eyebrow">{(siteSettings.hide_all_videos || siteSettings.safe_mode_enabled) ? (sections.hidden?.eyebrow || "Unavailable") : (sections.hero?.eyebrow || "Browse")}</span>
+        <h1>{(siteSettings.hide_all_videos || siteSettings.safe_mode_enabled) ? (sections.hidden?.title || "Videos are temporarily unavailable") : (sections.hero?.title || "All Videos")}</h1>
+        <p>{(siteSettings.hide_all_videos || siteSettings.safe_mode_enabled) ? (sections.hidden?.subtitle || "The video marketplace is currently hidden while the site is being updated.") : (sections.hero?.subtitle || "Search, sort, and filter by category. Protected links stay hidden until access is verified.")}</p>
       </section>
 
       <section className="filters card">

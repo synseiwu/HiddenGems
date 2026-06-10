@@ -20,6 +20,7 @@ import Loader from '../components/Loader'
 import AdminHomepageShowcasePanel from '../components/AdminHomepageShowcasePanel'
 import AdminCommunityPanel from '../components/AdminCommunityPanel'
 import AdminEngagementPanel from '../components/AdminEngagementPanel'
+import AdminSiteControlsPanel from '../components/AdminSiteControlsPanel'
 
 const emptyVideoForm = {
   title: '',
@@ -232,7 +233,8 @@ export default function Admin() {
           Admin Controls
           <select value={panel} onChange={(e) => setPanel(e.target.value)}>
             <option value="videos">Video Listings</option>
-            <option value="settings">Site Settings</option>
+            <option value="settings">Payments & Tiers</option>
+            <option value="siteControls">Site Content & Safe Mode</option>
             <option value="homepage">Homepage Showcase</option>
             <option value="engagement">Engagement Stats</option>
             <option value="community">Community Rewards</option>
@@ -291,6 +293,8 @@ export default function Admin() {
       {panel === 'homepage' && <AdminHomepageShowcasePanel />}
 
       {panel === 'engagement' && <AdminEngagementPanel />}
+
+      {panel === 'siteControls' && <AdminSiteControlsPanel />}
 
       {panel === 'settings' && (
         <section className="admin-settings-grid">
