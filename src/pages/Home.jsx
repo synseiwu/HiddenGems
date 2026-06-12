@@ -54,15 +54,15 @@ function AIStudioHome({ user, isAdmin, siteSettings, onReturnHiddenGems }) {
 
   return (
     <div className="page ai-public-home">
-      <section className="hero grid-2 ai-public-hero">
-        <div>
+      <section className="ai-public-hero-section">
+        <div className="ai-public-hero-copy">
           <span className="eyebrow">AI Studio</span>
           <h1>AI tools powered by your points wallet.</h1>
           <p>
             Use your existing account points to chat with AI, save conversations, and access account-based AI tools
-            inside the same Hidden Gems platform.
+            inside the same platform.
           </p>
-          <div className="actions">
+          <div className="actions ai-public-actions">
             <Link className="button" to={user ? '/ai-studio' : '/login'}>
               <Bot size={16} />
               {user ? 'Start AI Chat' : 'Login to Start'}
@@ -91,7 +91,7 @@ function AIStudioHome({ user, isAdmin, siteSettings, onReturnHiddenGems }) {
           <Sparkles size={46} />
           <h2>Same points. New AI access.</h2>
           <p>
-            The AI Studio uses the existing points wallet. No second balance, no separate account, and no duplicated checkout system.
+            AI Studio uses the existing points wallet. No second balance, no separate account, and no duplicated checkout system.
           </p>
           <div className="ai-public-stats">
             <span><Gem size={16} /> Point-based usage</span>
@@ -101,7 +101,7 @@ function AIStudioHome({ user, isAdmin, siteSettings, onReturnHiddenGems }) {
         </div>
       </section>
 
-      <section className="section info-grid ai-feature-grid">
+      <section className="ai-feature-grid">
         <article className="card mini-card">
           <BrainCircuit />
           <h3>AI chat access</h3>
@@ -110,7 +110,7 @@ function AIStudioHome({ user, isAdmin, siteSettings, onReturnHiddenGems }) {
         <article className="card mini-card">
           <Wallet />
           <h3>Wallet aligned</h3>
-          <p>AI messages use the same Hidden Gems points balance already attached to your account.</p>
+          <p>AI messages use the same points balance already attached to your account.</p>
         </article>
         <article className="card mini-card">
           <ShieldCheck />
@@ -186,6 +186,7 @@ export default function Home() {
     try {
       await saveAdminSiteSettings(next)
       setSiteSettings(next)
+      window.dispatchEvent(new Event('hidden-gems:site-mode-refresh'))
       setModeMessage('Hidden Gems mode restored.')
     } catch (err) {
       setModeMessage(err.message)

@@ -1,4 +1,4 @@
-import { Link, NavLink, Outlet } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { Bot, Gem, Menu, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
@@ -7,22 +7,49 @@ import FloatingWallet from './FloatingWallet'
 import AgeGate from './AgeGate'
 import RewardNoticePopup from './RewardNoticePopup'
 
+const defaultModeSettings = {
+  site_mode: 'hidden_gems',
+  ai_studio_public_mode: false,
+  hide_video_marketplace_in_ai_mode: true
+}
+
 export default function Layout() {
   const { user, isAdmin, signOut } = useAuth()
+  const location = useLocation()
   const [open, setOpen] = useState(false)
-  const [siteSettings, setSiteSettings] = useState({ site_mode: 'hidden_gems', ai_studio_public_mode: false })
+  const [siteSettings, setSiteSettings] = useState(defaultModeSettings)
 
   const close = () => setOpen(false)
-  const isAiMode = siteSettings.site_mode === 'ai_studio' || siteSettings.ai_studio_public_mode
+  const isAiMode = siteSettings.site_mode === 'ai_studio' || Boolean(siteSettings.ai_studio_public_mode)
+  const hideMarketplaceNav = isAiMode && siteSettings.hide_video_marketplace_in_ai_mode !== false
+
+  async function refreshSiteMode() {
+    const settings = await getPublicSiteSettings().catch(() => defaultModeSettings)
+    setSiteSettings({ ...defaultModeSettings, ...settings })
+  }
 
   useEffect(() => {
-    getPublicSiteSettings().then(setSiteSettings).catch(() => {})
+    refreshSiteMode()
+  }, [location.pathname])
+
+  useEffect(() => {
+    function handleRefresh() {
+      refreshSiteMode()
+    }
+
+    window.addEventListener('hidden-gems:site-mode-refresh', handleRefresh)
+    window.addEventListener('focus', handleRefresh)
+
+    return () => {
+      window.removeEventListener('hidden-gems:site-mode-refresh', handleRefresh)
+      window.removeEventListener('focus', handleRefresh)
+    }
   }, [])
 
   return (
     <>
       <AgeGate />
-      <header className="site-header">
+      <header className={isAiMode ? 'site-header ai-mode-header' : 'site-header'}>
         <Link className="brand" to="/" onClick={close}>
           {isAiMode ? <Bot size={24} /> : <Gem size={24} />}
           <span>{isAiMode ? 'AI Studio' : 'Hidden Gems'}</span>
@@ -34,12 +61,17 @@ export default function Layout() {
 
         <nav className={open ? 'nav open' : 'nav'}>
           <NavLink onClick={close} to="/">Home</NavLink>
-          {!isAiMode && <NavLink onClick={close} to="/videos">Videos</NavLink>}
+
+          {!hideMarketplaceNav && <NavLink onClick={close} to="/videos">Videos</NavLink>}
+
           <NavLink onClick={close} to="/points">Buy Points</NavLink>
-          {!isAiMode && <NavLink onClick={close} to="/vip">VIP</NavLink>}
-          {user && !isAiMode && <NavLink onClick={close} to="/forum">Forum</NavLink>}
-          {user && !isAiMode && <NavLink onClick={close} to="/library">Library</NavLink>}
+
+          {!hideMarketplaceNav && <NavLink onClick={close} to="/vip">VIP</NavLink>}
+          {user && !hideMarketplaceNav && <NavLink onClick={close} to="/forum">Forum</NavLink>}
+          {user && !hideMarketplaceNav && <NavLink onClick={close} to="/library">Library</NavLink>}
+
           {isAdmin && <NavLink onClick={close} to="/admin">Admin Panel</NavLink>}
+
           {user ? (
             <>
               <NavLink onClick={close} to="/account">Account</NavLink>
@@ -54,14 +86,14 @@ export default function Layout() {
         </nav>
       </header>
 
-      <main>
+      <main className={isAiMode ? 'ai-mode-main' : undefined}>
         <Outlet />
       </main>
 
       <FloatingWallet />
       <RewardNoticePopup />
 
-      <footer className="footer site-footer">
+      <footer className={isAiMode ? 'footer site-footer ai-mode-footer' : 'footer site-footer'}>
         <div className="footer-brand">
           <strong>{isAiMode ? 'AI Studio' : 'Hidden Gems'}</strong>
           <span>
