@@ -13,7 +13,13 @@ import '../styles/site-content-admin.css'
 const defaultSettings = {
   hide_all_videos: false,
   disable_age_gate: false,
-  safe_mode_enabled: false
+  safe_mode_enabled: false,
+  site_mode: 'hidden_gems',
+  ai_studio_public_mode: false,
+  hide_hidden_gems_branding: true,
+  hide_video_marketplace_in_ai_mode: true,
+  show_admin_mode_switch: true,
+  show_public_mode_switch: false
 }
 
 function buildRows(pageKey, savedRows) {
@@ -58,7 +64,31 @@ export default function AdminSiteControlsPanel() {
     setMessage('')
     try {
       await saveAdminSiteSettings(settings)
-      setMessage('Site visibility settings saved.')
+      setMessage('Site mode and visibility settings saved.')
+    } catch (err) {
+      setMessage(err.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function quickMode(mode) {
+    const next = {
+      ...settings,
+      site_mode: mode,
+      ai_studio_public_mode: mode === 'ai_studio',
+      disable_age_gate: mode === 'ai_studio' ? true : settings.disable_age_gate,
+      hide_video_marketplace_in_ai_mode: true,
+      hide_hidden_gems_branding: true,
+      show_admin_mode_switch: true
+    }
+
+    setSettings(next)
+    setBusy(true)
+    setMessage('')
+    try {
+      await saveAdminSiteSettings(next)
+      setMessage(mode === 'ai_studio' ? 'AI Studio public mode enabled.' : 'Hidden Gems mode restored.')
     } catch (err) {
       setMessage(err.message)
     } finally {
@@ -96,28 +126,76 @@ export default function AdminSiteControlsPanel() {
 
   if (loading) return <Loader />
 
+  const isAiMode = settings.site_mode === 'ai_studio' || settings.ai_studio_public_mode
+
   return (
     <section className="admin-site-controls">
       <form className="card admin-form safe-mode-card" onSubmit={submitSettings}>
         <span className="eyebrow">Site mode</span>
-        <h2>Content Visibility Controls</h2>
+        <h2>Public Mode Controls</h2>
         <p className="muted">
-          Use this when you need the site live without showing current video content. It does not delete videos.
+          Switch the public-facing site between the normal Hidden Gems marketplace and the AI Studio landing experience.
+          This does not delete videos, points, VIP tiers, users, comments, libraries, or admin data.
         </p>
 
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={settings.hide_all_videos}
-            onChange={(e) => setSetting('hide_all_videos', e.target.checked)}
-          />
-          Hide all current videos from public pages
+        <div className="mode-toggle-grid">
+          <button
+            className={isAiMode ? 'ghost-button' : 'button'}
+            type="button"
+            disabled={busy}
+            onClick={() => quickMode('hidden_gems')}
+          >
+            Hidden Gems Mode
+          </button>
+          <button
+            className={isAiMode ? 'button' : 'ghost-button'}
+            type="button"
+            disabled={busy}
+            onClick={() => quickMode('ai_studio')}
+          >
+            AI Studio Mode
+          </button>
+        </div>
+
+        <label>
+          Current public site mode
+          <select value={settings.site_mode || 'hidden_gems'} onChange={(e) => setSetting('site_mode', e.target.value)}>
+            <option value="hidden_gems">Hidden Gems</option>
+            <option value="ai_studio">AI Studio</option>
+          </select>
         </label>
 
         <label className="check">
           <input
             type="checkbox"
-            checked={settings.disable_age_gate}
+            checked={Boolean(settings.ai_studio_public_mode)}
+            onChange={(e) => setSetting('ai_studio_public_mode', e.target.checked)}
+          />
+          Enable AI Studio public mode
+        </label>
+
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={settings.hide_hidden_gems_branding !== false}
+            onChange={(e) => setSetting('hide_hidden_gems_branding', e.target.checked)}
+          />
+          Hide Hidden Gems branding/content while AI mode is active
+        </label>
+
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={settings.hide_video_marketplace_in_ai_mode !== false}
+            onChange={(e) => setSetting('hide_video_marketplace_in_ai_mode', e.target.checked)}
+          />
+          Hide video marketplace pages while AI mode is active
+        </label>
+
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={Boolean(settings.disable_age_gate)}
             onChange={(e) => setSetting('disable_age_gate', e.target.checked)}
           />
           Disable/hide the 18+ entry popup
@@ -126,13 +204,43 @@ export default function AdminSiteControlsPanel() {
         <label className="check">
           <input
             type="checkbox"
-            checked={settings.safe_mode_enabled}
+            checked={Boolean(settings.hide_all_videos)}
+            onChange={(e) => setSetting('hide_all_videos', e.target.checked)}
+          />
+          Hide all current videos from public pages
+        </label>
+
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={Boolean(settings.safe_mode_enabled)}
             onChange={(e) => setSetting('safe_mode_enabled', e.target.checked)}
           />
           Safe mode enabled
         </label>
 
-        <button className="button full" disabled={busy}>{busy ? 'Saving...' : 'Save Visibility Settings'}</button>
+        <hr />
+
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={settings.show_admin_mode_switch !== false}
+            onChange={(e) => setSetting('show_admin_mode_switch', e.target.checked)}
+          />
+          Show admin-only “Return to Hidden Gems” button in AI mode
+        </label>
+
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={Boolean(settings.show_public_mode_switch)}
+            onChange={(e) => setSetting('show_public_mode_switch', e.target.checked)}
+          />
+          Show public mode switch button to guests/users
+        </label>
+
+        <button className="button full" disabled={busy}>{busy ? 'Saving...' : 'Save Mode Settings'}</button>
+        {message && <p className="notice-text">{message}</p>}
       </form>
 
       <div className="card admin-list page-content-manager">
@@ -197,8 +305,6 @@ export default function AdminSiteControlsPanel() {
             </article>
           ))}
         </div>
-
-        {message && <p className="notice-text">{message}</p>}
       </div>
     </section>
   )

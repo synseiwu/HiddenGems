@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { Bot, Gem, MessageSquarePlus, Send, Sparkles } from 'lucide-react'
 import Loader from '../components/Loader'
 import EmptyState from '../components/EmptyState'
-import { getAISettings, getWallet, listAIConversations, listAIMessages, sendAIMessage } from '../lib/api'
+import { getAISettings, getPublicSiteSettings, getWallet, listAIConversations, listAIMessages, saveAdminSiteSettings, sendAIMessage } from '../lib/api'
 import { useAuth } from '../hooks/useAuth'
 import '../styles/ai-studio.css'
 
@@ -18,6 +18,8 @@ export default function AiStudio() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [siteSettings, setSiteSettings] = useState({ site_mode: 'hidden_gems', show_admin_mode_switch: true, show_public_mode_switch: false })
+  const [modeMessage, setModeMessage] = useState('')
 
   const messageCost = useMemo(() => {
     if (!settings) return 0
@@ -26,15 +28,17 @@ export default function AiStudio() {
   }, [settings, isAdmin])
 
   async function refreshShell() {
-    const [settingsData, walletData, conversationData] = await Promise.all([
+    const [settingsData, walletData, conversationData, publicSettings] = await Promise.all([
       getAISettings(),
       user ? getWallet() : Promise.resolve({ points_balance: 0 }),
-      user ? listAIConversations() : Promise.resolve([])
+      user ? listAIConversations() : Promise.resolve([]),
+      getPublicSiteSettings().catch(() => ({ site_mode: 'hidden_gems' }))
     ])
 
     setSettings(settingsData)
     setWallet(walletData)
     setConversations(conversationData)
+    setSiteSettings(publicSettings)
   }
 
   useEffect(() => {
@@ -93,6 +97,20 @@ export default function AiStudio() {
     }
   }
 
+
+  async function returnToHiddenGemsMode() {
+    if (!isAdmin) return
+    setModeMessage('')
+    const next = { ...siteSettings, site_mode: 'hidden_gems', ai_studio_public_mode: false }
+    try {
+      await saveAdminSiteSettings(next)
+      setSiteSettings(next)
+      setModeMessage('Hidden Gems mode restored. Go to the homepage to view it.')
+    } catch (err) {
+      setModeMessage(err.message)
+    }
+  }
+
   if (loading) return <Loader />
 
   if (!settings?.enabled && !isAdmin) {
@@ -117,6 +135,20 @@ export default function AiStudio() {
           <span><Sparkles size={16} /> Cost: {messageCost} points/message</span>
           <span><Bot size={16} /> Model: {settings?.model || 'AI'}</span>
         </div>
+
+        {isAdmin && siteSettings.show_admin_mode_switch !== false && (
+          <div className="actions centered-text">
+            <button className="ghost-button" type="button" onClick={returnToHiddenGemsMode}>
+              Admin: Return to Hidden Gems
+            </button>
+          </div>
+        )}
+        {!isAdmin && siteSettings.show_public_mode_switch && (
+          <div className="actions centered-text">
+            <Link className="ghost-button" to="/">Switch Mode</Link>
+          </div>
+        )}
+        {modeMessage && <p className="notice-text">{modeMessage}</p>}
       </section>
 
       <section className="ai-studio-layout">

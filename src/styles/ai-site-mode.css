@@ -1,0 +1,86 @@
+/* AI Studio public site mode */
+.ai-public-home {
+  max-width: 1240px;
+}
+
+.ai-public-hero h1 {
+  max-width: 820px;
+}
+
+.ai-public-card {
+  display: grid;
+  gap: 1rem;
+  align-content: start;
+  overflow: hidden;
+}
+
+.ai-public-card h2,
+.ai-public-card p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ai-public-stats {
+  display: grid;
+  gap: .65rem;
+}
+
+.ai-public-stats span,
+.ai-mode-switch-card {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  width: fit-content;
+  max-width: 100%;
+  padding: .65rem .8rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(255,255,255,.045);
+  color: var(--muted);
+}
+
+.ai-feature-grid .mini-card {
+  overflow: hidden;
+}
+
+.ai-feature-grid .mini-card p {
+  overflow-wrap: anywhere;
+}
+
+.ai-public-cta {
+  display: grid;
+  gap: .9rem;
+  max-width: 780px;
+  margin: 0 auto;
+  padding: clamp(1.35rem, 3vw, 2rem) !important;
+}
+
+.ai-public-cta h2,
+.ai-public-cta p {
+  margin: 0;
+}
+
+.mode-toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .75rem;
+}
+
+.safe-mode-card hr {
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: .5rem 0;
+}
+
+@media (max-width: 700px) {
+  .mode-toggle-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-public-stats span,
+  .ai-mode-switch-card {
+    width: 100%;
+    border-radius: 18px;
+  }
+}

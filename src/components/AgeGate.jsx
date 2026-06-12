@@ -14,7 +14,7 @@ export default function AgeGate() {
       const settings = await getPublicSiteSettings()
       if (!active) return
 
-      if (settings.disable_age_gate || settings.hide_all_videos || settings.safe_mode_enabled) {
+      if (settings.disable_age_gate || settings.hide_all_videos || settings.safe_mode_enabled || settings.site_mode === 'ai_studio' || settings.ai_studio_public_mode) {
         setStatus('accepted')
         return
       }

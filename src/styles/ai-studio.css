@@ -196,3 +196,6 @@
     grid-template-columns: 1fr;
   }
 }
+
+
+.ai-studio-hero .notice-text { margin-top: .75rem; }

@@ -144,7 +144,7 @@ export async function saveVipTier(tier) {
 export async function listPublishedVideos() {
   if (!supabase) return []
   const settings = await getPublicSiteSettings()
-  if (settings.hide_all_videos || settings.safe_mode_enabled) return []
+  if (shouldHideHiddenGemsContent(settings)) return []
   const { data, error } = await supabase
     .from('videos_safe')
     .select('*')
@@ -157,7 +157,7 @@ export async function listPublishedVideos() {
 export async function getVideoDetails(videoId) {
   if (!supabase) return null
   const settings = await getPublicSiteSettings()
-  if (settings.hide_all_videos || settings.safe_mode_enabled) throw new Error('Video content is temporarily unavailable.')
+  if (shouldHideHiddenGemsContent(settings)) throw new Error('Video content is temporarily unavailable.')
   const { data, error } = await supabase.from('videos_safe').select('*').eq('id', videoId).single()
   if (error) throw error
   return data
@@ -166,7 +166,7 @@ export async function getVideoDetails(videoId) {
 export async function getUnlockedVideo(videoId) {
   if (!supabase) return null
   const settings = await getPublicSiteSettings()
-  if (settings.hide_all_videos || settings.safe_mode_enabled) return null
+  if (shouldHideHiddenGemsContent(settings)) return null
   const { data, error } = await supabase.rpc('get_unlocked_video', { target_video_id: videoId })
   if (error) throw error
   return data?.[0] || null
@@ -175,7 +175,7 @@ export async function getUnlockedVideo(videoId) {
 export async function listLibrary() {
   if (!supabase) return []
   const settings = await getPublicSiteSettings()
-  if (settings.hide_all_videos || settings.safe_mode_enabled) return []
+  if (shouldHideHiddenGemsContent(settings)) return []
   const { data, error } = await supabase.rpc('get_my_library')
   if (error) throw error
   return data || []
@@ -556,7 +556,7 @@ export async function listHomepageShowcaseRowsAdmin() {
 export async function listHomepageShowcaseRows() {
   if (!supabase) return []
   const settings = await getPublicSiteSettings()
-  if (settings.hide_all_videos || settings.safe_mode_enabled) return []
+  if (shouldHideHiddenGemsContent(settings)) return []
   const { data, error } = await supabase
     .from('homepage_showcase_rows_public')
     .select('*')
@@ -763,7 +763,26 @@ export function categorySlug(value) {
 const DEFAULT_SITE_SETTINGS = {
   hide_all_videos: false,
   disable_age_gate: false,
-  safe_mode_enabled: false
+  safe_mode_enabled: false,
+  site_mode: 'hidden_gems',
+  ai_studio_public_mode: false,
+  hide_hidden_gems_branding: true,
+  hide_video_marketplace_in_ai_mode: true,
+  show_admin_mode_switch: true,
+  show_public_mode_switch: false
+}
+
+
+export function isAIStudioMode(settings = {}) {
+  return settings.site_mode === 'ai_studio' || Boolean(settings.ai_studio_public_mode)
+}
+
+export function shouldHideHiddenGemsContent(settings = {}) {
+  return Boolean(
+    settings.hide_all_videos ||
+    settings.safe_mode_enabled ||
+    (isAIStudioMode(settings) && settings.hide_video_marketplace_in_ai_mode)
+  )
 }
 
 export async function getPublicSiteSettings() {
@@ -792,9 +811,16 @@ export async function saveAdminSiteSettings(settings) {
   if (!supabase) throw new Error('Supabase is not configured.')
   const payload = {
     id: true,
+    key: 'global',
     hide_all_videos: Boolean(settings.hide_all_videos),
     disable_age_gate: Boolean(settings.disable_age_gate),
     safe_mode_enabled: Boolean(settings.safe_mode_enabled),
+    site_mode: settings.site_mode === 'ai_studio' ? 'ai_studio' : 'hidden_gems',
+    ai_studio_public_mode: Boolean(settings.ai_studio_public_mode),
+    hide_hidden_gems_branding: settings.hide_hidden_gems_branding !== false,
+    hide_video_marketplace_in_ai_mode: settings.hide_video_marketplace_in_ai_mode !== false,
+    show_admin_mode_switch: settings.show_admin_mode_switch !== false,
+    show_public_mode_switch: Boolean(settings.show_public_mode_switch),
     updated_at: new Date().toISOString()
   }
 

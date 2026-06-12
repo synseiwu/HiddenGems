@@ -1,11 +1,17 @@
 import { Link } from 'react-router-dom'
-import { Crown, Gem, Search, ShieldCheck, Zap } from 'lucide-react'
+import { Bot, BrainCircuit, Crown, Gem, History, Search, ShieldCheck, Sparkles, Wallet, Zap } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { categorySlug, getPublicSiteSettings, listHomepageShowcaseRows, listPublishedVideos } from '../lib/api'
+import {
+  categorySlug,
+  getPublicSiteSettings,
+  listHomepageShowcaseRows,
+  listPublishedVideos,
+  saveAdminSiteSettings
+} from '../lib/api'
 import VideoCard from '../components/VideoCard'
 import { useAuth } from '../hooks/useAuth'
 import useSiteContent from '../hooks/useSiteContent'
-
+import '../styles/ai-site-mode.css'
 
 function buildViewAllLink(row) {
   const categoryName = row.category_names?.[0]
@@ -42,16 +48,113 @@ function ShowcaseRow({ row }) {
   )
 }
 
+function AIStudioHome({ user, isAdmin, siteSettings, onReturnHiddenGems }) {
+  const showAdminSwitch = isAdmin && siteSettings.show_admin_mode_switch !== false
+  const showPublicSwitch = Boolean(siteSettings.show_public_mode_switch)
+
+  return (
+    <div className="page ai-public-home">
+      <section className="hero grid-2 ai-public-hero">
+        <div>
+          <span className="eyebrow">AI Studio</span>
+          <h1>AI tools powered by your points wallet.</h1>
+          <p>
+            Use your existing account points to chat with AI, save conversations, and access account-based AI tools
+            inside the same Hidden Gems platform.
+          </p>
+          <div className="actions">
+            <Link className="button" to={user ? '/ai-studio' : '/login'}>
+              <Bot size={16} />
+              {user ? 'Start AI Chat' : 'Login to Start'}
+            </Link>
+            <Link className="ghost-button" to="/points">
+              <Wallet size={16} />
+              Buy Points
+            </Link>
+            {!user && <Link className="ghost-button" to="/signup">Create Account</Link>}
+          </div>
+
+          {(showAdminSwitch || showPublicSwitch) && (
+            <div className="ai-mode-switch-card">
+              {showAdminSwitch ? (
+                <button className="ghost-button" type="button" onClick={onReturnHiddenGems}>
+                  Admin: Return to Hidden Gems
+                </button>
+              ) : (
+                <Link className="ghost-button" to="/about">About the platform</Link>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="card glow ai-public-card">
+          <Sparkles size={46} />
+          <h2>Same points. New AI access.</h2>
+          <p>
+            The AI Studio uses the existing points wallet. No second balance, no separate account, and no duplicated checkout system.
+          </p>
+          <div className="ai-public-stats">
+            <span><Gem size={16} /> Point-based usage</span>
+            <span><History size={16} /> Saved chat history</span>
+            <span><ShieldCheck size={16} /> Account protected</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="section info-grid ai-feature-grid">
+        <article className="card mini-card">
+          <BrainCircuit />
+          <h3>AI chat access</h3>
+          <p>Send prompts and receive AI responses inside your logged-in account.</p>
+        </article>
+        <article className="card mini-card">
+          <Wallet />
+          <h3>Wallet aligned</h3>
+          <p>AI messages use the same Hidden Gems points balance already attached to your account.</p>
+        </article>
+        <article className="card mini-card">
+          <ShieldCheck />
+          <h3>Admin controlled</h3>
+          <p>Admins can control AI cost, model, prompts, and public mode from the Admin Panel.</p>
+        </article>
+      </section>
+
+      <section className="card centered-text ai-public-cta">
+        <span className="eyebrow">Ready</span>
+        <h2>Start using AI Studio</h2>
+        <p>Buy points once, then use them for AI access and other enabled platform features.</p>
+        <div className="actions centered-text">
+          <Link className="button" to={user ? '/ai-studio' : '/login'}>{user ? 'Open AI Studio' : 'Login'}</Link>
+          <Link className="ghost-button" to="/points">Buy Points</Link>
+        </div>
+      </section>
+    </div>
+  )
+}
+
 export default function Home() {
-  const { user } = useAuth()
+  const { user, isAdmin } = useAuth()
   const [featured, setFeatured] = useState([])
   const [showcaseRows, setShowcaseRows] = useState([])
   const [loadingRows, setLoadingRows] = useState(false)
-  const [siteSettings, setSiteSettings] = useState({ hide_all_videos: false, safe_mode_enabled: false })
+  const [siteSettings, setSiteSettings] = useState({
+    hide_all_videos: false,
+    safe_mode_enabled: false,
+    site_mode: 'hidden_gems',
+    ai_studio_public_mode: false,
+    show_admin_mode_switch: true,
+    show_public_mode_switch: false
+  })
+  const [modeMessage, setModeMessage] = useState('')
   const { sections } = useSiteContent('home')
+
+  const isAiMode = siteSettings.site_mode === 'ai_studio' || siteSettings.ai_studio_public_mode
 
   useEffect(() => {
     if (!user) {
+      getPublicSiteSettings()
+        .then(setSiteSettings)
+        .catch(() => {})
       setFeatured([])
       setShowcaseRows([])
       return
@@ -60,7 +163,7 @@ export default function Home() {
     setLoadingRows(true)
 
     Promise.all([
-      getPublicSiteSettings().catch(() => ({ hide_all_videos: false, safe_mode_enabled: false })),
+      getPublicSiteSettings().catch(() => ({ hide_all_videos: false, safe_mode_enabled: false, site_mode: 'hidden_gems' })),
       listHomepageShowcaseRows().catch(() => []),
       listPublishedVideos().catch(() => [])
     ]).then(([settings, rows, videos]) => {
@@ -72,13 +175,44 @@ export default function Home() {
 
   const hasShowcaseRows = useMemo(() => user && showcaseRows.some((row) => (row.videos || []).length), [user, showcaseRows])
 
+  async function returnToHiddenGems() {
+    if (!isAdmin) return
+    setModeMessage('')
+    const next = {
+      ...siteSettings,
+      site_mode: 'hidden_gems',
+      ai_studio_public_mode: false
+    }
+    try {
+      await saveAdminSiteSettings(next)
+      setSiteSettings(next)
+      setModeMessage('Hidden Gems mode restored.')
+    } catch (err) {
+      setModeMessage(err.message)
+    }
+  }
+
+  if (isAiMode) {
+    return (
+      <>
+        <AIStudioHome
+          user={user}
+          isAdmin={isAdmin}
+          siteSettings={siteSettings}
+          onReturnHiddenGems={returnToHiddenGems}
+        />
+        {modeMessage && <p className="notice-text centered-text">{modeMessage}</p>}
+      </>
+    )
+  }
+
   return (
     <div className="page">
       <section className="hero grid-2">
         <div>
-          <span className="eyebrow">{sections.hero?.eyebrow || "Premium video marketplace"}</span>
-          <h1>{sections.hero?.title || "Unlock Exclusive Hidden Gems"}</h1>
-          <p>{sections.hero?.subtitle || "Buy point packs, spend points on curated video drops, and open protected external links from your personal library after access is verified."}</p>
+          <span className="eyebrow">{sections.hero?.eyebrow || 'Premium video marketplace'}</span>
+          <h1>{sections.hero?.title || 'Unlock Exclusive Hidden Gems'}</h1>
+          <p>{sections.hero?.subtitle || 'Buy point packs, spend points on curated video drops, and open protected external links from your personal library after access is verified.'}</p>
           <div className="actions">
             <Link className="button" to="/videos">Browse Videos</Link>
             <Link className="ghost-button" to="/points">Buy Points</Link>
@@ -87,65 +221,52 @@ export default function Home() {
         </div>
         <div className="vip-card card glow">
           <Gem size={44} />
-          <h2>Points System</h2>
-          <p>Users buy points through Stripe, unlock the exact videos they want, and open approved partner links after verification. VIP remains subscription-based.</p>
-          <Link className="button full" to="/points">View Point Packs</Link>
+          <h2>Points and VIP stay separate</h2>
+          <p>Points unlock standard videos one by one. VIP tiers unlock tier-based vault releases while subscriptions are active.</p>
         </div>
       </section>
 
-      {user ? (
-        <>
-          {loadingRows && (
-            <section className="section">
-              <div className="card info-card">
-                <h3>Loading homepage showcase...</h3>
-                <p>Fetching admin-selected category rows.</p>
-              </div>
-            </section>
-          )}
+      <section className="section info-grid">
+        <article className="card mini-card"><Search /><h3>Browse</h3><p>Search the catalog by category, title, or newest drops.</p></article>
+        <article className="card mini-card"><ShieldCheck /><h3>Unlock</h3><p>Use points or VIP access to unlock protected external access links.</p></article>
+        <article className="card mini-card"><Zap /><h3>Fast</h3><p>Optimized thumbnails and external delivery keep the site lightweight.</p></article>
+      </section>
 
-          {hasShowcaseRows ? (
-            showcaseRows.map((row) => <ShowcaseRow key={row.id} row={row} />)
-          ) : (
-            <section className="section">
-              <div className="section-heading">
-                <span className="eyebrow">Featured</span>
-                <h2>Latest Gems</h2>
-              </div>
-              <div className="video-grid">
-                {featured.map((video) => <VideoCard key={video.id} video={video} />)}
-              </div>
-              {!featured.length && (
-                <div className="card info-card">
-                  <h3>No homepage showcase rows yet</h3>
-                  <p>Admin can add homepage category rows from Admin Panel → Homepage Showcase.</p>
-                </div>
-              )}
-            </section>
-          )}
-        </>
-      ) : (
+      {(siteSettings.hide_all_videos || siteSettings.safe_mode_enabled) && user && (
         <section className="section">
-          <div className="section-heading">
-            <span className="eyebrow">Featured</span>
-            <h2>Sign in to view videos</h2>
-          </div>
-          <div className="card info-card locked-home-card">
-            <h3>Video browsing is account-only</h3>
-            <p>Create a free account, confirm you are 18+, then log in to browse video listings, previews, points, VIP, and your personal library.</p>
-            <div className="actions">
-              <Link className="button" to="/signup">Create Account</Link>
-              <Link className="ghost-button" to="/login">Login</Link>
-            </div>
+          <div className="card centered-text safe-mode-public-card">
+            <span className="eyebrow">{sections.safe_mode?.eyebrow || 'Update in progress'}</span>
+            <h2>{sections.safe_mode?.title || 'Content is temporarily unavailable'}</h2>
+            <p>{sections.safe_mode?.subtitle || 'The marketplace is being updated. Please check back soon.'}</p>
           </div>
         </section>
       )}
 
-      <section className="feature-grid">
-        <div className="card"><Gem /><h3>Point-based access</h3><p>Buy points once, then spend them only on the videos you choose to unlock.</p></div>
-        <div className="card"><ShieldCheck /><h3>Protected links</h3><p>Full external links remain hidden until points, VIP, or admin access is verified.</p></div>
-        <div className="card"><Zap /><h3>Fast browsing</h3><p>Only optimized thumbnails and optional previews load on-site, keeping the marketplace lightweight.</p></div>
-      </section>
+      {user && hasShowcaseRows && showcaseRows.map((row) => <ShowcaseRow key={row.id} row={row} />)}
+
+      {user && !hasShowcaseRows && !loadingRows && featured.length > 0 && (
+        <section className="section">
+          <div className="section-heading">
+            <span className="eyebrow">Featured</span>
+            <h2>Recent Gems</h2>
+          </div>
+          <div className="video-grid">
+            {featured.map((video) => <VideoCard key={video.id} video={video} />)}
+          </div>
+        </section>
+      )}
+
+      {!user && (
+        <section className="card centered-text">
+          <Crown size={40} />
+          <h2>Members only browsing</h2>
+          <p>Create an account or log in to browse videos, buy points, and unlock access.</p>
+          <div className="actions centered-text">
+            <Link className="button" to="/signup">Create Account</Link>
+            <Link className="ghost-button" to="/login">Login</Link>
+          </div>
+        </section>
+      )}
     </div>
   )
 }
