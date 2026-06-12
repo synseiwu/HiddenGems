@@ -1,0 +1,116 @@
+/* Centered daily/starter reward popup */
+.reward-popup-backdrop,
+.starter-bonus-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: grid;
+  place-items: center;
+  padding: clamp(1rem, 4vw, 2rem);
+  background:
+    radial-gradient(circle at 50% 20%, rgba(243, 193, 75, 0.12), transparent 24rem),
+    rgba(4, 3, 8, 0.78);
+  backdrop-filter: blur(16px);
+}
+
+.reward-popup-card,
+.starter-bonus-card {
+  position: relative;
+  width: min(540px, 100%);
+  display: grid;
+  gap: 0.9rem;
+  padding: clamp(1.35rem, 4vw, 2.1rem) !important;
+  text-align: center;
+  overflow: hidden;
+  border-color: rgba(243, 193, 75, 0.48);
+  box-shadow:
+    0 28px 90px rgba(0, 0, 0, 0.58),
+    0 0 52px rgba(255, 79, 171, 0.14),
+    0 0 42px rgba(243, 193, 75, 0.12);
+}
+
+.reward-popup-card::before,
+.starter-bonus-card::before {
+  content: '';
+  position: absolute;
+  inset: -30%;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(243, 193, 75, 0.2), transparent 34%),
+    radial-gradient(circle at 80% 80%, rgba(255, 79, 171, 0.16), transparent 30%);
+  pointer-events: none;
+}
+
+.reward-popup-card > *,
+.starter-bonus-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.reward-popup-close,
+.starter-bonus-close {
+  position: absolute;
+  top: 0.9rem;
+  right: 0.9rem;
+  z-index: 3;
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.reward-popup-close:hover,
+.starter-bonus-close:hover {
+  background: rgba(255,255,255,0.14);
+}
+
+.reward-popup-icon,
+.starter-bonus-icon {
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 0.1rem;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #08070d;
+  background: linear-gradient(135deg, var(--gold), var(--pink));
+  box-shadow: 0 16px 36px rgba(255, 79, 171, 0.24);
+}
+
+.reward-popup-card h2,
+.starter-bonus-card h2 {
+  margin: 0;
+  font-size: clamp(1.75rem, 5vw, 2.65rem);
+  line-height: 1.08;
+  overflow-wrap: anywhere;
+}
+
+.reward-popup-card p,
+.starter-bonus-card p {
+  margin: 0;
+  line-height: 1.65;
+}
+
+.reward-popup-card strong,
+.starter-bonus-card strong {
+  color: var(--gold);
+}
+
+.reward-popup-actions,
+.starter-bonus-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-top: 0.45rem;
+}
+
+@media (max-width: 560px) {
+  .reward-popup-actions,
+  .starter-bonus-actions {
+    grid-template-columns: 1fr;
+  }
+}

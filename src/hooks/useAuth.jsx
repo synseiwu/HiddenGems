@@ -1,8 +1,67 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { claimDailyLoginReward, claimStarterBonus, getCurrentProfile } from '../lib/api'
 
 const AuthContext = createContext(null)
+
+function localRewardDateKey() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function buildRewardNotice(starterResult, dailyResult) {
+  const starterGranted = Boolean(starterResult?.granted)
+  const dailyGranted = Boolean(dailyResult?.granted)
+
+  if (!starterGranted && !dailyGranted) return null
+
+  const starterAmount = starterGranted ? Number(starterResult?.amount || 300) : 0
+  const dailyAmount = dailyGranted ? Number(dailyResult?.amount || 0) : 0
+  const totalPoints = starterAmount + dailyAmount
+
+  const finalBalance = Number(
+    dailyResult?.points_balance ??
+    starterResult?.points_balance ??
+    totalPoints
+  )
+
+  if (starterGranted && dailyGranted) {
+    return {
+      title: 'Points Reward',
+      message: `You received ${totalPoints} points!`,
+      details: `Starter bonus: ${starterAmount} points • Daily login bonus: ${dailyAmount} points`,
+      points: totalPoints,
+      balance: finalBalance,
+      cta: 'Buy More Points',
+      to: '/points'
+    }
+  }
+
+  if (starterGranted) {
+    return {
+      title: 'Starter Bonus',
+      message: `You received ${starterAmount} free starter points!`,
+      details: 'Welcome bonus added to your account.',
+      points: starterAmount,
+      balance: finalBalance,
+      cta: 'Buy More Points',
+      to: '/points'
+    }
+  }
+
+  return {
+    title: 'Daily Login Bonus',
+    message: `Welcome back — you received ${dailyAmount} points!`,
+    details: 'Come back tomorrow to claim your next daily reward.',
+    points: dailyAmount,
+    balance: finalBalance,
+    cta: 'Buy More Points',
+    to: '/points'
+  }
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
@@ -10,47 +69,33 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
   const [rewardNotice, setRewardNotice] = useState(null)
   const rewardCheckedRef = useRef(new Set())
+  const activeUserRef = useRef(null)
 
-  async function runRewardChecks(nextUser) {
-    if (!nextUser?.id || rewardCheckedRef.current.has(nextUser.id)) return
+  const checkRewardsForUser = useCallback(async (nextUser, options = {}) => {
+    if (!nextUser) return null
 
-    rewardCheckedRef.current.add(nextUser.id)
+    const todayKey = localRewardDateKey()
+    const checkKey = `${nextUser.id}:${todayKey}`
+    const force = Boolean(options.force)
 
-    const starterResult = await claimStarterBonus().catch((err) => {
-      console.warn('Starter bonus check failed:', err.message)
-      return { granted: false }
-    })
+    if (!force && rewardCheckedRef.current.has(checkKey)) return null
+    rewardCheckedRef.current.add(checkKey)
 
-    const dailyResult = await claimDailyLoginReward().catch((err) => {
-      console.warn('Daily login reward failed:', err.message)
-      return { granted: false }
-    })
+    const starterResult = await claimStarterBonus()
+    const dailyResult = await claimDailyLoginReward()
 
-    if (starterResult?.granted) {
-      setRewardNotice({
-        title: 'Starter Bonus',
-        message: `You received ${Number(starterResult.amount || 300)} free starter points!`,
-        points: Number(starterResult.amount || 300),
-        balance: Number(starterResult.points_balance || 300),
-        cta: 'Buy More Points',
-        to: '/points'
-      })
-      return
+    const notice = buildRewardNotice(starterResult, dailyResult)
+
+    if (notice) {
+      setRewardNotice(notice)
+      window.dispatchEvent(new Event('wallet:refresh'))
     }
 
-    if (dailyResult?.granted) {
-      setRewardNotice({
-        title: 'Daily Reward',
-        message: `Daily reward claimed! You received ${Number(dailyResult.amount || 0)} points.`,
-        points: Number(dailyResult.amount || 0),
-        balance: Number(dailyResult.points_balance || 0),
-        cta: 'Buy More Points',
-        to: '/points'
-      })
-    }
-  }
+    return notice
+  }, [])
 
   async function hydrate(nextUser) {
+    activeUserRef.current = nextUser
     setUser(nextUser)
 
     if (!nextUser) {
@@ -60,9 +105,12 @@ export function AuthProvider({ children }) {
       return
     }
 
-    await runRewardChecks(nextUser)
-    setProfile(await getCurrentProfile(nextUser.id))
-    setLoading(false)
+    try {
+      await checkRewardsForUser(nextUser)
+      setProfile(await getCurrentProfile(nextUser.id))
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -78,7 +126,24 @@ export function AuthProvider({ children }) {
     })
 
     return () => listener.subscription.unsubscribe()
-  }, [])
+  }, [checkRewardsForUser])
+
+  useEffect(() => {
+    function checkNextDayReward() {
+      const currentUser = activeUserRef.current
+      if (!currentUser) return
+      checkRewardsForUser(currentUser).catch(() => {})
+    }
+
+    window.addEventListener('focus', checkNextDayReward)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') checkNextDayReward()
+    })
+
+    return () => {
+      window.removeEventListener('focus', checkNextDayReward)
+    }
+  }, [checkRewardsForUser])
 
   const value = useMemo(
     () => {
