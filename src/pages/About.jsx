@@ -1,37 +1,44 @@
 import { Link } from 'react-router-dom'
-import { ExternalLink, Gem, ShieldCheck, Zap } from 'lucide-react'
+import { Bot, ExternalLink, Gem, ShieldCheck, Zap } from 'lucide-react'
+import { useAuth } from '../hooks/useAuth'
 
 export default function About() {
+  const { isAdmin } = useAuth()
+
   return (
     <div className="page info-page">
       <section className="card info-hero-card">
         <span className="eyebrow">About</span>
         <h1>About Hidden Gems</h1>
         <p>
-          Hidden Gems is a premium digital video storefront built for rare drops, curated vault content,
-          and account-based access. The platform is designed to stay fast by keeping heavy video files off-site
-          while protecting full access links until a user is verified.
+          Hidden Gems is a premium digital access platform built for rare drops, curated vault content,
+          point-based unlocks, VIP tiers, and account-based access. The platform is designed to stay fast by keeping
+          heavy files off-site while protecting full access links until a user is verified.
         </p>
         <p>
-          Users buy point packs through secure Stripe checkout, then spend those points to unlock selected videos.
-          Once unlocked, the selected title appears in the user&apos;s Library and the approved external access link becomes available.
+          Users buy point packs, spend points to unlock selected digital releases, and access approved external links
+          from their Library after access is verified.
         </p>
         <p>
-          VIP members get access to VIP-only vault releases while their subscription is active. Preview content may be
-          available before unlocking, and some previews may open externally if an embed is not supported by the provider.
+          Hidden Gems also includes an internal AI Studio module for account-based AI usage, admin-controlled point costs,
+          and saved AI conversations inside the same platform.
         </p>
-        <p>
-          Hidden Gems content is roleplay-based digital entertainment and is provided purely as content. Any themes,
-          scenarios, titles, previews, or vault releases should be understood as fictional/roleplay media created for
-          entertainment purposes only.
-        </p>
+
+        {isAdmin && (
+          <div className="actions admin-ai-shortcut">
+            <Link className="button" to="/ai-studio">
+              <Bot size={16} />
+              Open AI Studio
+            </Link>
+          </div>
+        )}
       </section>
 
       <section className="section info-grid">
         <article className="card mini-card">
           <Gem />
           <h3>Point-based access</h3>
-          <p>Buy points once, then spend them only on the videos you choose to unlock.</p>
+          <p>Buy points once, then spend them only on the digital access you choose to unlock.</p>
         </article>
         <article className="card mini-card">
           <ShieldCheck />
@@ -43,11 +50,6 @@ export default function About() {
           <h3>Fast browsing</h3>
           <p>Only optimized thumbnails and optional previews load on-site, keeping the marketplace lightweight.</p>
         </article>
-        <article className="card mini-card">
-          <ShieldCheck />
-          <h3>Roleplay content</h3>
-          <p>Hidden Gems media is purely digital roleplay entertainment and should be viewed as fictional content.</p>
-        </article>
       </section>
 
       <section className="card info-card partner-card">
@@ -55,10 +57,10 @@ export default function About() {
         <h2>PikPak, Mega, and approved file access</h2>
         <p>
           Hidden Gems uses trusted external access partners such as <strong>PikPak</strong> and <strong>Mega</strong> to provide approved
-          video file access after a user unlocks content through points, VIP access, or admin approval.
+          file access after a user unlocks content through points, VIP access, or admin approval.
         </p>
         <p>
-          Full videos are not hosted directly on Hidden Gems. External links are part of the approved Hidden Gems access flow,
+          Full files are not hosted directly on Hidden Gems. External links are part of the approved Hidden Gems access flow,
           and they are revealed only after access has been verified. If a preview provider blocks embedded playback,
           users can still open the preview in a new tab.
         </p>

@@ -32,6 +32,7 @@ export default function Layout() {
           <NavLink onClick={close} to="/vip">VIP</NavLink>
           {user && <NavLink onClick={close} to="/forum">Forum</NavLink>}
           {user && <NavLink onClick={close} to="/library">Library</NavLink>}
+          {isAdmin && <NavLink onClick={close} to="/ai-studio">AI Studio</NavLink>}
           {isAdmin && <NavLink onClick={close} to="/admin">Admin Panel</NavLink>}
           {user ? (
             <>

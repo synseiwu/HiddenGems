@@ -869,3 +869,83 @@ export async function resetPageContent(pageKey, sectionKey) {
   if (error) throw error
   return true
 }
+
+
+// AI Studio
+
+export async function getAISettings() {
+  if (!supabase) return { enabled: false, model: 'gpt-4.1-mini', points_per_message: 25, max_output_tokens: 900 }
+  const { data, error } = await supabase
+    .from('ai_settings_public')
+    .select('*')
+    .eq('id', true)
+    .maybeSingle()
+  if (error || !data) return { enabled: false, model: 'gpt-4.1-mini', points_per_message: 25, max_output_tokens: 900 }
+  return data
+}
+
+export async function getAISettingsAdmin() {
+  if (!supabase) return null
+  const { data, error } = await supabase
+    .from('ai_settings')
+    .select('*')
+    .eq('id', true)
+    .maybeSingle()
+  if (error) throw error
+  return data
+}
+
+export async function saveAISettingsAdmin(settings) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const payload = {
+    id: true,
+    enabled: Boolean(settings.enabled),
+    admin_free: Boolean(settings.admin_free),
+    model: String(settings.model || 'gpt-4.1-mini').trim(),
+    points_per_message: Number(settings.points_per_message || 0),
+    max_output_tokens: Number(settings.max_output_tokens || 900),
+    system_prompt: String(settings.system_prompt || '').trim() || 'You are Hidden Gems AI Studio, a helpful assistant inside the Hidden Gems platform. Be useful, clear, and safe.',
+    updated_at: new Date().toISOString()
+  }
+
+  const { data, error } = await supabase
+    .from('ai_settings')
+    .upsert(payload, { onConflict: 'id' })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function listAIConversations() {
+  if (!supabase) return []
+  const { data, error } = await supabase
+    .from('ai_conversations')
+    .select('*')
+    .order('updated_at', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function listAIMessages(conversationId) {
+  if (!supabase || !conversationId) return []
+  const { data, error } = await supabase
+    .from('ai_messages')
+    .select('*')
+    .eq('conversation_id', conversationId)
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
+export async function sendAIMessage({ prompt, conversationId }) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const { data, error } = await supabase.functions.invoke('ai-chat', {
+    body: { prompt, conversationId: conversationId || null }
+  })
+  if (error) throw error
+  if (data?.error) throw new Error(data.error)
+  window.dispatchEvent(new Event('wallet:refresh'))
+  return data
+}

@@ -1,28 +1,37 @@
-# Hidden Gems create-checkout-session VIP Tier Patch
+# Hidden Gems About Page Secret Link Patch
 
-Changed file only:
-- supabase/functions/create-checkout-session/index.ts
+This patch adds a subtle secret link to the existing Hidden Gems `about.html` page.
 
-What this fixes:
-- The checkout function now reads VIP/Super VIP/Ultra VIP prices from `public.vip_tiers`.
-- Supports:
-  - `tierKey: "vip"`
-  - `tierKey: "supervip"`
-  - `tierKey: "ultravip"`
-- Keeps backward compatibility with `VIP_STRIPE_PRICE_ID` for regular VIP only.
-- Keeps point package checkout using `point_packages.stripe_price_id`.
-- Returns clearer error messages instead of a generic 400.
+## What changed
 
-How to deploy:
-1. Replace:
-   supabase/functions/create-checkout-session/index.ts
+Added this low-key line to the About page:
 
-2. From your project root, run:
-   npx supabase@latest functions deploy create-checkout-session --project-ref fdorjxsfljtdlsogivom
+> For creators who know where to look, enter The Lab.
 
-3. Refresh the site and test:
-   - VIP
-   - Super VIP
-   - Ultra VIP
+Only `enter The Lab` is clickable.
 
-No SQL migration is required for this patch.
+## Current destination
+
+The link points to:
+
+https://ai.hiddengems.space
+
+If your AI site is not deployed yet and you want to test locally, change that URL to:
+
+http://localhost:5173/
+
+## How to install
+
+1. Go to your original Hidden Gems website folder.
+2. Find the existing `about.html` file.
+3. Back it up first by renaming it to `about.backup.html`.
+4. Copy this patched `about.html` into the same folder.
+5. Refresh/open `about.html` in your browser and test the secret link.
+
+## Git commands
+
+```bash
+git add about.html
+git commit -m "Add secret lab link to About page"
+git push
+```
