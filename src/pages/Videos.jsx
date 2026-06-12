@@ -1,13 +1,20 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
+import { Bot } from 'lucide-react'
 import VideoCard from '../components/VideoCard'
 import Loader from '../components/Loader'
 import EmptyState from '../components/EmptyState'
+import ModeUnavailable from '../components/ModeUnavailable'
 import { getPublicSiteSettings, listPublishedVideos } from '../lib/api'
 import useSiteContent from '../hooks/useSiteContent'
+import useSiteMode from '../hooks/useSiteMode'
+import { useAuth } from '../hooks/useAuth'
+import '../styles/mode-pages.css'
 
 export default function Videos() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const { isAdmin } = useAuth()
+  const { isAiMode, loading: modeLoading } = useSiteMode()
   const [videos, setVideos] = useState([])
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState(searchParams.get('q') || '')
@@ -17,8 +24,13 @@ export default function Videos() {
   const { sections } = useSiteContent('videos')
 
   useEffect(() => {
+    if (modeLoading) return
+    if (isAiMode && !isAdmin) {
+      setLoading(false)
+      return
+    }
     Promise.all([getPublicSiteSettings(), listPublishedVideos()]).then(([settings, data]) => { setSiteSettings(settings); setVideos(data) }).finally(() => setLoading(false))
-  }, [])
+  }, [isAiMode, isAdmin, modeLoading])
 
   const categories = useMemo(() => {
     const unique = new Map()
@@ -84,17 +96,44 @@ export default function Videos() {
       })
   }, [videos, query, category, sort])
 
-  if (loading) return <Loader />
+  if (loading || modeLoading) return <Loader />
+
+  if (isAiMode && !isAdmin) {
+    return (
+      <ModeUnavailable
+        title="Marketplace browsing is hidden"
+        text="AI Studio Mode is active, so the public site is focused on AI tools and point-based AI access."
+      />
+    )
+  }
+
+  if (isAiMode && isAdmin) {
+    return (
+      <div className="page">
+        <section className="card mode-admin-note">
+          <Bot size={34} />
+          <div>
+            <span className="eyebrow">Admin Notice</span>
+            <h1>Videos are hidden from public AI Studio Mode</h1>
+            <p>You can still manage videos in the Admin Panel. Switch back to Hidden Gems Mode to restore public marketplace browsing.</p>
+          </div>
+          <Link className="button" to="/admin">Open Admin Panel</Link>
+        </section>
+      </div>
+    )
+  }
+
+  const hidden = siteSettings.hide_all_videos || siteSettings.safe_mode_enabled
 
   return (
-    <div className="page">
-      <section className="section-heading">
-        <span className="eyebrow">{(siteSettings.hide_all_videos || siteSettings.safe_mode_enabled) ? (sections.hidden?.eyebrow || "Unavailable") : (sections.hero?.eyebrow || "Browse")}</span>
-        <h1>{(siteSettings.hide_all_videos || siteSettings.safe_mode_enabled) ? (sections.hidden?.title || "Videos are temporarily unavailable") : (sections.hero?.title || "All Videos")}</h1>
-        <p>{(siteSettings.hide_all_videos || siteSettings.safe_mode_enabled) ? (sections.hidden?.subtitle || "The video marketplace is currently hidden while the site is being updated.") : (sections.hero?.subtitle || "Search, sort, and filter by category. Protected links stay hidden until access is verified.")}</p>
+    <div className="page mode-aware-page">
+      <section className="section-heading mode-section-heading">
+        <span className="eyebrow">{hidden ? (sections.hidden?.eyebrow || 'Unavailable') : (sections.hero?.eyebrow || 'Browse')}</span>
+        <h1>{hidden ? (sections.hidden?.title || 'Videos are temporarily unavailable') : (sections.hero?.title || 'All Videos')}</h1>
+        <p>{hidden ? (sections.hidden?.subtitle || 'The video marketplace is currently hidden while the site is being updated.') : (sections.hero?.subtitle || 'Search, sort, and filter by category. Protected links stay hidden until access is verified.')}</p>
       </section>
 
-      <section className="filters card">
+      <section className="filters card mode-filters">
         <input
           value={query}
           onChange={(e) => {
@@ -118,11 +157,11 @@ export default function Videos() {
       </section>
 
       {filtered.length ? (
-        <div className="video-grid">
+        <section className="video-grid">
           {filtered.map((video) => <VideoCard key={video.id} video={video} />)}
-        </div>
+        </section>
       ) : (
-        <EmptyState title="No videos found" text="Try another search, category, or sort option." />
+        <EmptyState title={hidden ? 'Content unavailable' : 'No videos found'} text={hidden ? 'This content is temporarily hidden.' : 'Try another category or search term.'} />
       )}
     </div>
   )

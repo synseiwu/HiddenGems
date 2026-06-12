@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { MessageSquare, Pin, Send, Trash2 } from 'lucide-react'
+import { Bot, MessageSquare, Pin, Send, Trash2 } from 'lucide-react'
 import {
   createForumPost,
   createForumReply,
@@ -9,16 +9,22 @@ import {
   listForumReplies
 } from '../lib/api'
 import { useAuth } from '../hooks/useAuth'
+import useSiteMode from '../hooks/useSiteMode'
+import '../styles/mode-pages.css'
 import Loader from '../components/Loader'
 
-const categories = ['General Discussion', 'Feedback', 'Requests', 'Site Issues', 'Video Suggestions']
+const hiddenGemsCategories = ['General Discussion', 'Feedback', 'Requests', 'Site Issues', 'Video Suggestions']
+const aiCategories = ['General Discussion', 'AI Feedback', 'Prompt Ideas', 'Site Issues', 'Feature Requests']
 
 function displayName(row) {
-  return row.author_name || String(row.author_email || 'Hidden Gems user').split('@')[0]
+  const email = row.profiles?.email || 'Platform user'
+  return email.split('@')[0]
 }
 
 export default function Forum() {
   const { isAdmin, user } = useAuth()
+  const { isAiMode } = useSiteMode()
+  const categories = isAiMode ? aiCategories : hiddenGemsCategories
   const [posts, setPosts] = useState([])
   const [selected, setSelected] = useState(null)
   const [replies, setReplies] = useState([])
@@ -102,27 +108,26 @@ export default function Forum() {
     <div className="page forum-page">
       <section className="hero centered">
         <span className="eyebrow">Community</span>
-        <h1>Hidden Gems Forum</h1>
-        <p>Talk about site issues, requests, favorite categories, and what you want to see more of.</p>
+        <h1>{isAiMode ? 'AI Studio Forum' : 'Hidden Gems Forum'}</h1>
+        <p>{isAiMode ? 'Talk about AI tools, prompt ideas, account questions, and features you want to see next.' : 'Talk about site issues, requests, favorite categories, and what you want to see more of.'}</p>
       </section>
 
       {message && <p className="notice-text">{message}</p>}
 
       <section className="forum-grid">
         <div className="card admin-form">
-          <h2>Create a Post</h2>
+          <h2>{isAiMode ? 'Create an AI Studio Post' : 'Create a Post'}</h2>
           <form className="vertical" onSubmit={submitPost}>
             <label>Category<select value={postForm.category} onChange={(e) => setPostForm((p) => ({ ...p, category: e.target.value }))}>
               {categories.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
             </select></label>
             <label>Title<input value={postForm.title} onChange={(e) => setPostForm((p) => ({ ...p, title: e.target.value }))} required maxLength={120} /></label>
             <label>Post<textarea value={postForm.body} onChange={(e) => setPostForm((p) => ({ ...p, body: e.target.value }))} required maxLength={3000} /></label>
-            <button className="button full" disabled={busy}>{busy ? 'Posting...' : 'Post to Forum'}</button>
+            <button className="button full" disabled={busy}>{busy ? 'Posting...' : (isAiMode ? 'Post to AI Forum' : 'Post to Forum')}</button>
           </form>
         </div>
 
         <div className="forum-list">
-          {!posts.length && <div className="card forum-post"><h3>No forum posts yet</h3><p>Start the first community discussion.</p></div>}
           {posts.map((post) => (
             <article className={selected?.id === post.id ? 'card forum-post active' : 'card forum-post'} key={post.id} onClick={() => setSelected(post)}>
               <div className="split-line">

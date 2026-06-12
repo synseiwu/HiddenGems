@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Crown, Gem, ShieldCheck, Sparkles } from 'lucide-react'
+import { Bot, BrainCircuit, Crown, Gem, ShieldCheck, Sparkles } from 'lucide-react'
 import { createVipCheckoutSession, listVipTiers } from '../lib/api'
 import { useAuth } from '../hooks/useAuth'
+import useSiteMode from '../hooks/useSiteMode'
 import Loader from '../components/Loader'
+import '../styles/mode-pages.css'
 
 const fallbackTiers = [
   {
@@ -16,8 +18,20 @@ const fallbackTiers = [
   }
 ]
 
+function aiFeatureText(feature) {
+  return String(feature || '')
+    .replaceAll('VIP-only listings', 'Member AI features')
+    .replaceAll('Vault releases', 'Premium AI Studio access')
+    .replaceAll('vault releases', 'AI Studio releases')
+    .replaceAll('vault content', 'AI Studio access')
+    .replaceAll('videos', 'AI tools')
+    .replaceAll('video', 'AI tool')
+    .replaceAll('drops', 'features')
+}
+
 export default function Vip() {
   const { user, vipRank, vipTier } = useAuth()
+  const { isAiMode, loading: modeLoading } = useSiteMode()
   const [tiers, setTiers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -42,31 +56,36 @@ export default function Vip() {
     }
   }
 
-  if (loading) return <Loader />
+  if (loading || modeLoading) return <Loader />
 
   return (
-    <div className="page">
-      <section className="hero centered">
-        <span className="eyebrow">VIP Vault</span>
-        <h1>Choose Your Hidden Gems Tier</h1>
-        <p>VIP tiers unlock role-based vault releases while your subscription is active. Higher tiers include access to lower-tier vault content unless changed by admin.</p>
+    <div className="page mode-aware-page">
+      <section className="hero centered mode-hero">
+        <span className="eyebrow">{isAiMode ? 'AI Membership' : 'VIP Vault'}</span>
+        <h1>{isAiMode ? 'Premium AI Studio Access' : 'Choose Your Hidden Gems Tier'}</h1>
+        <p>
+          {isAiMode
+            ? 'Membership tiers can support expanded AI Studio features while your subscription is active. Points remain the shared wallet for AI messages and enabled tools.'
+            : 'VIP tiers unlock role-based vault releases while your subscription is active. Higher tiers include access to lower-tier vault content unless changed by admin.'}
+        </p>
       </section>
 
-      <section className="vip-tier-grid">
+      <section className="vip-tier-grid mode-card-grid">
         {tiers.map((tier) => {
           const current = Number(vipRank || 0) >= Number(tier.tier_rank || 1) && vipTier !== 'none'
           const price = `$${(Number(tier.price_cents || 0) / 100).toFixed(2)}`
+          const description = isAiMode ? aiFeatureText(tier.description || 'Premium AI Studio access.') : tier.description
           return (
-            <article className={current ? 'card vip-tier-card active-tier' : 'card vip-tier-card'} key={tier.tier_key}>
+            <article className={current ? 'card vip-tier-card active-tier mode-card' : 'card vip-tier-card mode-card'} key={tier.tier_key}>
               <div className="split-line">
-                <Crown size={34} />
+                {isAiMode ? <Bot size={34} /> : <Crown size={34} />}
                 <span className="pill">Rank {tier.tier_rank}</span>
               </div>
               <span className="eyebrow">{tier.name}</span>
               <h2>{price}<small>/month</small></h2>
-              <p>{tier.description}</p>
+              <p>{description}</p>
               <ul className="tier-features">
-                {(tier.features || []).map((feature) => <li key={feature}><ShieldCheck size={16} /> {feature}</li>)}
+                {(tier.features || []).map((feature) => <li key={feature}><ShieldCheck size={16} /> {isAiMode ? aiFeatureText(feature) : feature}</li>)}
                 {Number(tier.tier_rank || 1) > 1 && <li><Sparkles size={16} /> Includes lower-tier access</li>}
               </ul>
               {user ? (
@@ -81,10 +100,14 @@ export default function Vip() {
         })}
       </section>
 
-      <section className="card wide info-card">
-        <Gem size={30} />
-        <h2>Points and VIP stay separate</h2>
-        <p>Points unlock standard videos one by one. VIP, Super VIP, and Ultra VIP unlock tier-based vault releases only while the matching Stripe subscription is active.</p>
+      <section className="card wide info-card mode-info-card">
+        {isAiMode ? <BrainCircuit size={30} /> : <Gem size={30} />}
+        <h2>{isAiMode ? 'Points and AI access stay aligned' : 'Points and VIP stay separate'}</h2>
+        <p>
+          {isAiMode
+            ? 'Your existing points wallet powers AI messages and enabled AI Studio tools. Membership status can unlock premium platform features while active.'
+            : 'Points unlock standard videos one by one. VIP, Super VIP, and Ultra VIP unlock tier-based vault releases only while the matching Stripe subscription is active.'}
+        </p>
       </section>
 
       {error && <p className="error-text centered-text">{error}</p>}

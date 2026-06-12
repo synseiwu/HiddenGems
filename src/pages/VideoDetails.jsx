@@ -3,8 +3,10 @@ import { Link, useParams } from 'react-router-dom'
 import { Crown, ExternalLink, Gem, Lock, PlayCircle, ShieldCheck, XCircle } from 'lucide-react'
 import Loader from '../components/Loader'
 import EmptyState from '../components/EmptyState'
+import ModeUnavailable from '../components/ModeUnavailable'
 import { getAccessLabel, getAccessRank, getUnlockedVideo, getVideoDetails, getWallet, isVipAccessType, trackVideoView, unlockVideoWithPoints } from '../lib/api'
 import { useAuth } from '../hooks/useAuth'
+import useSiteMode from '../hooks/useSiteMode'
 import VideoStats from '../components/VideoStats'
 import VideoEngagement from '../components/VideoEngagement'
 
@@ -21,6 +23,7 @@ function canEmbedPreview(url) {
 export default function VideoDetails() {
   const { id } = useParams()
   const { user, isAdmin, vipRank } = useAuth()
+  const { isAiMode, loading: modeLoading } = useSiteMode()
   const [video, setVideo] = useState(null)
   const [unlocked, setUnlocked] = useState(null)
   const [wallet, setWallet] = useState({ points_balance: 0 })
@@ -46,10 +49,15 @@ export default function VideoDetails() {
   }
 
   useEffect(() => {
+    if (modeLoading) return
     setPreviewMode('idle')
     setLoading(true)
+    if (isAiMode && !isAdmin) {
+      setLoading(false)
+      return
+    }
     load()
-  }, [id, user])
+  }, [id, user, isAiMode, isAdmin, modeLoading])
 
   useEffect(() => {
     if (!id || !user) return
@@ -72,7 +80,8 @@ export default function VideoDetails() {
     }
   }
 
-  if (loading) return <Loader />
+  if (loading || modeLoading) return <Loader />
+  if (isAiMode && !isAdmin) return <ModeUnavailable title="This listing is hidden in AI Studio Mode" text="The public site is currently focused on AI tools. Marketplace listing pages are hidden until Hidden Gems Mode is restored." />
   if (!video) return <EmptyState title="Video not found" text={error || 'This listing may be unpublished.'} />
 
   const pointCost = video.point_cost ?? video.price_cents ?? 0

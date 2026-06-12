@@ -63,9 +63,7 @@ export default function Layout() {
           <NavLink onClick={close} to="/">Home</NavLink>
 
           {!hideMarketplaceNav && <NavLink onClick={close} to="/videos">Videos</NavLink>}
-
           <NavLink onClick={close} to="/points">Buy Points</NavLink>
-
           {!hideMarketplaceNav && <NavLink onClick={close} to="/vip">VIP</NavLink>}
           {user && !hideMarketplaceNav && <NavLink onClick={close} to="/forum">Forum</NavLink>}
           {user && !hideMarketplaceNav && <NavLink onClick={close} to="/library">Library</NavLink>}
@@ -98,7 +96,7 @@ export default function Layout() {
           <strong>{isAiMode ? 'AI Studio' : 'Hidden Gems'}</strong>
           <span>
             {isAiMode
-              ? 'Point-based AI access with saved conversations and account-based wallet controls.'
+              ? 'Point-based AI access, saved chat history, and account-based digital tools powered by your existing wallet.'
               : 'Point-based video access with protected external links through approved partners like PikPak and Mega.'}
           </span>
         </div>
