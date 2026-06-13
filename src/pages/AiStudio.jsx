@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { Bot, Gem, MessageSquarePlus, Send, Sparkles } from 'lucide-react'
 import Loader from '../components/Loader'
 import EmptyState from '../components/EmptyState'
-import { getAISettings, getPublicSiteSettings, getWallet, listAIConversations, listAIMessages, saveAdminSiteSettings, sendAIMessage } from '../lib/api'
+import { getAISettings, getWallet, listAIConversations, listAIMessages, sendAIMessage } from '../lib/api'
 import { useAuth } from '../hooks/useAuth'
 import '../styles/ai-studio.css'
 
@@ -18,8 +18,6 @@ export default function AiStudio() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [siteSettings, setSiteSettings] = useState({ site_mode: 'hidden_gems', show_admin_mode_switch: true, show_public_mode_switch: false })
-  const [modeMessage, setModeMessage] = useState('')
 
   const messageCost = useMemo(() => {
     if (!settings) return 0
@@ -28,17 +26,15 @@ export default function AiStudio() {
   }, [settings, isAdmin])
 
   async function refreshShell() {
-    const [settingsData, walletData, conversationData, publicSettings] = await Promise.all([
+    const [settingsData, walletData, conversationData] = await Promise.all([
       getAISettings(),
       user ? getWallet() : Promise.resolve({ points_balance: 0 }),
-      user ? listAIConversations() : Promise.resolve([]),
-      getPublicSiteSettings().catch(() => ({ site_mode: 'hidden_gems' }))
+      user ? listAIConversations() : Promise.resolve([])
     ])
 
     setSettings(settingsData)
     setWallet(walletData)
     setConversations(conversationData)
-    setSiteSettings(publicSettings)
   }
 
   useEffect(() => {
@@ -97,20 +93,6 @@ export default function AiStudio() {
     }
   }
 
-
-  async function returnToHiddenGemsMode() {
-    if (!isAdmin) return
-    setModeMessage('')
-    const next = { ...siteSettings, site_mode: 'hidden_gems', ai_studio_public_mode: false }
-    try {
-      await saveAdminSiteSettings(next)
-      setSiteSettings(next)
-      setModeMessage('Hidden Gems mode restored. Go to the homepage to view it.')
-    } catch (err) {
-      setModeMessage(err.message)
-    }
-  }
-
   if (loading) return <Loader />
 
   if (!settings?.enabled && !isAdmin) {
@@ -129,26 +111,12 @@ export default function AiStudio() {
       <section className="hero centered ai-studio-hero">
         <span className="eyebrow">Hidden Gems AI</span>
         <h1>AI Studio</h1>
-        <p>Use Hidden Gems points to chat with an AI assistant inside your account.</p>
+        <p>Use your Hidden Gems points to chat with AI tools inside your account.</p>
         <div className="ai-studio-pills">
           <span><Gem size={16} /> Balance: {wallet.points_balance ?? 0} points</span>
           <span><Sparkles size={16} /> Cost: {messageCost} points/message</span>
           <span><Bot size={16} /> Model: {settings?.model || 'AI'}</span>
         </div>
-
-        {isAdmin && siteSettings.show_admin_mode_switch !== false && (
-          <div className="actions centered-text">
-            <button className="ghost-button" type="button" onClick={returnToHiddenGemsMode}>
-              Admin: Return to Hidden Gems
-            </button>
-          </div>
-        )}
-        {!isAdmin && siteSettings.show_public_mode_switch && (
-          <div className="actions centered-text">
-            <Link className="ghost-button" to="/">Switch Mode</Link>
-          </div>
-        )}
-        {modeMessage && <p className="notice-text">{modeMessage}</p>}
       </section>
 
       <section className="ai-studio-layout">
@@ -181,7 +149,7 @@ export default function AiStudio() {
               <div className="ai-empty-chat">
                 <Bot size={44} />
                 <h2>Ask anything</h2>
-                <p>Start a new AI chat. Your conversations are saved to your Hidden Gems account.</p>
+                <p>Start a new AI chat. Your conversations are saved to your AI Studio account.</p>
               </div>
             )}
 
@@ -213,7 +181,7 @@ export default function AiStudio() {
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Ask Hidden Gems AI..."
+                placeholder="Ask AI Studio..."
                 disabled={busy}
               />
               <button className="button" disabled={busy || !prompt.trim()}>
