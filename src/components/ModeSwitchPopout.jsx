@@ -73,7 +73,10 @@ export default function ModeSwitchPopout() {
         setLocalSiteModeOverride(nextMode)
       }
 
-      navigate('/access-info')
+      // Important:
+      // - Switching to AI should open the AI Studio tool page.
+      // - Switching to Hidden Gems should stay on Access Info, where the discreet switch lives.
+      navigate(nextMode === 'ai_studio' ? '/ai-studio' : '/access-info')
     } catch (err) {
       setMessage(err.message || 'Could not switch modes.')
     } finally {
