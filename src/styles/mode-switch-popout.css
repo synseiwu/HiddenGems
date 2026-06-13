@@ -1,4 +1,4 @@
-/* Bottom mode switch pop-out */
+/* Bottom Access Info pop-out */
 .mode-switch-popout {
   position: fixed;
   right: clamp(1rem, 3vw, 2rem);
@@ -8,7 +8,7 @@
   transform: translateY(18px) scale(.98);
   pointer-events: none;
   transition: opacity .22s ease, transform .22s ease;
-  max-width: min(92vw, 360px);
+  max-width: min(92vw, 330px);
 }
 
 .mode-switch-popout.visible {
@@ -20,7 +20,7 @@
 .mode-switch-popout button {
   width: 100%;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: .85rem;
   padding: .82rem .95rem;
@@ -41,11 +41,6 @@
 .mode-switch-popout button:hover:not(:disabled) {
   border-color: rgba(255, 79, 171, .72);
   transform: translateY(-1px);
-}
-
-.mode-switch-popout button:disabled {
-  cursor: wait;
-  opacity: .82;
 }
 
 .mode-switch-icon {
@@ -77,10 +72,6 @@
   font-size: .76rem;
   line-height: 1.25;
   overflow-wrap: anywhere;
-}
-
-.mode-switch-copy .mode-switch-error {
-  color: #ff9a9a;
 }
 
 .mode-switch-admin-copy {
