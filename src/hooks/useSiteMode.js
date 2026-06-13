@@ -3,10 +3,10 @@ import { getPublicSiteSettings } from '../lib/api'
 
 const defaultSiteModeSettings = {
   hide_all_videos: false,
-  disable_age_gate: false,
+  disable_age_gate: true,
   safe_mode_enabled: false,
-  site_mode: 'hidden_gems',
-  ai_studio_public_mode: false,
+  site_mode: 'ai_studio',
+  ai_studio_public_mode: true,
   hide_hidden_gems_branding: true,
   hide_video_marketplace_in_ai_mode: true,
   show_admin_mode_switch: true,

@@ -762,10 +762,10 @@ export function categorySlug(value) {
 
 const DEFAULT_SITE_SETTINGS = {
   hide_all_videos: false,
-  disable_age_gate: false,
+  disable_age_gate: true,
   safe_mode_enabled: false,
-  site_mode: 'hidden_gems',
-  ai_studio_public_mode: false,
+  site_mode: 'ai_studio',
+  ai_studio_public_mode: true,
   hide_hidden_gems_branding: true,
   hide_video_marketplace_in_ai_mode: true,
   show_admin_mode_switch: true,
@@ -778,22 +778,35 @@ const SITE_MODE_OVERRIDE_KEY = 'hidden_gems_site_mode_override'
 
 export function getLocalSiteModeOverride() {
   if (typeof window === 'undefined') return ''
-  const value = window.localStorage.getItem(SITE_MODE_OVERRIDE_KEY)
+
+  // The root/homepage should always load AI Studio first.
+  // Public Hidden Gems access can still happen from /about through the switch button.
+  if (window.location.pathname === '/' || window.location.pathname === '') {
+    window.sessionStorage.removeItem(SITE_MODE_OVERRIDE_KEY)
+    window.localStorage.removeItem(SITE_MODE_OVERRIDE_KEY)
+    return ''
+  }
+
+  const value = window.sessionStorage.getItem(SITE_MODE_OVERRIDE_KEY)
   return value === 'ai_studio' || value === 'hidden_gems' ? value : ''
 }
 
 export function setLocalSiteModeOverride(mode) {
   if (typeof window === 'undefined') return
   if (mode === 'ai_studio' || mode === 'hidden_gems') {
-    window.localStorage.setItem(SITE_MODE_OVERRIDE_KEY, mode)
+    window.sessionStorage.setItem(SITE_MODE_OVERRIDE_KEY, mode)
   } else {
-    window.localStorage.removeItem(SITE_MODE_OVERRIDE_KEY)
+    window.sessionStorage.removeItem(SITE_MODE_OVERRIDE_KEY)
   }
+
+  // Clean up older persistent overrides so returning visitors do not bypass AI-first mode.
+  window.localStorage.removeItem(SITE_MODE_OVERRIDE_KEY)
   window.dispatchEvent(new Event('hidden-gems:site-mode-refresh'))
 }
 
 export function clearLocalSiteModeOverride() {
   if (typeof window === 'undefined') return
+  window.sessionStorage.removeItem(SITE_MODE_OVERRIDE_KEY)
   window.localStorage.removeItem(SITE_MODE_OVERRIDE_KEY)
   window.dispatchEvent(new Event('hidden-gems:site-mode-refresh'))
 }
