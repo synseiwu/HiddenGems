@@ -1,65 +1,65 @@
-# AI Studio About-Only Switch + Functionality Fix
+# Hidden Gems AI-First Session Switch Fix
 
-This patch fixes three issues:
+This patch makes AI Studio the real main site again and keeps Hidden Gems hidden unless the Access Info switch is clicked.
 
-1. The Hidden Gems / AI Studio switch button showing on pages other than About.
-2. AI Studio chat layout boxes being misaligned.
-3. AI Studio not functioning because `public.ai_conversations` is missing from Supabase.
+## What this fixes
+
+- AI Studio is forced as the default public mode.
+- Hidden Gems no longer appears just because Supabase global settings were accidentally switched.
+- Hidden Gems only appears when someone deliberately clicks the Access Info switch.
+- The Access Info switch now uses browser session mode only. It does not update the global database/site mode.
+- Clicking `Enter Hidden Gems` sends the visitor to the Hidden Gems homepage for that browser session.
+- Clicking `Open AI Studio` sends the visitor to `/ai-studio`.
+- Adds spacing fixes so the Hidden Gems homepage cards do not touch if someone enters that mode.
 
 ## Changed files
 
+- src/lib/api.js
+- src/hooks/useSiteMode.js
 - src/components/ModeSwitchPopout.jsx
-- src/pages/AiStudio.jsx
-- src/styles/ai-studio.css
-- supabase/migrations/021_ai_studio_functionality_repair.sql
-
-## What changes
-
-### Mode switch
-- The mode switch button now appears only on `/about`.
-- It never appears on Home, AI Studio chat, Points, Account, Admin, etc.
-- It still follows the Admin Panel visibility toggles.
-
-### AI Studio page
-- Removes the top `Admin: Return to Hidden Gems` switch from the AI Studio chat page.
-- Cleans up the AI Studio chat layout.
-- Fixes card sizing, spacing, prompt area, and mobile stacking.
-
-### Supabase
-- Creates/repairs:
-  - ai_settings
-  - ai_conversations
-  - ai_messages
-  - ai_usage_logs
-  - ai_settings_public
-  - RLS policies
-- Reloads Supabase/PostgREST schema cache.
+- src/components/Layout.jsx
+- src/styles/home-spacing-fix.css
+- supabase/migrations/022_force_ai_first_session_only_switch.sql
 
 ## Deploy steps
 
-### 1. Run SQL
+### 1. Run SQL in Supabase
 
-Run this in Supabase SQL Editor:
+Run:
 
-supabase/migrations/021_ai_studio_functionality_repair.sql
+supabase/migrations/022_force_ai_first_session_only_switch.sql
 
-Expected output should include:
-- ai_conversations_exists = public.ai_conversations
-- ai_messages_exists = public.ai_messages
-- ai_settings_exists = public.ai_settings
+It should show:
+
+site_mode = ai_studio
+ai_studio_public_mode = true
 
 ### 2. Replace files and build
 
 ```bash
 npm run build
 git add .
-git commit -m "Fix AI Studio switch placement and chat functionality"
+git commit -m "Force AI-first mode and session-only Hidden Gems switch"
 git push
+```
+
+### 3. Clear old browser override
+
+After Vercel deploys, refresh with Ctrl + Shift + R.
+
+If your browser is still stuck on Hidden Gems, open DevTools Console and run:
+
+```js
+sessionStorage.removeItem('hidden_gems_site_mode_override')
+localStorage.removeItem('hidden_gems_site_mode_override')
+location.href = '/'
 ```
 
 ## Test
 
-- Open `/ai-studio`: no bottom switch button should appear.
-- Open `/about`: switch button should appear after scrolling if enabled.
-- Send a test AI message.
-- Confirm no schema cache/table error appears.
+- Incognito `/` should show AI Studio.
+- Header should say AI Studio.
+- Hidden Gems should not show unless Access Info switch is clicked.
+- `/access-info` should show the discreet switch if enabled.
+- Enter Hidden Gems should go to Hidden Gems for that browser session only.
+- Open AI Studio should go to `/ai-studio`.

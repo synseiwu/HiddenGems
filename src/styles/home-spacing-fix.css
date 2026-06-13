@@ -1,0 +1,35 @@
+/* AI-first / Hidden Gems session spacing fixes */
+.page > .section.info-grid {
+  margin-bottom: clamp(1.5rem, 3vw, 2.4rem);
+}
+
+.page > .section.info-grid + .card.centered-text,
+.page > .card.centered-text {
+  margin-top: clamp(1.5rem, 3vw, 2.4rem);
+}
+
+.info-grid {
+  gap: clamp(1rem, 2vw, 1.35rem) !important;
+}
+
+.info-grid .card,
+.card.centered-text {
+  padding: clamp(1.35rem, 2.8vw, 2rem) !important;
+  overflow: hidden;
+}
+
+.info-grid .card h3,
+.info-grid .card p,
+.card.centered-text h2,
+.card.centered-text p {
+  overflow-wrap: anywhere;
+}
+
+.card.centered-text {
+  display: grid;
+  gap: .85rem;
+}
+
+.card.centered-text .actions {
+  margin-top: .35rem;
+}

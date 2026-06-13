@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Bot, Gem, RotateCcw } from 'lucide-react'
-import { clearLocalSiteModeOverride, saveAdminSiteSettings, setLocalSiteModeOverride } from '../lib/api'
+import { setLocalSiteModeOverride } from '../lib/api'
 import { useAuth } from '../hooks/useAuth'
 import useSiteMode from '../hooks/useSiteMode'
 import '../styles/mode-switch-popout.css'
@@ -13,10 +13,8 @@ export default function ModeSwitchPopout() {
   const { settings, isAiMode } = useSiteMode()
   const [visible, setVisible] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState('')
 
   // Hard rule: the variant switch belongs on Access Info only.
-  // It should not appear on Home, About, AI Studio chat, Points, Account, Admin, etc.
   const isAccessInfoPage = location.pathname === '/access-info'
   const showForAdmin = isAdmin && settings.show_admin_mode_switch !== false
   const showForPublic = !isAdmin && Boolean(settings.show_public_mode_switch)
@@ -56,32 +54,15 @@ export default function ModeSwitchPopout() {
 
   async function switchMode() {
     setBusy(true)
-    setMessage('')
 
-    try {
-      if (isAdmin) {
-        // Admins switch the real global site mode.
-        clearLocalSiteModeOverride()
-        await saveAdminSiteSettings({
-          ...settings,
-          site_mode: nextMode,
-          ai_studio_public_mode: nextMode === 'ai_studio'
-        })
-        window.dispatchEvent(new Event('hidden-gems:site-mode-refresh'))
-      } else {
-        // Public/guest users only switch their browser session.
-        setLocalSiteModeOverride(nextMode)
-      }
+    // This button no longer changes the global database mode.
+    // It only changes the current browser session.
+    setLocalSiteModeOverride(nextMode)
 
-      // Important:
-      // - Switching to AI should open the AI Studio tool page.
-      // - Switching to Hidden Gems should stay on Access Info, where the discreet switch lives.
-      navigate(nextMode === 'ai_studio' ? '/ai-studio' : '/access-info')
-    } catch (err) {
-      setMessage(err.message || 'Could not switch modes.')
-    } finally {
+    window.setTimeout(() => {
       setBusy(false)
-    }
+      navigate(nextMode === 'ai_studio' ? '/ai-studio' : '/')
+    }, 50)
   }
 
   return (
@@ -93,7 +74,6 @@ export default function ModeSwitchPopout() {
         <span className="mode-switch-copy">
           <strong>{busy ? 'Switching...' : label}</strong>
           <small>{subtitle}</small>
-          {message && <small className="mode-switch-error">{message}</small>}
         </span>
         <RotateCcw size={17} />
       </button>

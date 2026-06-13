@@ -779,47 +779,56 @@ const SITE_MODE_OVERRIDE_KEY = 'hidden_gems_site_mode_override'
 export function getLocalSiteModeOverride() {
   if (typeof window === 'undefined') return ''
 
-  // The root/homepage should always load AI Studio first.
-  // Public Hidden Gems access can still happen from /about through the switch button.
-  if (window.location.pathname === '/' || window.location.pathname === '') {
-    window.sessionStorage.removeItem(SITE_MODE_OVERRIDE_KEY)
-    window.localStorage.removeItem(SITE_MODE_OVERRIDE_KEY)
-    return ''
-  }
-
+  // Only a deliberate click should reveal Hidden Gems.
+  // Store this per browser tab/session so the main site naturally returns to AI Studio later.
+  window.localStorage.removeItem(SITE_MODE_OVERRIDE_KEY)
   const value = window.sessionStorage.getItem(SITE_MODE_OVERRIDE_KEY)
-  return value === 'ai_studio' || value === 'hidden_gems' ? value : ''
+
+  return value === 'hidden_gems' || value === 'ai_studio' ? value : ''
 }
 
 export function setLocalSiteModeOverride(mode) {
   if (typeof window === 'undefined') return
-  if (mode === 'ai_studio' || mode === 'hidden_gems') {
+
+  window.localStorage.removeItem(SITE_MODE_OVERRIDE_KEY)
+
+  if (mode === 'hidden_gems' || mode === 'ai_studio') {
     window.sessionStorage.setItem(SITE_MODE_OVERRIDE_KEY, mode)
   } else {
     window.sessionStorage.removeItem(SITE_MODE_OVERRIDE_KEY)
   }
 
-  // Clean up older persistent overrides so returning visitors do not bypass AI-first mode.
-  window.localStorage.removeItem(SITE_MODE_OVERRIDE_KEY)
   window.dispatchEvent(new Event('hidden-gems:site-mode-refresh'))
 }
 
 export function clearLocalSiteModeOverride() {
   if (typeof window === 'undefined') return
-  window.sessionStorage.removeItem(SITE_MODE_OVERRIDE_KEY)
+
   window.localStorage.removeItem(SITE_MODE_OVERRIDE_KEY)
+  window.sessionStorage.removeItem(SITE_MODE_OVERRIDE_KEY)
   window.dispatchEvent(new Event('hidden-gems:site-mode-refresh'))
 }
 
 export function applyPublicSiteModeOverride(settings = {}) {
   const override = getLocalSiteModeOverride()
 
-  if (!override || !settings.show_public_mode_switch) return settings
+  if (override === 'hidden_gems') {
+    return {
+      ...settings,
+      site_mode: 'hidden_gems',
+      ai_studio_public_mode: false
+    }
+  }
 
+  // AI Studio is the public/default site from now on.
+  // Supabase can still store Hidden Gems settings, but the frontend starts AI-first unless the user/session deliberately switched.
   return {
     ...settings,
-    site_mode: override,
-    ai_studio_public_mode: override === 'ai_studio'
+    site_mode: 'ai_studio',
+    ai_studio_public_mode: true,
+    disable_age_gate: true,
+    hide_hidden_gems_branding: true,
+    hide_video_marketplace_in_ai_mode: true
   }
 }
 

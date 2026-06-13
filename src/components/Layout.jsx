@@ -7,6 +7,7 @@ import FloatingWallet from './FloatingWallet'
 import AgeGate from './AgeGate'
 import RewardNoticePopup from './RewardNoticePopup'
 import ModeSwitchPopout from './ModeSwitchPopout'
+import '../styles/home-spacing-fix.css'
 
 export default function Layout() {
   const { user, isAdmin, signOut } = useAuth()
