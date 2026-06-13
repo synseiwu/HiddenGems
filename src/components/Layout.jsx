@@ -1,50 +1,20 @@
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
+import { Link, NavLink, Outlet } from 'react-router-dom'
 import { Bot, Gem, Menu, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
-import { getPublicSiteSettings } from '../lib/api'
+import useSiteMode from '../hooks/useSiteMode'
 import FloatingWallet from './FloatingWallet'
 import AgeGate from './AgeGate'
 import RewardNoticePopup from './RewardNoticePopup'
-
-const defaultModeSettings = {
-  site_mode: 'hidden_gems',
-  ai_studio_public_mode: false,
-  hide_video_marketplace_in_ai_mode: true
-}
+import ModeSwitchPopout from './ModeSwitchPopout'
 
 export default function Layout() {
   const { user, isAdmin, signOut } = useAuth()
-  const location = useLocation()
+  const { settings, isAiMode } = useSiteMode()
   const [open, setOpen] = useState(false)
-  const [siteSettings, setSiteSettings] = useState(defaultModeSettings)
 
   const close = () => setOpen(false)
-  const isAiMode = siteSettings.site_mode === 'ai_studio' || Boolean(siteSettings.ai_studio_public_mode)
-  const hideMarketplaceNav = isAiMode && siteSettings.hide_video_marketplace_in_ai_mode !== false
-
-  async function refreshSiteMode() {
-    const settings = await getPublicSiteSettings().catch(() => defaultModeSettings)
-    setSiteSettings({ ...defaultModeSettings, ...settings })
-  }
-
-  useEffect(() => {
-    refreshSiteMode()
-  }, [location.pathname])
-
-  useEffect(() => {
-    function handleRefresh() {
-      refreshSiteMode()
-    }
-
-    window.addEventListener('hidden-gems:site-mode-refresh', handleRefresh)
-    window.addEventListener('focus', handleRefresh)
-
-    return () => {
-      window.removeEventListener('hidden-gems:site-mode-refresh', handleRefresh)
-      window.removeEventListener('focus', handleRefresh)
-    }
-  }, [])
+  const hideMarketplaceNav = isAiMode && settings.hide_video_marketplace_in_ai_mode !== false
 
   return (
     <>
@@ -90,6 +60,7 @@ export default function Layout() {
 
       <FloatingWallet />
       <RewardNoticePopup />
+      <ModeSwitchPopout />
 
       <footer className={isAiMode ? 'footer site-footer ai-mode-footer' : 'footer site-footer'}>
         <div className="footer-brand">

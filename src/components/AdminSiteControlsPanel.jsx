@@ -64,6 +64,7 @@ export default function AdminSiteControlsPanel() {
     setMessage('')
     try {
       await saveAdminSiteSettings(settings)
+      window.dispatchEvent(new Event('hidden-gems:site-mode-refresh'))
       setMessage('Site mode and visibility settings saved.')
     } catch (err) {
       setMessage(err.message)
@@ -88,6 +89,7 @@ export default function AdminSiteControlsPanel() {
     setMessage('')
     try {
       await saveAdminSiteSettings(next)
+      window.dispatchEvent(new Event('hidden-gems:site-mode-refresh'))
       setMessage(mode === 'ai_studio' ? 'AI Studio public mode enabled.' : 'Hidden Gems mode restored.')
     } catch (err) {
       setMessage(err.message)
@@ -220,6 +222,12 @@ export default function AdminSiteControlsPanel() {
         </label>
 
         <hr />
+
+        <div className="mode-switch-admin-copy">
+          <span className="eyebrow">Mode Switch Button Visibility</span>
+          <h3>Bottom Pop-Out Switch</h3>
+          <p className="muted">Control who can see the bottom switch button near the footer/About area. Public users only get a browser/session switch; admins can switch the global site mode.</p>
+        </div>
 
         <label className="check">
           <input

@@ -773,6 +773,43 @@ const DEFAULT_SITE_SETTINGS = {
 }
 
 
+
+const SITE_MODE_OVERRIDE_KEY = 'hidden_gems_site_mode_override'
+
+export function getLocalSiteModeOverride() {
+  if (typeof window === 'undefined') return ''
+  const value = window.localStorage.getItem(SITE_MODE_OVERRIDE_KEY)
+  return value === 'ai_studio' || value === 'hidden_gems' ? value : ''
+}
+
+export function setLocalSiteModeOverride(mode) {
+  if (typeof window === 'undefined') return
+  if (mode === 'ai_studio' || mode === 'hidden_gems') {
+    window.localStorage.setItem(SITE_MODE_OVERRIDE_KEY, mode)
+  } else {
+    window.localStorage.removeItem(SITE_MODE_OVERRIDE_KEY)
+  }
+  window.dispatchEvent(new Event('hidden-gems:site-mode-refresh'))
+}
+
+export function clearLocalSiteModeOverride() {
+  if (typeof window === 'undefined') return
+  window.localStorage.removeItem(SITE_MODE_OVERRIDE_KEY)
+  window.dispatchEvent(new Event('hidden-gems:site-mode-refresh'))
+}
+
+export function applyPublicSiteModeOverride(settings = {}) {
+  const override = getLocalSiteModeOverride()
+
+  if (!override || !settings.show_public_mode_switch) return settings
+
+  return {
+    ...settings,
+    site_mode: override,
+    ai_studio_public_mode: override === 'ai_studio'
+  }
+}
+
 export function isAIStudioMode(settings = {}) {
   return settings.site_mode === 'ai_studio' || Boolean(settings.ai_studio_public_mode)
 }
@@ -792,8 +829,8 @@ export async function getPublicSiteSettings() {
     .select('*')
     .eq('id', true)
     .maybeSingle()
-  if (error || !data) return DEFAULT_SITE_SETTINGS
-  return { ...DEFAULT_SITE_SETTINGS, ...data }
+  if (error || !data) return applyPublicSiteModeOverride(DEFAULT_SITE_SETTINGS)
+  return applyPublicSiteModeOverride({ ...DEFAULT_SITE_SETTINGS, ...data })
 }
 
 export async function getAdminSiteSettings() {
@@ -803,8 +840,8 @@ export async function getAdminSiteSettings() {
     .select('*')
     .eq('id', true)
     .maybeSingle()
-  if (error || !data) return DEFAULT_SITE_SETTINGS
-  return { ...DEFAULT_SITE_SETTINGS, ...data }
+  if (error || !data) return applyPublicSiteModeOverride(DEFAULT_SITE_SETTINGS)
+  return applyPublicSiteModeOverride({ ...DEFAULT_SITE_SETTINGS, ...data })
 }
 
 export async function saveAdminSiteSettings(settings) {
