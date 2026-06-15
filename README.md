@@ -1,65 +1,108 @@
-# Hidden Gems AI-First Session Switch Fix
+# Hidden Gems / AI Studio Site Messages + Verified Access Popup Patch
 
-This patch makes AI Studio the real main site again and keeps Hidden Gems hidden unless the Access Info switch is clicked.
+This patch adds a site-wide messaging/inbox system and a verified-account welcome popup.
 
-## What this fixes
+## What it adds
 
-- AI Studio is forced as the default public mode.
-- Hidden Gems no longer appears just because Supabase global settings were accidentally switched.
-- Hidden Gems only appears when someone deliberately clicks the Access Info switch.
-- The Access Info switch now uses browser session mode only. It does not update the global database/site mode.
-- Clicking `Enter Hidden Gems` sends the visitor to the Hidden Gems homepage for that browser session.
-- Clicking `Open AI Studio` sends the visitor to `/ai-studio`.
-- Adds spacing fixes so the Hidden Gems homepage cards do not touch if someone enters that mode.
+### Admin messaging system
+- Admin Panel section: `Site Messages`
+- Admins can create, edit, activate/deactivate, and delete messages
+- Message options:
+  - type
+  - priority
+  - audience
+  - popup enabled
+  - requires acknowledgement
+  - show once
+  - expiration date
+- Basic read/acknowledge/dismiss stats
+
+### User inbox
+- Header notification bell
+- `/messages` inbox route
+- Unread count badge
+- Read, acknowledge, and dismiss actions
+
+### Popups
+- Verified-account welcome popup after login
+- Admin message popup support
+- Popups are centered and do not intentionally overlap the daily reward popup
+
+### Access Info update
+- Explains AI Studio is the main site
+- Explains Hidden Gems access through `/access-info`
+- Explains same account and points wallet work on both sides
+
+## Preserved behavior
+
+- AI Studio remains the main public site
+- Hidden Gems access remains through `/access-info`
+- Same accounts, points wallet, roles, rewards, pricing, and Stripe setup
+- No Edge Function changes
 
 ## Changed files
 
 - src/lib/api.js
-- src/hooks/useSiteMode.js
-- src/components/ModeSwitchPopout.jsx
 - src/components/Layout.jsx
-- src/styles/home-spacing-fix.css
-- supabase/migrations/022_force_ai_first_session_only_switch.sql
+- src/components/NotificationBell.jsx
+- src/components/VerifiedAccessPopup.jsx
+- src/components/MessagePopupCenter.jsx
+- src/components/AdminMessagesPanel.jsx
+- src/pages/Messages.jsx
+- src/pages/AccessInfo.jsx
+- src/pages/Admin.jsx
+- src/routes/AppRoutes.jsx
+- src/styles/site-messages.css
+- supabase/migrations/023_site_messages_onboarding.sql
 
 ## Deploy steps
 
-### 1. Run SQL in Supabase
+### 1. Run SQL
 
-Run:
+Run this in Supabase SQL Editor:
 
-supabase/migrations/022_force_ai_first_session_only_switch.sql
+supabase/migrations/023_site_messages_onboarding.sql
 
-It should show:
+Expected output should show:
+- public.site_messages
+- public.site_message_reads
+- public.user_onboarding_status
 
-site_mode = ai_studio
-ai_studio_public_mode = true
+### 2. Replace files
 
-### 2. Replace files and build
+Replace the changed files in your project.
+
+### 3. Build and push
 
 ```bash
 npm run build
 git add .
-git commit -m "Force AI-first mode and session-only Hidden Gems switch"
+git commit -m "Add site messages and verified access popup"
 git push
 ```
 
-### 3. Clear old browser override
+## Testing checklist
 
-After Vercel deploys, refresh with Ctrl + Shift + R.
+### Verified account popup
+- Create a fresh account
+- Verify email
+- Log back in
+- Welcome popup appears
+- Open Access Info button works
+- Continue to AI Studio button works
+- Popup does not show again after closing
 
-If your browser is still stuck on Hidden Gems, open DevTools Console and run:
+### Messaging
+- Login as admin
+- Go to Admin Panel → Site Messages
+- Create an active message with popup enabled
+- Login as test user
+- Notification bell shows unread count
+- `/messages` shows the message
+- User can read, acknowledge, and dismiss
+- Admin can deactivate/delete message
 
-```js
-sessionStorage.removeItem('hidden_gems_site_mode_override')
-localStorage.removeItem('hidden_gems_site_mode_override')
-location.href = '/'
-```
-
-## Test
-
-- Incognito `/` should show AI Studio.
-- Header should say AI Studio.
-- Hidden Gems should not show unless Access Info switch is clicked.
-- `/access-info` should show the discreet switch if enabled.
-- Enter Hidden Gems should go to Hidden Gems for that browser session only.
-- Open AI Studio should go to `/ai-studio`.
+### AI-first behavior
+- Incognito `/` opens AI Studio
+- Hidden Gems does not show unless `/access-info` switch is clicked
+- Switch only appears on `/access-info`

@@ -14,6 +14,7 @@ import Account from '../pages/Account'
 import Admin from '../pages/Admin'
 import Forum from '../pages/Forum'
 import AiStudio from '../pages/AiStudio'
+import Messages from '../pages/Messages'
 import { Login, Signup } from '../pages/Auth'
 
 const router = createBrowserRouter([
@@ -38,6 +39,7 @@ const router = createBrowserRouter([
       { path: 'buy-points', element: <ProtectedRoute><Points /></ProtectedRoute> },
       { path: 'library', element: <ProtectedRoute><Library /></ProtectedRoute> },
       { path: 'forum', element: <ProtectedRoute><Forum /></ProtectedRoute> },
+      { path: 'messages', element: <ProtectedRoute><Messages /></ProtectedRoute> },
       { path: 'ai-studio', element: <ProtectedRoute><AiStudio /></ProtectedRoute> },
       { path: 'account', element: <ProtectedRoute><Account /></ProtectedRoute> },
       { path: 'admin', element: <ProtectedRoute adminOnly><Admin /></ProtectedRoute> }

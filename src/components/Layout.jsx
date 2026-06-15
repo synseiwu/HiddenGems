@@ -7,7 +7,11 @@ import FloatingWallet from './FloatingWallet'
 import AgeGate from './AgeGate'
 import RewardNoticePopup from './RewardNoticePopup'
 import ModeSwitchPopout from './ModeSwitchPopout'
+import NotificationBell from './NotificationBell'
+import VerifiedAccessPopup from './VerifiedAccessPopup'
+import MessagePopupCenter from './MessagePopupCenter'
 import '../styles/home-spacing-fix.css'
+import '../styles/site-messages.css'
 
 export default function Layout() {
   const { user, isAdmin, signOut } = useAuth()
@@ -39,6 +43,8 @@ export default function Layout() {
           {user && !hideMarketplaceNav && <NavLink onClick={close} to="/forum">Forum</NavLink>}
           {user && !hideMarketplaceNav && <NavLink onClick={close} to="/library">Library</NavLink>}
 
+          {user && <NotificationBell onClick={close} />}
+
           {isAdmin && <NavLink onClick={close} to="/admin">Admin Panel</NavLink>}
 
           {user ? (
@@ -61,6 +67,8 @@ export default function Layout() {
 
       <FloatingWallet />
       <RewardNoticePopup />
+      <VerifiedAccessPopup />
+      <MessagePopupCenter />
       <ModeSwitchPopout />
 
       <footer className={isAiMode ? 'footer site-footer ai-mode-footer' : 'footer site-footer'}>

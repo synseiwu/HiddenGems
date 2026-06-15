@@ -1024,57 +1024,284 @@ export async function listAIMessages(conversationId) {
   return data || []
 }
 
-export async function sendAIMessage({ prompt, conversationId }) {
+export async function sendAIMessage({ prompt, conversationId }
+
+
+function normalizeMessagePayload(payload = {}) {
+  return {
+    title: payload.title?.trim(),
+    body: payload.body?.trim(),
+    message_type: payload.message_type || 'announcement',
+    priority: payload.priority || 'normal',
+    audience: payload.audience || 'all',
+    active: payload.active !== false,
+    popup_enabled: Boolean(payload.popup_enabled),
+    requires_acknowledgement: Boolean(payload.requires_acknowledgement),
+    show_once: payload.show_once !== false,
+    expires_at: payload.expires_at || null
+  }
+}
+
+function audienceRankForProfile(profile = {}) {
+  const role = profile.role || 'user'
+  const vipRank = Number(profile.vip_rank || 0)
+  if (role === 'admin') return { role, vipRank, tier: 'admin' }
+  if (vipRank >= 3 || profile.subscription_tier === 'ultravip') return { role, vipRank, tier: 'ultravip' }
+  if (vipRank >= 2 || profile.subscription_tier === 'supervip') return { role, vipRank, tier: 'supervip' }
+  if (vipRank >= 1 || profile.vip_status || profile.subscription_tier === 'vip') return { role, vipRank, tier: 'vip' }
+  return { role, vipRank, tier: 'user' }
+}
+
+function messageMatchesAudience(message, profile = {}) {
+  const audience = message?.audience || 'all'
+  const { role, tier } = audienceRankForProfile(profile)
+
+  if (audience === 'all' || audience === 'authenticated' || audience === 'users') return true
+  if (audience === 'admins') return role === 'admin'
+  if (audience === 'vip') return ['vip', 'supervip', 'ultravip', 'admin'].includes(tier)
+  if (audience === 'supervip') return ['supervip', 'ultravip', 'admin'].includes(tier)
+  if (audience === 'ultravip') return ['ultravip', 'admin'].includes(tier)
+
+  return true
+}
+
+async function getAuthUserOrThrow() {
   if (!supabase) throw new Error('Supabase is not configured.')
+  const { data, error } = await supabase.auth.getUser()
+  if (error) throw new Error(error.message)
+  const user = data?.user
+  if (!user) throw new Error('Please log in first.')
+  return user
+}
 
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+export async function listUserMessages() {
+  if (!supabase) return []
 
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error('Missing Supabase frontend environment variables.')
-  }
+  const user = await getAuthUserOrThrow()
+  const profile = await getCurrentProfile(user.id)
 
-  const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
-  if (sessionError) throw new Error(sessionError.message)
+  const now = new Date().toISOString()
+  const { data: messages, error: messageError } = await supabase
+    .from('site_messages')
+    .select('*')
+    .eq('active', true)
+    .or(`expires_at.is.null,expires_at.gt.${now}`)
+    .order('created_at', { ascending: false })
 
-  const accessToken = sessionData?.session?.access_token
-  if (!accessToken) throw new Error('Please log in before using AI Studio.')
+  if (messageError) throw messageError
 
-  let response
-  try {
-    response = await fetch(`${supabaseUrl}/functions/v1/ai-chat`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        apikey: supabaseAnonKey,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ prompt, conversationId: conversationId || null })
-    })
-  } catch (err) {
-    throw new Error(`Could not reach the AI server: ${err.message}`)
-  }
+  const filteredMessages = (messages || []).filter((message) => messageMatchesAudience(message, profile))
 
-  const text = await response.text()
-  let data = null
+  if (!filteredMessages.length) return []
 
-  try {
-    data = text ? JSON.parse(text) : null
-  } catch {
-    data = null
-  }
+  const messageIds = filteredMessages.map((message) => message.id)
 
-  if (!response.ok) {
-    const message =
-      data?.error ||
-      data?.message ||
-      text ||
-      `AI function failed with status ${response.status}. Check Supabase Edge Function logs.`
-    throw new Error(message)
-  }
+  const { data: reads, error: readError } = await supabase
+    .from('site_message_reads')
+    .select('*')
+    .eq('user_id', user.id)
+    .in('message_id', messageIds)
 
-  if (data?.error) throw new Error(data.error)
+  if (readError) throw readError
 
-  window.dispatchEvent(new Event('wallet:refresh'))
+  const readMap = new Map((reads || []).map((read) => [read.message_id, read]))
+
+  return filteredMessages.map((message) => ({
+    ...message,
+    read: readMap.get(message.id) || null,
+    is_read: Boolean(readMap.get(message.id)?.read_at),
+    is_acknowledged: Boolean(readMap.get(message.id)?.acknowledged_at),
+    is_dismissed: Boolean(readMap.get(message.id)?.dismissed_at)
+  })).filter((message) => !message.is_dismissed)
+}
+
+export async function listPopupMessages() {
+  const messages = await listUserMessages()
+  return messages.filter((message) => {
+    if (!message.popup_enabled) return false
+    if (message.requires_acknowledgement && !message.is_acknowledged) return true
+    if (message.show_once && message.is_read) return false
+    return !message.is_read
+  })
+}
+
+export async function getUnreadMessageCount() {
+  const messages = await listUserMessages().catch(() => [])
+  return messages.filter((message) => !message.is_read || (message.requires_acknowledgement && !message.is_acknowledged)).length
+}
+
+export async function markMessageRead(messageId) {
+  const user = await getAuthUserOrThrow()
+  const now = new Date().toISOString()
+
+  const { data, error } = await supabase
+    .from('site_message_reads')
+    .upsert({
+      message_id: messageId,
+      user_id: user.id,
+      read_at: now
+    }, { onConflict: 'message_id,user_id' })
+    .select()
+    .single()
+
+  if (error) throw error
+  window.dispatchEvent(new Event('site-messages:refresh'))
   return data
 }
+
+export async function acknowledgeMessage(messageId) {
+  const user = await getAuthUserOrThrow()
+  const now = new Date().toISOString()
+
+  const { data, error } = await supabase
+    .from('site_message_reads')
+    .upsert({
+      message_id: messageId,
+      user_id: user.id,
+      read_at: now,
+      acknowledged_at: now
+    }, { onConflict: 'message_id,user_id' })
+    .select()
+    .single()
+
+  if (error) throw error
+  window.dispatchEvent(new Event('site-messages:refresh'))
+  return data
+}
+
+export async function dismissMessage(messageId) {
+  const user = await getAuthUserOrThrow()
+  const now = new Date().toISOString()
+
+  const { data, error } = await supabase
+    .from('site_message_reads')
+    .upsert({
+      message_id: messageId,
+      user_id: user.id,
+      read_at: now,
+      dismissed_at: now
+    }, { onConflict: 'message_id,user_id' })
+    .select()
+    .single()
+
+  if (error) throw error
+  window.dispatchEvent(new Event('site-messages:refresh'))
+  return data
+}
+
+export async function adminListMessages() {
+  if (!supabase) return []
+
+  const { data: messages, error } = await supabase
+    .from('site_messages')
+    .select('*')
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+
+  const { data: reads, error: readsError } = await supabase
+    .from('site_message_reads')
+    .select('message_id, read_at, acknowledged_at, dismissed_at')
+
+  if (readsError) throw readsError
+
+  const stats = new Map()
+  ;(reads || []).forEach((read) => {
+    const current = stats.get(read.message_id) || { read_count: 0, acknowledged_count: 0, dismissed_count: 0 }
+    if (read.read_at) current.read_count += 1
+    if (read.acknowledged_at) current.acknowledged_count += 1
+    if (read.dismissed_at) current.dismissed_count += 1
+    stats.set(read.message_id, current)
+  })
+
+  return (messages || []).map((message) => ({
+    ...message,
+    stats: stats.get(message.id) || { read_count: 0, acknowledged_count: 0, dismissed_count: 0 }
+  }))
+}
+
+export async function adminCreateMessage(payload) {
+  const user = await getAuthUserOrThrow()
+  const clean = normalizeMessagePayload(payload)
+  if (!clean.title) throw new Error('Message title is required.')
+  if (!clean.body) throw new Error('Message body is required.')
+
+  const { data, error } = await supabase
+    .from('site_messages')
+    .insert({
+      ...clean,
+      created_by: user.id
+    })
+    .select()
+    .single()
+
+  if (error) throw error
+  window.dispatchEvent(new Event('site-messages:refresh'))
+  return data
+}
+
+export async function adminUpdateMessage(id, payload) {
+  if (!id) throw new Error('Message ID is required.')
+  const clean = normalizeMessagePayload(payload)
+  if (!clean.title) throw new Error('Message title is required.')
+  if (!clean.body) throw new Error('Message body is required.')
+
+  const { data, error } = await supabase
+    .from('site_messages')
+    .update(clean)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) throw error
+  window.dispatchEvent(new Event('site-messages:refresh'))
+  return data
+}
+
+export async function adminDeleteMessage(id) {
+  if (!id) throw new Error('Message ID is required.')
+  const { error } = await supabase.from('site_messages').delete().eq('id', id)
+  if (error) throw error
+  window.dispatchEvent(new Event('site-messages:refresh'))
+  return true
+}
+
+export async function getUserOnboardingStatus() {
+  if (!supabase) return { verified_access_popup_seen: true }
+
+  const user = await getAuthUserOrThrow()
+
+  const { data, error } = await supabase
+    .from('user_onboarding_status')
+    .select('*')
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  if (error) throw error
+
+  return data || {
+    user_id: user.id,
+    verified_access_popup_seen: false,
+    verified_access_popup_seen_at: null
+  }
+}
+
+export async function markVerifiedAccessPopupSeen() {
+  const user = await getAuthUserOrThrow()
+  const now = new Date().toISOString()
+
+  const { data, error } = await supabase
+    .from('user_onboarding_status')
+    .upsert({
+      user_id: user.id,
+      verified_access_popup_seen: true,
+      verified_access_popup_seen_at: now,
+      updated_at: now
+    }, { onConflict: 'user_id' })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+

@@ -22,6 +22,7 @@ import AdminCommunityPanel from '../components/AdminCommunityPanel'
 import AdminEngagementPanel from '../components/AdminEngagementPanel'
 import AdminSiteControlsPanel from '../components/AdminSiteControlsPanel'
 import AdminAISettingsPanel from '../components/AdminAISettingsPanel'
+import AdminMessagesPanel from '../components/AdminMessagesPanel'
 
 const emptyVideoForm = {
   title: '',
@@ -237,6 +238,7 @@ export default function Admin() {
             <option value="settings">Payments & Tiers</option>
             <option value="siteControls">Site Content & Safe Mode</option>
             <option value="aiStudio">AI Studio</option>
+            <option value="messages">Site Messages</option>
             <option value="homepage">Homepage Showcase</option>
             <option value="engagement">Engagement Stats</option>
             <option value="community">Community Rewards</option>
@@ -299,6 +301,8 @@ export default function Admin() {
       {panel === 'siteControls' && <AdminSiteControlsPanel />}
 
       {panel === 'aiStudio' && <AdminAISettingsPanel />}
+
+      {panel === 'messages' && <AdminMessagesPanel />}
 
       {panel === 'settings' && (
         <section className="admin-settings-grid">

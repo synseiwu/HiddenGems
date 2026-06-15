@@ -1,0 +1,321 @@
+/* Site messages, inbox, and onboarding popup */
+.notification-bell {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  background: rgba(255,255,255,.055);
+  text-decoration: none;
+}
+
+.notification-bell:hover {
+  border-color: rgba(243,193,75,.7);
+  background: rgba(255,255,255,.09);
+}
+
+.notification-bell span {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  padding: 0 .35rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--gold), var(--pink));
+  color: #08070d;
+  font-size: .7rem;
+  font-weight: 900;
+  box-shadow: 0 8px 20px rgba(255,79,171,.28);
+}
+
+.site-popup-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 99998;
+  display: grid;
+  place-items: center;
+  padding: clamp(1rem, 4vw, 2rem);
+  background:
+    radial-gradient(circle at 50% 15%, rgba(243,193,75,.12), transparent 24rem),
+    rgba(4,3,8,.76);
+  backdrop-filter: blur(16px);
+}
+
+.site-popup-card {
+  position: relative;
+  width: min(580px, 100%);
+  display: grid;
+  gap: .95rem;
+  padding: clamp(1.35rem, 4vw, 2.1rem) !important;
+  text-align: center;
+  overflow: hidden;
+  border-color: rgba(243,193,75,.48);
+  box-shadow:
+    0 28px 90px rgba(0,0,0,.58),
+    0 0 52px rgba(255,79,171,.14),
+    0 0 42px rgba(243,193,75,.12);
+}
+
+.site-popup-card::before {
+  content: '';
+  position: absolute;
+  inset: -30%;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(243,193,75,.18), transparent 34%),
+    radial-gradient(circle at 80% 80%, rgba(255,79,171,.14), transparent 30%);
+  pointer-events: none;
+}
+
+.site-popup-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.site-popup-close {
+  position: absolute;
+  top: .9rem;
+  right: .9rem;
+  z-index: 3;
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(255,255,255,.08);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.site-popup-icon {
+  width: 72px;
+  height: 72px;
+  margin: 0 auto .1rem;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #08070d;
+  background: linear-gradient(135deg, var(--gold), var(--pink));
+  box-shadow: 0 16px 36px rgba(255,79,171,.24);
+}
+
+.site-popup-card h2 {
+  margin: 0;
+  font-size: clamp(1.8rem, 5vw, 2.8rem);
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+}
+
+.site-popup-card p {
+  margin: 0;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.site-popup-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .75rem;
+  margin-top: .4rem;
+}
+
+.message-priority-urgent {
+  border-color: rgba(255, 120, 120, .72);
+}
+
+.message-priority-important {
+  border-color: rgba(243, 193, 75, .72);
+}
+
+.messages-page {
+  width: min(100%, 1180px);
+  margin: 0 auto;
+}
+
+.messages-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  gap: clamp(1rem, 2.4vw, 1.4rem);
+  align-items: stretch;
+}
+
+.message-inbox-list,
+.message-reader {
+  padding: clamp(1rem, 2.4vw, 1.4rem) !important;
+  overflow: hidden;
+}
+
+.message-inbox-list {
+  display: grid;
+  gap: .7rem;
+  align-content: start;
+}
+
+.message-inbox-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: .35rem .65rem;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,.045);
+  color: var(--text);
+  border-radius: 18px;
+  padding: .85rem;
+  cursor: pointer;
+}
+
+.message-inbox-item.active {
+  border-color: rgba(243,193,75,.75);
+  box-shadow: 0 0 0 1px rgba(243,193,75,.2);
+}
+
+.message-inbox-item strong,
+.message-reader h2,
+.site-message-card h3 {
+  overflow-wrap: anywhere;
+}
+
+.message-inbox-item small {
+  grid-column: 2 / -1;
+  color: var(--muted);
+}
+
+.message-inbox-item em {
+  justify-self: end;
+  padding: .25rem .45rem;
+  border-radius: 999px;
+  background: rgba(255,79,171,.16);
+  color: var(--pink);
+  font-size: .72rem;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.message-reader {
+  display: grid;
+  gap: 1rem;
+  align-content: start;
+}
+
+.message-reader p {
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.message-pill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin: .15rem .25rem .15rem 0;
+  padding: .35rem .55rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  background: rgba(255,255,255,.05);
+  font-size: .76rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+.priority-important {
+  border-color: rgba(243,193,75,.72);
+  color: var(--gold);
+}
+
+.priority-urgent {
+  border-color: rgba(255,120,120,.72);
+  color: #ff9999;
+}
+
+.message-required-box {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  padding: .9rem;
+  border: 1px solid rgba(243,193,75,.45);
+  border-radius: 16px;
+  background: rgba(243,193,75,.08);
+  color: var(--gold);
+  font-weight: 900;
+}
+
+.admin-message-panel {
+  display: grid;
+  gap: clamp(1rem, 2vw, 1.35rem);
+}
+
+.admin-message-form,
+.admin-message-list {
+  padding: clamp(1rem, 2.4vw, 1.4rem) !important;
+  overflow: hidden;
+}
+
+.admin-message-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .85rem;
+}
+
+.admin-message-grid.toggles {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.site-message-list {
+  display: grid;
+  gap: .9rem;
+}
+
+.site-message-card {
+  display: grid;
+  gap: .65rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: rgba(255,255,255,.045);
+  overflow: hidden;
+}
+
+.site-message-card p {
+  margin: 0;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.access-guidance-card {
+  display: grid;
+  gap: .85rem;
+}
+
+.access-guidance-card h2,
+.access-guidance-card p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 860px) {
+  .messages-layout,
+  .admin-message-grid,
+  .admin-message-grid.toggles {
+    grid-template-columns: 1fr;
+  }
+
+  .site-popup-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .notification-bell {
+    width: 100%;
+    min-height: 42px;
+  }
+}
