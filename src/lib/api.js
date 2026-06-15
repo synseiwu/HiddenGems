@@ -1024,7 +1024,60 @@ export async function listAIMessages(conversationId) {
   return data || []
 }
 
-export async function sendAIMessage({ prompt, conversationId }
+export async function sendAIMessage({ prompt, conversationId }) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Missing Supabase frontend environment variables.')
+  }
+
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+  if (sessionError) throw new Error(sessionError.message)
+
+  const accessToken = sessionData?.session?.access_token
+  if (!accessToken) throw new Error('Please log in before using AI Studio.')
+
+  let response
+  try {
+    response = await fetch(`${supabaseUrl}/functions/v1/ai-chat`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        apikey: supabaseAnonKey,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ prompt, conversationId: conversationId || null })
+    })
+  } catch (err) {
+    throw new Error(`Could not reach the AI server: ${err.message}`)
+  }
+
+  const text = await response.text()
+  let data = null
+
+  try {
+    data = text ? JSON.parse(text) : null
+  } catch {
+    data = null
+  }
+
+  if (!response.ok) {
+    const message =
+      data?.error ||
+      data?.message ||
+      text ||
+      `AI function failed with status ${response.status}. Check Supabase Edge Function logs.`
+    throw new Error(message)
+  }
+
+  if (data?.error) throw new Error(data.error)
+
+  window.dispatchEvent(new Event('wallet:refresh'))
+  return data
+}
 
 
 function normalizeMessagePayload(payload = {}) {
