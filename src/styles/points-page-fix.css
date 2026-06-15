@@ -1,0 +1,146 @@
+/* Points page spacing + simple AI Studio copy fix */
+.points-page {
+  width: min(100%, 1240px);
+  margin: 0 auto;
+  display: grid;
+  gap: clamp(1.4rem, 3vw, 2.25rem);
+  padding-bottom: clamp(2.2rem, 5vw, 4rem);
+}
+
+.points-hero {
+  margin-bottom: 0;
+}
+
+.points-wallet-card,
+.points-spaced-card {
+  margin: 0;
+}
+
+.points-wallet-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(180px, 260px);
+  align-items: center;
+  gap: clamp(1rem, 2vw, 1.4rem);
+  padding: clamp(1.35rem, 2.8vw, 2rem) !important;
+}
+
+.points-wallet-card h2,
+.points-wallet-card p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.points-wallet-card p {
+  line-height: 1.65;
+}
+
+.points-wallet-card .button {
+  width: 100%;
+  min-height: 48px;
+}
+
+.points-pack-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: clamp(1rem, 2vw, 1.35rem);
+  align-items: stretch;
+  margin-top: 0;
+}
+
+.points-pack-card {
+  min-height: 100%;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(54px, auto) auto auto auto;
+  align-content: start;
+  gap: .85rem;
+  padding: clamp(1.25rem, 2.4vw, 1.75rem) !important;
+  overflow: hidden;
+}
+
+.points-pack-card > svg {
+  color: var(--gold);
+}
+
+.points-pack-card h2 {
+  margin: 0;
+  font-size: clamp(2.1rem, 3vw, 2.9rem);
+  line-height: 1.08;
+  letter-spacing: -0.04em;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.points-pack-card p {
+  margin: 0;
+  min-height: 3.2rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.points-pack-card .pack-price {
+  display: block;
+  margin-top: .1rem;
+  font-size: clamp(1.15rem, 2vw, 1.35rem);
+}
+
+.points-pack-card .button {
+  margin-top: auto;
+  min-height: 48px;
+}
+
+.points-how-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(1rem, 2vw, 1.35rem) !important;
+  margin-top: 0;
+}
+
+.points-how-grid .mini-card {
+  display: grid;
+  gap: .75rem;
+  padding: clamp(1.2rem, 2.4vw, 1.55rem) !important;
+  min-height: 150px;
+  align-content: start;
+  overflow: hidden;
+}
+
+.points-how-grid .mini-card h3,
+.points-how-grid .mini-card p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.points-how-grid .mini-card p {
+  line-height: 1.6;
+}
+
+@media (max-width: 1080px) {
+  .points-pack-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .points-wallet-card {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .points-wallet-card .button {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 720px) {
+  .points-pack-grid,
+  .points-how-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .points-wallet-card {
+    grid-template-columns: 1fr;
+    text-align: center;
+    justify-items: center;
+  }
+
+  .points-pack-card h2 {
+    font-size: clamp(2rem, 10vw, 2.7rem);
+  }
+}

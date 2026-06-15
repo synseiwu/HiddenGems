@@ -7,6 +7,7 @@ import useSiteMode from '../hooks/useSiteMode'
 import Loader from '../components/Loader'
 import EmptyState from '../components/EmptyState'
 import '../styles/mode-pages.css'
+import '../styles/points-page-fix.css'
 
 export default function Points() {
   const { user } = useAuth()
@@ -52,17 +53,17 @@ export default function Points() {
     ? {
         eyebrow: 'AI Points',
         title: 'Buy Points for AI Studio',
-        text: 'Buy points once, then use the same account wallet for AI messages, saved chats, and enabled AI Studio tools.'
+        text: 'Use points to access AI Studio. Each AI message costs 5 points.'
       }
     : {
         eyebrow: 'Points',
         title: 'Buy Points. Unlock Gems.',
-        text: 'Points are the main Hidden Gems unlock system. Buy a pack once, then spend points on the videos you want.'
+        text: 'Use points to unlock Hidden Gems content when you enter video mode through Access Info.'
       }
 
   return (
-    <div className="page mode-aware-page">
-      <section className="hero centered mode-hero">
+    <div className="page mode-aware-page points-page">
+      <section className="hero centered mode-hero points-hero">
         <span className="eyebrow">{hero.eyebrow}</span>
         <h1>{hero.title}</h1>
         <p>{hero.text}</p>
@@ -70,7 +71,7 @@ export default function Points() {
       </section>
 
       {hasUnlockContext && (
-        <div className="card points-context-card">
+        <div className="card points-context-card points-spaced-card">
           <Gem size={22} />
           <div>
             <strong>You need {neededPoints.toLocaleString()} more points{decodeURIComponent(returnVideoTitle || '') ? ` to unlock ${decodeURIComponent(returnVideoTitle)}` : ''}.</strong>
@@ -81,12 +82,12 @@ export default function Points() {
       )}
 
       {isAiMode && (
-        <section className="card mode-info-card">
+        <section className="card mode-info-card points-wallet-card">
           <BrainCircuit size={30} />
           <div>
             <span className="eyebrow">Same wallet</span>
             <h2>Your points stay aligned</h2>
-            <p>No separate AI balance is created. AI Studio uses the same points wallet already attached to your account.</p>
+            <p>AI Studio uses your current points wallet. Every AI message costs 5 points.</p>
           </div>
           <Link className="button" to="/ai-studio">Open AI Studio</Link>
         </section>
@@ -95,15 +96,15 @@ export default function Points() {
       {error && <p className="error-text centered-text">{error}</p>}
 
       {packages.length ? (
-        <section className="point-pack-grid mode-card-grid">
+        <section className="point-pack-grid points-pack-grid">
           {packages.map((pack) => (
-            <article className="card point-pack mode-card" key={pack.id}>
+            <article className="card point-pack points-pack-card" key={pack.id}>
               {isAiMode ? <Bot size={34} /> : <Gem size={34} />}
               <span className="eyebrow">{pack.name}</span>
               <h2>{pack.points_amount.toLocaleString()} Points</h2>
               <p>
                 {isAiMode
-                  ? (pack.description || 'Use these points for AI messages and enabled AI Studio tools.')
+                  ? 'Use these points for AI access.'
                   : (pack.description || 'Use these points to unlock paid video gems.')}
               </p>
               <strong className="pack-price">${(pack.price_cents / 100).toFixed(2)}</strong>
@@ -122,17 +123,21 @@ export default function Points() {
         <EmptyState title="No point packs yet" text="Add Stripe Price IDs to your point_packages table in Supabase." />
       )}
 
-      <section className="section how-grid compact mode-how-grid">
-        <div className="card mini-card"><Zap /><h3>Buy once</h3><p>Stripe confirms your point pack payment.</p></div>
+      <section className="section how-grid compact points-how-grid">
+        <div className="card mini-card">
+          <Zap />
+          <h3>Buy once</h3>
+          <p>Choose a point pack and checkout through Stripe.</p>
+        </div>
         <div className="card mini-card">
           {isAiMode ? <Sparkles /> : <Gem />}
           <h3>{isAiMode ? 'Use with AI' : 'Spend points'}</h3>
-          <p>{isAiMode ? 'Send AI messages and use enabled AI Studio tools.' : 'Unlock only the specific videos you want.'}</p>
+          <p>{isAiMode ? 'Send AI messages for 5 points each.' : 'Unlock only the specific videos you want.'}</p>
         </div>
         <div className="card mini-card">
           {isAiMode ? <Wallet /> : <ShieldCheck />}
-          <h3>{isAiMode ? 'Same wallet' : 'Protected links'}</h3>
-          <p>{isAiMode ? 'Your account balance stays shared across the platform.' : 'External links reveal only after secure unlock verification.'}</p>
+          <h3>Same wallet</h3>
+          <p>Your account balance stays shared across the platform.</p>
         </div>
       </section>
     </div>
