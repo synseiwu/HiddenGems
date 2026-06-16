@@ -1358,3 +1358,170 @@ export async function markVerifiedAccessPopupSeen() {
   return data
 }
 
+export async function getMessagingSettings() {
+  if (!supabase) return { enable_user_dms: true, allow_user_to_user_dms: true, allow_users_to_reply_to_admin_messages: true, dm_unread_badge_enabled: true, onboarding_message_enabled: true }
+  const { data, error } = await supabase.from('messaging_settings').select('*').eq('id', true).maybeSingle()
+  if (error) return { enable_user_dms: true, allow_user_to_user_dms: true, allow_users_to_reply_to_admin_messages: true, dm_unread_badge_enabled: true, onboarding_message_enabled: true }
+  return data || { enable_user_dms: true, allow_user_to_user_dms: true, allow_users_to_reply_to_admin_messages: true, dm_unread_badge_enabled: true, onboarding_message_enabled: true }
+}
+
+export async function adminSaveMessagingSettings(payload = {}) {
+  const user = await getAuthUserOrThrow()
+  const { data, error } = await supabase.from('messaging_settings').upsert({
+    id: true,
+    enable_user_dms: payload.enable_user_dms !== false,
+    allow_user_to_user_dms: payload.allow_user_to_user_dms !== false,
+    allow_users_to_reply_to_admin_messages: payload.allow_users_to_reply_to_admin_messages !== false,
+    dm_unread_badge_enabled: payload.dm_unread_badge_enabled !== false,
+    announcements_popup_enabled: Boolean(payload.announcements_popup_enabled),
+    onboarding_message_enabled: payload.onboarding_message_enabled !== false,
+    onboarding_message_as_inbox_only: true,
+    updated_by: user.id,
+    updated_at: new Date().toISOString()
+  }, { onConflict: 'id' }).select().single()
+  if (error) throw error
+  window.dispatchEvent(new Event('site-messages:refresh'))
+  return data
+}
+
+export async function adminSearchUsersForDm(query = '') {
+  if (!supabase) return []
+  let request = supabase.from('messaging_user_directory').select('id,email,role,vip_rank,subscription_tier').order('email', { ascending: true }).limit(25)
+  if (query.trim()) request = request.ilike('email', `%${query.trim()}%`)
+  const { data, error } = await request
+  if (error) throw error
+  return data || []
+}
+
+export async function searchUsersForDm(query = '') {
+  const settings = await getMessagingSettings()
+  if (!settings.enable_user_dms || !settings.allow_user_to_user_dms) return []
+  return adminSearchUsersForDm(query)
+}
+
+export async function listDmConversations() {
+  const user = await getAuthUserOrThrow()
+  const { data, error } = await supabase.from('dm_conversations_for_user').select('*').eq('viewer_user_id', user.id).order('updated_at', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function getDmConversation(conversationId) {
+  if (!conversationId) return { conversation: null, messages: [] }
+  const { data: conversation, error: conversationError } = await supabase.from('dm_conversations').select('*').eq('id', conversationId).single()
+  if (conversationError) throw conversationError
+  const { data: messages, error: messagesError } = await supabase.from('dm_messages').select('*').eq('conversation_id', conversationId).order('created_at', { ascending: true })
+  if (messagesError) throw messagesError
+  return { conversation, messages: messages || [] }
+}
+
+export async function createDmConversation(recipientUserId, body) {
+  const user = await getAuthUserOrThrow()
+  const settings = await getMessagingSettings()
+  if (!settings.enable_user_dms || !settings.allow_user_to_user_dms) throw new Error('User DMs are currently disabled.')
+  const cleanBody = body.trim()
+  if (!recipientUserId) throw new Error('Choose a recipient.')
+  if (!cleanBody) throw new Error('Message body is required.')
+  if (recipientUserId === user.id) throw new Error('You cannot message yourself.')
+  const { data: conversation, error: conversationError } = await supabase.from('dm_conversations').insert({ created_by: user.id, conversation_type: 'direct', title: null, is_system: false }).select().single()
+  if (conversationError) throw conversationError
+  const { error: participantsError } = await supabase.from('dm_participants').insert([
+    { conversation_id: conversation.id, user_id: user.id, role: 'member', last_read_at: new Date().toISOString() },
+    { conversation_id: conversation.id, user_id: recipientUserId, role: 'member' }
+  ])
+  if (participantsError) throw participantsError
+  await sendDmMessage(conversation.id, cleanBody)
+  window.dispatchEvent(new Event('site-messages:refresh'))
+  return conversation
+}
+
+export async function sendDmMessage(conversationId, body) {
+  const user = await getAuthUserOrThrow()
+  const cleanBody = body.trim()
+  if (!conversationId) throw new Error('Conversation ID is required.')
+  if (!cleanBody) throw new Error('Message body is required.')
+  const { data, error } = await supabase.from('dm_messages').insert({ conversation_id: conversationId, sender_id: user.id, sender_label: null, body: cleanBody, message_kind: 'user' }).select().single()
+  if (error) throw error
+  await supabase.from('dm_conversations').update({ updated_at: new Date().toISOString() }).eq('id', conversationId)
+  await markDmConversationRead(conversationId).catch(() => {})
+  window.dispatchEvent(new Event('site-messages:refresh'))
+  return data
+}
+
+export async function markDmConversationRead(conversationId) {
+  const user = await getAuthUserOrThrow()
+  const { error } = await supabase.from('dm_participants').update({ last_read_at: new Date().toISOString() }).eq('conversation_id', conversationId).eq('user_id', user.id)
+  if (error) throw error
+  window.dispatchEvent(new Event('site-messages:refresh'))
+  return true
+}
+
+export async function archiveDmConversation(conversationId) {
+  const user = await getAuthUserOrThrow()
+  const { error } = await supabase.from('dm_participants').update({ archived_at: new Date().toISOString() }).eq('conversation_id', conversationId).eq('user_id', user.id)
+  if (error) throw error
+  window.dispatchEvent(new Event('site-messages:refresh'))
+  return true
+}
+
+export async function getDmUnreadCount() {
+  const conversations = await listDmConversations().catch(() => [])
+  return conversations.reduce((sum, conversation) => sum + Number(conversation.unread_count || 0), 0)
+}
+
+export async function getCombinedUnreadCount() {
+  const [announcementCount, dmCount] = await Promise.all([getUnreadMessageCount().catch(() => 0), getDmUnreadCount().catch(() => 0)])
+  return Number(announcementCount || 0) + Number(dmCount || 0)
+}
+
+export async function adminSendDmToUser(userId, body) {
+  const admin = await getAuthUserOrThrow()
+  const cleanBody = body.trim()
+  if (!userId) throw new Error('Choose a user.')
+  if (!cleanBody) throw new Error('Message body is required.')
+  const { data: conversation, error: conversationError } = await supabase.from('dm_conversations').insert({ created_by: admin.id, conversation_type: 'admin_direct', title: 'Admin Message', is_system: true }).select().single()
+  if (conversationError) throw conversationError
+  const { error: participantsError } = await supabase.from('dm_participants').insert([
+    { conversation_id: conversation.id, user_id: admin.id, role: 'admin', last_read_at: new Date().toISOString() },
+    { conversation_id: conversation.id, user_id: userId, role: 'member' }
+  ])
+  if (participantsError) throw participantsError
+  const { data: message, error: messageError } = await supabase.from('dm_messages').insert({ conversation_id: conversation.id, sender_id: admin.id, sender_label: 'Admin', body: cleanBody, message_kind: 'admin' }).select().single()
+  if (messageError) throw messageError
+  window.dispatchEvent(new Event('site-messages:refresh'))
+  return { conversation, message }
+}
+
+export async function adminBroadcastDm(payload = {}) {
+  const admin = await getAuthUserOrThrow()
+  const audience = payload.audience || 'all'
+  const body = payload.body?.trim()
+  const title = payload.title?.trim() || 'Admin Broadcast'
+  if (!body) throw new Error('Broadcast body is required.')
+  const { data: users, error: usersError } = await supabase.from('messaging_user_directory').select('id,email,role,vip_rank,subscription_tier').neq('id', admin.id).limit(1000)
+  if (usersError) throw usersError
+  const recipients = (users || []).filter((row) => {
+    if (audience === 'all' || audience === 'users' || audience === 'authenticated') return true
+    if (audience === 'admins') return row.role === 'admin'
+    if (audience === 'vip') return Number(row.vip_rank || 0) >= 1 || row.role === 'admin'
+    if (audience === 'supervip') return Number(row.vip_rank || 0) >= 2 || row.role === 'admin'
+    if (audience === 'ultravip') return Number(row.vip_rank || 0) >= 3 || row.role === 'admin'
+    return true
+  })
+  let sent = 0
+  for (const recipient of recipients) {
+    const { data: conversation, error: conversationError } = await supabase.from('dm_conversations').insert({ created_by: admin.id, conversation_type: 'broadcast', title, is_system: true }).select().single()
+    if (conversationError) throw conversationError
+    const { error: participantsError } = await supabase.from('dm_participants').insert([
+      { conversation_id: conversation.id, user_id: admin.id, role: 'admin', last_read_at: new Date().toISOString() },
+      { conversation_id: conversation.id, user_id: recipient.id, role: 'member' }
+    ])
+    if (participantsError) throw participantsError
+    const { error: messageError } = await supabase.from('dm_messages').insert({ conversation_id: conversation.id, sender_id: admin.id, sender_label: 'Admin', body, message_kind: 'broadcast' })
+    if (messageError) throw messageError
+    sent += 1
+  }
+  window.dispatchEvent(new Event('site-messages:refresh'))
+  return { sent }
+}
+

@@ -1,9 +1,9 @@
 import { Bell } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import { getUnreadMessageCount } from '../lib/api'
+import { getCombinedUnreadCount } from '../lib/api'
 import { useAuth } from '../hooks/useAuth'
-import '../styles/site-messages.css'
+import '../styles/site-dms.css'
 
 export default function NotificationBell({ onClick }) {
   const { user } = useAuth()
@@ -14,31 +14,23 @@ export default function NotificationBell({ onClick }) {
       setCount(0)
       return
     }
-
-    const nextCount = await getUnreadMessageCount().catch(() => 0)
-    setCount(nextCount)
+    setCount(await getCombinedUnreadCount().catch(() => 0))
   }
 
   useEffect(() => {
     refresh()
-
-    function handleRefresh() {
-      refresh()
-    }
-
-    window.addEventListener('site-messages:refresh', handleRefresh)
-    window.addEventListener('focus', handleRefresh)
-
+    window.addEventListener('site-messages:refresh', refresh)
+    window.addEventListener('focus', refresh)
     return () => {
-      window.removeEventListener('site-messages:refresh', handleRefresh)
-      window.removeEventListener('focus', handleRefresh)
+      window.removeEventListener('site-messages:refresh', refresh)
+      window.removeEventListener('focus', refresh)
     }
   }, [user])
 
   if (!user) return null
 
   return (
-    <Link className="notification-bell" to="/messages" onClick={onClick} aria-label={`Messages${count ? `, ${count} unread` : ''}`}>
+    <Link className="notification-bell" to="/messages" onClick={onClick} aria-label={`Inbox${count ? `, ${count} unread` : ''}`}>
       <Bell size={18} />
       {count > 0 && <span>{count > 99 ? '99+' : count}</span>}
     </Link>

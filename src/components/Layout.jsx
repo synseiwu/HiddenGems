@@ -8,10 +8,10 @@ import AgeGate from './AgeGate'
 import RewardNoticePopup from './RewardNoticePopup'
 import ModeSwitchPopout from './ModeSwitchPopout'
 import NotificationBell from './NotificationBell'
-import VerifiedAccessPopup from './VerifiedAccessPopup'
 import MessagePopupCenter from './MessagePopupCenter'
 import '../styles/home-spacing-fix.css'
 import '../styles/site-messages.css'
+import '../styles/site-dms.css'
 
 export default function Layout() {
   const { user, isAdmin, signOut } = useAuth()
@@ -36,17 +36,13 @@ export default function Layout() {
 
         <nav className={open ? 'nav open' : 'nav'}>
           <NavLink onClick={close} to="/">Home</NavLink>
-
           {!hideMarketplaceNav && <NavLink onClick={close} to="/videos">Videos</NavLink>}
           <NavLink onClick={close} to="/points">Buy Points</NavLink>
           {!hideMarketplaceNav && <NavLink onClick={close} to="/vip">VIP</NavLink>}
           {user && !hideMarketplaceNav && <NavLink onClick={close} to="/forum">Forum</NavLink>}
           {user && !hideMarketplaceNav && <NavLink onClick={close} to="/library">Library</NavLink>}
-
           {user && <NotificationBell onClick={close} />}
-
           {isAdmin && <NavLink onClick={close} to="/admin">Admin Panel</NavLink>}
-
           {user ? (
             <>
               <NavLink onClick={close} to="/account">Account</NavLink>
@@ -67,7 +63,6 @@ export default function Layout() {
 
       <FloatingWallet />
       <RewardNoticePopup />
-      <VerifiedAccessPopup />
       <MessagePopupCenter />
       <ModeSwitchPopout />
 

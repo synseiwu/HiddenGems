@@ -1,108 +1,74 @@
-# Hidden Gems / AI Studio Site Messages + Verified Access Popup Patch
+# Hidden Gems / AI Studio DM Inbox + No Popup Patch
 
-This patch adds a site-wide messaging/inbox system and a verified-account welcome popup.
+This patch removes the large verified-account welcome popup and adds a real DM inbox system while keeping announcements separate.
 
-## What it adds
+## What changes
 
-### Admin messaging system
-- Admin Panel section: `Site Messages`
-- Admins can create, edit, activate/deactivate, and delete messages
-- Message options:
-  - type
-  - priority
-  - audience
-  - popup enabled
-  - requires acknowledgement
-  - show once
-  - expiration date
-- Basic read/acknowledge/dismiss stats
+### Removes the big popup
+- `VerifiedAccessPopup` is no longer rendered in `Layout.jsx`.
+- The welcome information becomes an inbox-only announcement instead of a big popup.
+- The wording is safer and cleaner:
+  "Your account is active. AI Studio is the main platform. For platform access details, open Access Info from the footer or account menu."
 
-### User inbox
-- Header notification bell
-- `/messages` inbox route
-- Unread count badge
-- Read, acknowledge, and dismiss actions
+### Adds DMs
+Users can:
+- open `/messages`
+- use the `DMs` tab
+- start a DM by searching another user's email
+- reply to conversations
+- archive a conversation
+- see unread badges
 
-### Popups
-- Verified-account welcome popup after login
-- Admin message popup support
-- Popups are centered and do not intentionally overlap the daily reward popup
-
-### Access Info update
-- Explains AI Studio is the main site
-- Explains Hidden Gems access through `/access-info`
-- Explains same account and points wallet work on both sides
-
-## Preserved behavior
-
-- AI Studio remains the main public site
-- Hidden Gems access remains through `/access-info`
-- Same accounts, points wallet, roles, rewards, pricing, and Stripe setup
-- No Edge Function changes
+Admins can:
+- send a DM to one user
+- broadcast a DM to all users or a role group
+- manage announcements separately
+- change messaging settings
 
 ## Changed files
 
 - src/lib/api.js
 - src/components/Layout.jsx
 - src/components/NotificationBell.jsx
-- src/components/VerifiedAccessPopup.jsx
-- src/components/MessagePopupCenter.jsx
 - src/components/AdminMessagesPanel.jsx
 - src/pages/Messages.jsx
-- src/pages/AccessInfo.jsx
-- src/pages/Admin.jsx
-- src/routes/AppRoutes.jsx
-- src/styles/site-messages.css
-- supabase/migrations/023_site_messages_onboarding.sql
+- src/styles/site-dms.css
+- supabase/migrations/024_dm_inbox_no_popup.sql
 
-## Deploy steps
-
-### 1. Run SQL
+## Step 1: Run SQL first
 
 Run this in Supabase SQL Editor:
 
-supabase/migrations/023_site_messages_onboarding.sql
+supabase/migrations/024_dm_inbox_no_popup.sql
 
-Expected output should show:
-- public.site_messages
-- public.site_message_reads
-- public.user_onboarding_status
+Expected output:
+- public.dm_conversations
+- public.dm_participants
+- public.dm_messages
+- public.messaging_settings
 
-### 2. Replace files
-
-Replace the changed files in your project.
-
-### 3. Build and push
+## Step 2: Replace files and build
 
 ```bash
 npm run build
+```
+
+If it passes:
+
+```bash
 git add .
-git commit -m "Add site messages and verified access popup"
+git commit -m "Add DM inbox and remove verified popup"
 git push
 ```
 
-## Testing checklist
+## Test checklist
 
-### Verified account popup
-- Create a fresh account
-- Verify email
-- Log back in
-- Welcome popup appears
-- Open Access Info button works
-- Continue to AI Studio button works
-- Popup does not show again after closing
-
-### Messaging
-- Login as admin
-- Go to Admin Panel → Site Messages
-- Create an active message with popup enabled
-- Login as test user
-- Notification bell shows unread count
-- `/messages` shows the message
-- User can read, acknowledge, and dismiss
-- Admin can deactivate/delete message
-
-### AI-first behavior
-- Incognito `/` opens AI Studio
-- Hidden Gems does not show unless `/access-info` switch is clicked
-- Switch only appears on `/access-info`
+- The big Welcome to AI Studio popup no longer appears.
+- `/messages` has DMs and Announcements tabs.
+- Admin Panel → Site Messages has DM Center, Announcements, and Settings tabs.
+- Admin can send a DM to one user.
+- Admin can broadcast a DM to everyone.
+- User can open and reply to a DM.
+- Notification bell unread count updates.
+- Welcome to AI Studio appears as an inbox announcement, not a popup.
+- AI Studio remains the default public site.
