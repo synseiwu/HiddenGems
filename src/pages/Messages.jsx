@@ -181,12 +181,12 @@ export default function Messages() {
 
             {showNewMessage && (
               <div className="dm-new-card">
-                <label>Search by email<input value={newRecipientQuery} onChange={(e) => searchRecipients(e.target.value)} placeholder="type an email..." /></label>
+                <label>Search by username<input value={newRecipientQuery} onChange={(e) => searchRecipients(e.target.value)} placeholder="type a username..." /></label>
                 <label>Message<textarea value={newMessageBody} onChange={(e) => setNewMessageBody(e.target.value)} placeholder="Write your message..." rows="4" /></label>
                 <div className="dm-user-results">
                   {userResults.map((user) => (
                     <button key={user.id} type="button" onClick={() => startConversation(user.id)} disabled={busy}>
-                      <strong>{user.email}</strong><small>{user.role || 'user'}</small>
+                      <strong>{user.display_name || (user.username ? `@${user.username}` : user.email)}</strong><small>{user.username ? `@${user.username}` : user.role || 'user'}</small>
                     </button>
                   ))}
                 </div>

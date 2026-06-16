@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Bot, Gem, RotateCcw } from 'lucide-react'
-import { setLocalSiteModeOverride } from '../lib/api'
+import { claimHiddenGemsAccessBonus, setLocalSiteModeOverride } from '../lib/api'
 import { useAuth } from '../hooks/useAuth'
 import useSiteMode from '../hooks/useSiteMode'
 import '../styles/mode-switch-popout.css'
@@ -9,12 +9,12 @@ import '../styles/mode-switch-popout.css'
 export default function ModeSwitchPopout() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { isAdmin } = useAuth()
+  const { user, isAdmin } = useAuth()
   const { settings, isAiMode } = useSiteMode()
   const [visible, setVisible] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
 
-  // Hard rule: the variant switch belongs on Access Info only.
   const isAccessInfoPage = location.pathname === '/access-info'
   const showForAdmin = isAdmin && settings.show_admin_mode_switch !== false
   const showForPublic = !isAdmin && Boolean(settings.show_public_mode_switch)
@@ -22,7 +22,7 @@ export default function ModeSwitchPopout() {
 
   const nextMode = isAiMode ? 'hidden_gems' : 'ai_studio'
   const label = isAiMode ? 'Enter Hidden Gems' : 'Open AI Studio'
-  const subtitle = isAiMode ? 'Switch to video marketplace mode' : 'Use points for AI tools'
+  const subtitle = isAiMode ? 'Switch to video mode' : 'Use points for AI tools'
 
   useEffect(() => {
     if (!shouldShow) {
@@ -36,14 +36,12 @@ export default function ModeSwitchPopout() {
       const viewportBottom = scrollTop + window.innerHeight
       const pageHeight = Math.max(doc.scrollHeight, document.body.scrollHeight)
       const nearBottom = pageHeight - viewportBottom < 520
-
       setVisible(scrollTop > 420 || nearBottom)
     }
 
     checkScroll()
     window.addEventListener('scroll', checkScroll, { passive: true })
     window.addEventListener('resize', checkScroll)
-
     return () => {
       window.removeEventListener('scroll', checkScroll)
       window.removeEventListener('resize', checkScroll)
@@ -54,15 +52,24 @@ export default function ModeSwitchPopout() {
 
   async function switchMode() {
     setBusy(true)
+    setMessage('')
 
-    // This button no longer changes the global database mode.
-    // It only changes the current browser session.
-    setLocalSiteModeOverride(nextMode)
+    try {
+      setLocalSiteModeOverride(nextMode)
 
-    window.setTimeout(() => {
+      if (nextMode === 'hidden_gems' && user) {
+        const reward = await claimHiddenGemsAccessBonus().catch(() => null)
+        if (reward?.granted) setMessage(`+${reward.amount || 100} point access bonus`)
+      }
+
+      window.setTimeout(() => {
+        setBusy(false)
+        navigate(nextMode === 'ai_studio' ? '/ai-studio' : '/')
+      }, nextMode === 'hidden_gems' ? 650 : 50)
+    } catch (err) {
       setBusy(false)
-      navigate(nextMode === 'ai_studio' ? '/ai-studio' : '/')
-    }, 50)
+      setMessage(err.message || 'Could not switch modes.')
+    }
   }
 
   return (
@@ -73,7 +80,7 @@ export default function ModeSwitchPopout() {
         </span>
         <span className="mode-switch-copy">
           <strong>{busy ? 'Switching...' : label}</strong>
-          <small>{subtitle}</small>
+          <small>{message || subtitle}</small>
         </span>
         <RotateCcw size={17} />
       </button>

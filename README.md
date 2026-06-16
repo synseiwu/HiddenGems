@@ -1,74 +1,67 @@
-# Hidden Gems / AI Studio DM Inbox + No Popup Patch
+# Username DM Search + 100 Point Rewards Patch
 
-This patch removes the large verified-account welcome popup and adds a real DM inbox system while keeping announcements separate.
+This patch adds usernames so DMs are easier, plus two one-time 100 point rewards.
 
-## What changes
+## What it adds
 
-### Removes the big popup
-- `VerifiedAccessPopup` is no longer rendered in `Layout.jsx`.
-- The welcome information becomes an inbox-only announcement instead of a big popup.
-- The wording is safer and cleaner:
-  "Your account is active. AI Studio is the main platform. For platform access details, open Access Info from the footer or account menu."
-
-### Adds DMs
-Users can:
-- open `/messages`
-- use the `DMs` tab
-- start a DM by searching another user's email
-- reply to conversations
-- archive a conversation
-- see unread badges
-
-Admins can:
-- send a DM to one user
-- broadcast a DM to all users or a role group
-- manage announcements separately
-- change messaging settings
+- Username creation prompt after login for users without a username
+- 100 point bonus after creating a username
+- Username display on Account page
+- DM user search by username
+- Admin DM search by username or email
+- Admin settings for username prompt, rewards, and DM search
+- 100 point one-time bonus after entering Hidden Gems through Access Info
+- System DM notifications for both rewards
 
 ## Changed files
 
 - src/lib/api.js
 - src/components/Layout.jsx
-- src/components/NotificationBell.jsx
+- src/components/UsernamePrompt.jsx
+- src/components/UsernameAccountCard.jsx
+- src/components/ModeSwitchPopout.jsx
 - src/components/AdminMessagesPanel.jsx
 - src/pages/Messages.jsx
-- src/styles/site-dms.css
-- supabase/migrations/024_dm_inbox_no_popup.sql
+- src/pages/Account.jsx
+- src/styles/username-rewards.css
+- supabase/migrations/025_username_dm_rewards.sql
 
-## Step 1: Run SQL first
+## Run SQL first
 
 Run this in Supabase SQL Editor:
 
-supabase/migrations/024_dm_inbox_no_popup.sql
+supabase/migrations/025_username_dm_rewards.sql
 
-Expected output:
-- public.dm_conversations
-- public.dm_participants
-- public.dm_messages
-- public.messaging_settings
+Expected output includes:
 
-## Step 2: Replace files and build
+- user_reward_flags
+- profiles.username columns ready
+- username rewards ready
+
+## Deploy
+
+Replace the files, then run:
 
 ```bash
 npm run build
-```
-
-If it passes:
-
-```bash
 git add .
-git commit -m "Add DM inbox and remove verified popup"
+git commit -m "Add usernames and reward bonuses"
 git push
 ```
 
 ## Test checklist
 
-- The big Welcome to AI Studio popup no longer appears.
-- `/messages` has DMs and Announcements tabs.
-- Admin Panel → Site Messages has DM Center, Announcements, and Settings tabs.
-- Admin can send a DM to one user.
-- Admin can broadcast a DM to everyone.
-- User can open and reply to a DM.
-- Notification bell unread count updates.
-- Welcome to AI Studio appears as an inbox announcement, not a popup.
-- AI Studio remains the default public site.
+- Login with an account that has no username
+- Username prompt appears
+- Invalid username shows error
+- Duplicate username shows error
+- Valid username saves
+- 100 points are added once
+- Username appears on Account page
+- DM search finds users by username
+- Admin DM search finds users by username/email
+- Go to /access-info and click Enter Hidden Gems
+- 100 point access bonus is added once
+- Switching back and forth does not give more points
+- Reward messages appear in inbox/DMs as system messages
+- AI Studio remains the default public site

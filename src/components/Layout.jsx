@@ -9,9 +9,11 @@ import RewardNoticePopup from './RewardNoticePopup'
 import ModeSwitchPopout from './ModeSwitchPopout'
 import NotificationBell from './NotificationBell'
 import MessagePopupCenter from './MessagePopupCenter'
+import UsernamePrompt from './UsernamePrompt'
 import '../styles/home-spacing-fix.css'
 import '../styles/site-messages.css'
 import '../styles/site-dms.css'
+import '../styles/username-rewards.css'
 
 export default function Layout() {
   const { user, isAdmin, signOut } = useAuth()
@@ -63,6 +65,7 @@ export default function Layout() {
 
       <FloatingWallet />
       <RewardNoticePopup />
+      <UsernamePrompt />
       <MessagePopupCenter />
       <ModeSwitchPopout />
 

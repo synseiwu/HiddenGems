@@ -1,0 +1,131 @@
+/* Username prompt, account card, and reward polish */
+.username-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 99997;
+  display: grid;
+  place-items: center;
+  padding: clamp(1rem, 4vw, 2rem);
+  background: rgba(4, 3, 8, .76);
+  backdrop-filter: blur(16px);
+}
+
+.username-modal-card {
+  position: relative;
+  width: min(560px, 100%);
+  display: grid;
+  gap: .9rem;
+  padding: clamp(1.35rem, 4vw, 2rem) !important;
+  text-align: center;
+  border-color: rgba(243, 193, 75, .46);
+  box-shadow: 0 28px 90px rgba(0,0,0,.56), 0 0 44px rgba(255,79,171,.13);
+  overflow: hidden;
+}
+
+.username-modal-close {
+  position: absolute;
+  top: .9rem;
+  right: .9rem;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(255,255,255,.08);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.username-modal-icon {
+  width: 70px;
+  height: 70px;
+  margin: 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #09070d;
+  background: linear-gradient(135deg, var(--gold), var(--pink));
+}
+
+.username-modal-card h2,
+.username-modal-card p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.username-modal-card h2 {
+  font-size: clamp(1.8rem, 5vw, 2.65rem);
+  line-height: 1.05;
+}
+
+.username-modal-card p {
+  line-height: 1.7;
+}
+
+.username-form {
+  display: grid;
+  gap: .7rem;
+  text-align: left;
+}
+
+.username-form small {
+  color: var(--muted);
+}
+
+.account-page-stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.username-account-card {
+  display: grid;
+  gap: .9rem;
+  padding: clamp(1.25rem, 2.7vw, 1.7rem) !important;
+  overflow: hidden;
+}
+
+.username-account-card > svg {
+  color: var(--gold);
+}
+
+.username-account-card h2,
+.username-account-card p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.username-account-card small {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  color: var(--muted);
+  margin-top: .4rem;
+}
+
+.username-inline-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: .7rem;
+  align-items: center;
+}
+
+.settings-subsection {
+  display: grid;
+  gap: .85rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: rgba(255,255,255,.035);
+}
+
+@media (max-width: 720px) {
+  .username-inline-form {
+    grid-template-columns: 1fr;
+  }
+
+  .username-inline-form .button {
+    width: 100%;
+  }
+}

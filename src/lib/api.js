@@ -1359,10 +1359,10 @@ export async function markVerifiedAccessPopupSeen() {
 }
 
 export async function getMessagingSettings() {
-  if (!supabase) return { enable_user_dms: true, allow_user_to_user_dms: true, allow_users_to_reply_to_admin_messages: true, dm_unread_badge_enabled: true, onboarding_message_enabled: true }
+  if (!supabase) return { enable_user_dms: true, allow_user_to_user_dms: true, allow_users_to_reply_to_admin_messages: true, dm_unread_badge_enabled: true, onboarding_message_enabled: true, require_username_on_login: true, allow_username_skip: false, username_bonus_enabled: true, username_bonus_points: 100, hidden_gems_access_bonus_enabled: true, hidden_gems_access_bonus_points: 100, allow_dm_search_by_email: false, allow_dm_search_by_username: true, allow_username_changes: false, username_change_cooldown_days: 30 }
   const { data, error } = await supabase.from('messaging_settings').select('*').eq('id', true).maybeSingle()
-  if (error) return { enable_user_dms: true, allow_user_to_user_dms: true, allow_users_to_reply_to_admin_messages: true, dm_unread_badge_enabled: true, onboarding_message_enabled: true }
-  return data || { enable_user_dms: true, allow_user_to_user_dms: true, allow_users_to_reply_to_admin_messages: true, dm_unread_badge_enabled: true, onboarding_message_enabled: true }
+  if (error) return { enable_user_dms: true, allow_user_to_user_dms: true, allow_users_to_reply_to_admin_messages: true, dm_unread_badge_enabled: true, onboarding_message_enabled: true, require_username_on_login: true, allow_username_skip: false, username_bonus_enabled: true, username_bonus_points: 100, hidden_gems_access_bonus_enabled: true, hidden_gems_access_bonus_points: 100, allow_dm_search_by_email: false, allow_dm_search_by_username: true, allow_username_changes: false, username_change_cooldown_days: 30 }
+  return data || { enable_user_dms: true, allow_user_to_user_dms: true, allow_users_to_reply_to_admin_messages: true, dm_unread_badge_enabled: true, onboarding_message_enabled: true, require_username_on_login: true, allow_username_skip: false, username_bonus_enabled: true, username_bonus_points: 100, hidden_gems_access_bonus_enabled: true, hidden_gems_access_bonus_points: 100, allow_dm_search_by_email: false, allow_dm_search_by_username: true, allow_username_changes: false, username_change_cooldown_days: 30 }
 }
 
 export async function adminSaveMessagingSettings(payload = {}) {
@@ -1376,6 +1376,16 @@ export async function adminSaveMessagingSettings(payload = {}) {
     announcements_popup_enabled: Boolean(payload.announcements_popup_enabled),
     onboarding_message_enabled: payload.onboarding_message_enabled !== false,
     onboarding_message_as_inbox_only: true,
+    require_username_on_login: payload.require_username_on_login !== false,
+    allow_username_skip: Boolean(payload.allow_username_skip),
+    username_bonus_enabled: payload.username_bonus_enabled !== false,
+    username_bonus_points: Number(payload.username_bonus_points || 100),
+    hidden_gems_access_bonus_enabled: payload.hidden_gems_access_bonus_enabled !== false,
+    hidden_gems_access_bonus_points: Number(payload.hidden_gems_access_bonus_points || 100),
+    allow_dm_search_by_email: Boolean(payload.allow_dm_search_by_email),
+    allow_dm_search_by_username: payload.allow_dm_search_by_username !== false,
+    allow_username_changes: Boolean(payload.allow_username_changes),
+    username_change_cooldown_days: Number(payload.username_change_cooldown_days || 30),
     updated_by: user.id,
     updated_at: new Date().toISOString()
   }, { onConflict: 'id' }).select().single()
@@ -1386,8 +1396,18 @@ export async function adminSaveMessagingSettings(payload = {}) {
 
 export async function adminSearchUsersForDm(query = '') {
   if (!supabase) return []
-  let request = supabase.from('messaging_user_directory').select('id,email,role,vip_rank,subscription_tier').order('email', { ascending: true }).limit(25)
-  if (query.trim()) request = request.ilike('email', `%${query.trim()}%`)
+  const cleanQuery = query.trim()
+
+  let request = supabase
+    .from('messaging_user_directory')
+    .select('id, email, username, username_normalized, display_name, role, vip_rank, subscription_tier')
+    .order('display_name', { ascending: true })
+    .limit(25)
+
+  if (cleanQuery) {
+    request = request.or(`username.ilike.%${cleanQuery}%,username_normalized.ilike.%${normalizeUsernameInput(cleanQuery)}%,email.ilike.%${cleanQuery}%`)
+  }
+
   const { data, error } = await request
   if (error) throw error
   return data || []
@@ -1396,7 +1416,30 @@ export async function adminSearchUsersForDm(query = '') {
 export async function searchUsersForDm(query = '') {
   const settings = await getMessagingSettings()
   if (!settings.enable_user_dms || !settings.allow_user_to_user_dms) return []
-  return adminSearchUsersForDm(query)
+
+  const cleanQuery = query.trim()
+  if (cleanQuery.length < 2) return []
+
+  let filters = []
+  if (settings.allow_dm_search_by_username !== false) {
+    filters.push(`username.ilike.%${cleanQuery}%`)
+    filters.push(`username_normalized.ilike.%${normalizeUsernameInput(cleanQuery)}%`)
+  }
+  if (settings.allow_dm_search_by_email) {
+    filters.push(`email.ilike.%${cleanQuery}%`)
+  }
+
+  if (!filters.length) return []
+
+  const { data, error } = await supabase
+    .from('messaging_user_directory')
+    .select('id, username, username_normalized, display_name, role, vip_rank, subscription_tier')
+    .or(filters.join(','))
+    .order('display_name', { ascending: true })
+    .limit(20)
+
+  if (error) throw error
+  return data || []
 }
 
 export async function listDmConversations() {
@@ -1523,5 +1566,130 @@ export async function adminBroadcastDm(payload = {}) {
   }
   window.dispatchEvent(new Event('site-messages:refresh'))
   return { sent }
+}
+
+export function normalizeUsernameInput(username = '') {
+  return username.trim().toLowerCase()
+}
+
+export async function getUsernameSettings() {
+  const settings = await getMessagingSettings().catch(() => ({}))
+  return {
+    require_username_on_login: settings.require_username_on_login !== false,
+    allow_username_skip: Boolean(settings.allow_username_skip),
+    username_bonus_enabled: settings.username_bonus_enabled !== false,
+    username_bonus_points: Number(settings.username_bonus_points || 100),
+    hidden_gems_access_bonus_enabled: settings.hidden_gems_access_bonus_enabled !== false,
+    hidden_gems_access_bonus_points: Number(settings.hidden_gems_access_bonus_points || 100),
+    allow_dm_search_by_email: Boolean(settings.allow_dm_search_by_email),
+    allow_dm_search_by_username: settings.allow_dm_search_by_username !== false,
+    allow_username_changes: Boolean(settings.allow_username_changes),
+    username_change_cooldown_days: Number(settings.username_change_cooldown_days || 30)
+  }
+}
+
+export async function adminSaveUsernameSettings(payload = {}) {
+  const current = await getMessagingSettings().catch(() => ({}))
+  return adminSaveMessagingSettings({
+    ...current,
+    require_username_on_login: payload.require_username_on_login !== false,
+    allow_username_skip: Boolean(payload.allow_username_skip),
+    username_bonus_enabled: payload.username_bonus_enabled !== false,
+    username_bonus_points: Number(payload.username_bonus_points || 100),
+    hidden_gems_access_bonus_enabled: payload.hidden_gems_access_bonus_enabled !== false,
+    hidden_gems_access_bonus_points: Number(payload.hidden_gems_access_bonus_points || 100),
+    allow_dm_search_by_email: Boolean(payload.allow_dm_search_by_email),
+    allow_dm_search_by_username: payload.allow_dm_search_by_username !== false,
+    allow_username_changes: Boolean(payload.allow_username_changes),
+    username_change_cooldown_days: Number(payload.username_change_cooldown_days || 30)
+  })
+}
+
+export async function getUserRewardFlags() {
+  if (!supabase) return null
+  const user = await getAuthUserOrThrow()
+  const { data, error } = await supabase
+    .from('user_reward_flags')
+    .select('*')
+    .eq('user_id', user.id)
+    .maybeSingle()
+  if (error) return null
+  return data
+}
+
+export async function getUsernameStatus() {
+  if (!supabase) return { username: '', username_normalized: '', has_username: false }
+  const user = await getAuthUserOrThrow()
+  const [profile, flags, settings] = await Promise.all([
+    getCurrentProfile(user.id),
+    getUserRewardFlags().catch(() => null),
+    getUsernameSettings().catch(() => ({}))
+  ])
+
+  return {
+    user_id: user.id,
+    email: user.email,
+    username: profile?.username || '',
+    username_normalized: profile?.username_normalized || '',
+    username_created_at: profile?.username_created_at || null,
+    has_username: Boolean(profile?.username_normalized),
+    username_bonus_claimed: Boolean(flags?.username_bonus_claimed),
+    hidden_gems_access_bonus_claimed: Boolean(flags?.hidden_gems_access_bonus_claimed),
+    settings
+  }
+}
+
+export async function checkUsernameAvailable(username) {
+  const normalized = normalizeUsernameInput(username)
+  if (!/^[a-z0-9_.]{3,24}$/.test(normalized)) {
+    return { available: false, reason: 'Use 3-24 characters: letters, numbers, underscores, or dots.' }
+  }
+
+  const { data, error } = await supabase
+    .from('messaging_user_directory')
+    .select('id')
+    .eq('username_normalized', normalized)
+    .maybeSingle()
+
+  if (error) return { available: false, reason: error.message }
+  return { available: !data, reason: data ? 'Username is already taken.' : '' }
+}
+
+export async function createUsername(username) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const { data, error } = await supabase.rpc('create_username', { username_input: username })
+  if (error) throw error
+  const result = data?.[0] || data || {}
+  window.dispatchEvent(new Event('wallet:refresh'))
+  window.dispatchEvent(new Event('site-messages:refresh'))
+  window.dispatchEvent(new Event('profile:refresh'))
+  return result
+}
+
+export async function updateUsername(username) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const { data, error } = await supabase.rpc('update_username', { username_input: username })
+  if (error) throw error
+  const result = data?.[0] || data || {}
+  window.dispatchEvent(new Event('profile:refresh'))
+  return result
+}
+
+export async function claimHiddenGemsAccessBonus() {
+  if (!supabase) return { granted: false, points_balance: 0, amount: 0 }
+  const { data, error } = await supabase.rpc('claim_hidden_gems_access_bonus')
+  if (error) throw error
+  const result = data?.[0] || data || { granted: false, points_balance: 0, amount: 0 }
+  if (result.granted) {
+    window.dispatchEvent(new Event('wallet:refresh'))
+    window.dispatchEvent(new Event('site-messages:refresh'))
+  }
+  return result
+}
+
+export async function searchDmUsers(query = '') {
+  const clean = query.trim()
+  if (clean.length < 2) return []
+  return searchUsersForDm(clean)
 }
 

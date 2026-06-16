@@ -144,11 +144,11 @@ export default function AdminMessagesPanel() {
         <section className="admin-dm-grid">
           <div className="card admin-message-form">
             <span className="eyebrow">Admin DM</span><h2>Send DM to one user</h2>
-            <label>Search user by email<input value={userQuery} onChange={(e) => searchUsers(e.target.value)} placeholder="type email..." /></label>
+            <label>Search user by username or email<input value={userQuery} onChange={(e) => searchUsers(e.target.value)} placeholder="type username or email..." /></label>
             <div className="dm-user-results admin-search-results">
               {userResults.map((user) => (
                 <button key={user.id} type="button" onClick={() => setSelectedUser(user)} className={selectedUser?.id === user.id ? 'selected' : ''}>
-                  <strong>{user.email}</strong><small>{user.role || 'user'} · rank {user.vip_rank || 0}</small>
+                  <strong>{user.display_name || (user.username ? `@${user.username}` : user.email)}</strong><small>{user.email ? user.email : user.role || 'user'} · rank {user.vip_rank || 0}</small>
                 </button>
               ))}
             </div>
@@ -180,7 +180,27 @@ export default function AdminMessagesPanel() {
             <label className="check"><input type="checkbox" checked={Boolean(settings?.announcements_popup_enabled)} onChange={(e) => setSetting('announcements_popup_enabled', e.target.checked)} /> Announcement popups</label>
             <label className="check"><input type="checkbox" checked={settings?.onboarding_message_enabled !== false} onChange={(e) => setSetting('onboarding_message_enabled', e.target.checked)} /> Welcome inbox message</label>
           </div>
+          
+          <div className="settings-subsection">
+            <span className="eyebrow">Username and rewards</span>
+            <div className="admin-message-grid toggles">
+              <label className="check"><input type="checkbox" checked={settings?.require_username_on_login !== false} onChange={(e) => setSetting('require_username_on_login', e.target.checked)} /> Require username prompt</label>
+              <label className="check"><input type="checkbox" checked={Boolean(settings?.allow_username_skip)} onChange={(e) => setSetting('allow_username_skip', e.target.checked)} /> Allow skip</label>
+              <label className="check"><input type="checkbox" checked={settings?.username_bonus_enabled !== false} onChange={(e) => setSetting('username_bonus_enabled', e.target.checked)} /> Username bonus</label>
+              <label className="check"><input type="checkbox" checked={settings?.hidden_gems_access_bonus_enabled !== false} onChange={(e) => setSetting('hidden_gems_access_bonus_enabled', e.target.checked)} /> Access bonus</label>
+              <label className="check"><input type="checkbox" checked={settings?.allow_dm_search_by_username !== false} onChange={(e) => setSetting('allow_dm_search_by_username', e.target.checked)} /> Username search</label>
+              <label className="check"><input type="checkbox" checked={Boolean(settings?.allow_dm_search_by_email)} onChange={(e) => setSetting('allow_dm_search_by_email', e.target.checked)} /> Email search</label>
+              <label className="check"><input type="checkbox" checked={Boolean(settings?.allow_username_changes)} onChange={(e) => setSetting('allow_username_changes', e.target.checked)} /> Username changes</label>
+            </div>
+            <div className="admin-message-grid">
+              <label>Username bonus points<input type="number" min="0" value={settings?.username_bonus_points || 100} onChange={(e) => setSetting('username_bonus_points', Number(e.target.value || 0))} /></label>
+              <label>Hidden Gems access bonus<input type="number" min="0" value={settings?.hidden_gems_access_bonus_points || 100} onChange={(e) => setSetting('hidden_gems_access_bonus_points', Number(e.target.value || 0))} /></label>
+              <label>Username cooldown days<input type="number" min="0" value={settings?.username_change_cooldown_days || 30} onChange={(e) => setSetting('username_change_cooldown_days', Number(e.target.value || 0))} /></label>
+            </div>
+          </div>
+
           <button className="button" onClick={saveSettings} disabled={busy}>{busy ? 'Saving...' : 'Save Settings'}</button>
+        
         </section>
       )}
 

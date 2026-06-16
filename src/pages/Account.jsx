@@ -4,7 +4,9 @@ import { Bot, Gem } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { getWallet } from '../lib/api'
 import useSiteMode from '../hooks/useSiteMode'
+import UsernameAccountCard from '../components/UsernameAccountCard'
 import '../styles/mode-pages.css'
+import '../styles/username-rewards.css'
 
 export default function Account() {
   const { user, profile, isAdmin, isVip, signOut } = useAuth()
@@ -16,12 +18,13 @@ export default function Account() {
   }, [user])
 
   return (
-    <div className="page narrow">
+    <div className="page narrow account-page-stack">
       <section className="card account-card mode-padded-card">
         <span className="eyebrow">Settings</span>
         <h1>{isAiMode ? 'AI Studio Account' : 'Account'}</h1>
         <div className="info-list">
           <p><strong>Email:</strong> {user?.email}</p>
+          <p><strong>Username:</strong> {profile?.username ? `@${profile.username}` : 'Not created yet'}</p>
           <p><strong>Role:</strong> {isAdmin ? 'Admin' : 'User'}</p>
           <p><strong>{isAiMode ? 'Membership' : 'VIP'}:</strong> {isVip ? 'Active' : 'Inactive'}</p>
           <p><strong>Points:</strong> <Gem size={14} /> {wallet.points_balance || 0}</p>
@@ -39,6 +42,8 @@ export default function Account() {
           <button className="ghost-button full" onClick={signOut}>Logout</button>
         </div>
       </section>
+
+      <UsernameAccountCard />
     </div>
   )
 }
