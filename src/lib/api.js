@@ -1005,21 +1005,30 @@ export async function saveAISettingsAdmin(settings) {
 
 export async function listAIConversations() {
   if (!supabase) return []
+  const user = await getAuthUserOrThrow()
+
   const { data, error } = await supabase
     .from('ai_conversations')
     .select('*')
+    .eq('user_id', user.id)
     .order('updated_at', { ascending: false })
+
   if (error) throw error
   return data || []
 }
 
 export async function listAIMessages(conversationId) {
   if (!supabase || !conversationId) return []
+  const user = await getAuthUserOrThrow()
+
+  // Even if an admin account is logged in, AI Studio should only load that account's own chat messages.
   const { data, error } = await supabase
     .from('ai_messages')
     .select('*')
     .eq('conversation_id', conversationId)
+    .eq('user_id', user.id)
     .order('created_at', { ascending: true })
+
   if (error) throw error
   return data || []
 }
