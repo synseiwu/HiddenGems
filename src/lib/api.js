@@ -1549,9 +1549,17 @@ export async function adminBroadcastDm(payload = {}) {
   const audience = payload.audience || 'all'
   const body = payload.body?.trim()
   const title = payload.title?.trim() || 'Admin Broadcast'
+
   if (!body) throw new Error('Broadcast body is required.')
-  const { data: users, error: usersError } = await supabase.from('messaging_user_directory').select('id,email,role,vip_rank,subscription_tier').neq('id', admin.id).limit(1000)
+
+  const { data: users, error: usersError } = await supabase
+    .from('messaging_user_directory')
+    .select('id,email,username,role,vip_rank,subscription_tier')
+    .neq('id', admin.id)
+    .limit(1000)
+
   if (usersError) throw usersError
+
   const recipients = (users || []).filter((row) => {
     if (audience === 'all' || audience === 'users' || audience === 'authenticated') return true
     if (audience === 'admins') return row.role === 'admin'
@@ -1560,19 +1568,49 @@ export async function adminBroadcastDm(payload = {}) {
     if (audience === 'ultravip') return Number(row.vip_rank || 0) >= 3 || row.role === 'admin'
     return true
   })
+
   let sent = 0
+
   for (const recipient of recipients) {
-    const { data: conversation, error: conversationError } = await supabase.from('dm_conversations').insert({ created_by: admin.id, conversation_type: 'broadcast', title, is_system: true }).select().single()
+    const { data: conversation, error: conversationError } = await supabase
+      .from('dm_conversations')
+      .insert({
+        created_by: admin.id,
+        conversation_type: 'broadcast',
+        title,
+        is_system: true
+      })
+      .select()
+      .single()
+
     if (conversationError) throw conversationError
-    const { error: participantsError } = await supabase.from('dm_participants').insert([
-      { conversation_id: conversation.id, user_id: admin.id, role: 'admin', last_read_at: new Date().toISOString() },
-      { conversation_id: conversation.id, user_id: recipient.id, role: 'member' }
-    ])
+
+    // Important:
+    // Do NOT add the admin sender as a participant to every broadcast conversation.
+    // If the sender is added to all 18 recipient conversations, the admin inbox receives 18 copies.
+    // The message still shows as sent by Admin because sender_id/sender_label are stored on dm_messages.
+    const { error: participantsError } = await supabase
+      .from('dm_participants')
+      .insert([
+        { conversation_id: conversation.id, user_id: recipient.id, role: 'member' }
+      ])
+
     if (participantsError) throw participantsError
-    const { error: messageError } = await supabase.from('dm_messages').insert({ conversation_id: conversation.id, sender_id: admin.id, sender_label: 'Admin', body, message_kind: 'broadcast' })
+
+    const { error: messageError } = await supabase
+      .from('dm_messages')
+      .insert({
+        conversation_id: conversation.id,
+        sender_id: admin.id,
+        sender_label: 'Admin',
+        body,
+        message_kind: 'broadcast'
+      })
+
     if (messageError) throw messageError
     sent += 1
   }
+
   window.dispatchEvent(new Event('site-messages:refresh'))
   return { sent }
 }
@@ -1770,9 +1808,20 @@ export async function adminGrantRewardPoints({ userId, amount, reason, sendInbox
   })
 
   if (error) throw error
+
+  const raw = Array.isArray(data) ? data[0] : data
+  const result = raw
+    ? {
+        ...raw,
+        user_id: raw.user_id || raw.target_user || raw.granted_user_id || userId,
+        amount: raw.amount ?? raw.amount_awarded ?? Number(amount),
+        points_balance: raw.points_balance ?? raw.balance_after
+      }
+    : raw
+
   window.dispatchEvent(new Event('wallet:refresh'))
   window.dispatchEvent(new Event('site-messages:refresh'))
-  return Array.isArray(data) ? data[0] : data
+  return result
 }
 
 export async function adminResetUserReward({ userId, rewardKey }) {
