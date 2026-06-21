@@ -1702,3 +1702,162 @@ export async function searchDmUsers(query = '') {
   return searchUsersForDm(clean)
 }
 
+
+// Admin Rewards & Scheduled Awards
+
+export async function adminGetRewardsDashboard() {
+  if (!supabase) return {
+    settings: null,
+    scheduled_awards: [],
+    transactions: []
+  }
+
+  const [settingsRes, awardsRes, transactionsRes] = await Promise.all([
+    supabase.from('reward_settings').select('*').eq('id', true).maybeSingle(),
+    supabase.from('scheduled_point_awards').select('*').order('created_at', { ascending: false }).limit(50),
+    supabase.from('admin_point_transactions_view').select('*').order('created_at', { ascending: false }).limit(75)
+  ])
+
+  if (settingsRes.error) throw settingsRes.error
+  if (awardsRes.error) throw awardsRes.error
+  if (transactionsRes.error) throw transactionsRes.error
+
+  return {
+    settings: settingsRes.data,
+    scheduled_awards: awardsRes.data || [],
+    transactions: transactionsRes.data || []
+  }
+}
+
+export async function adminSaveRewardsSettings(settings = {}) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+
+  const { data, error } = await supabase.rpc('admin_save_reward_settings', {
+    settings_payload: settings
+  })
+
+  if (error) throw error
+  return Array.isArray(data) ? data[0] : data
+}
+
+export async function adminSearchRewardUsers(query = '') {
+  if (!supabase) return []
+  const clean = query.trim()
+
+  let request = supabase
+    .from('messaging_user_directory')
+    .select('id, username, email, role, vip_rank, subscription_tier')
+    .order('email', { ascending: true })
+    .limit(25)
+
+  if (clean) {
+    request = request.or(`email.ilike.%${clean}%,username.ilike.%${clean}%`)
+  }
+
+  const { data, error } = await request
+  if (error) throw error
+  return data || []
+}
+
+export async function adminGrantRewardPoints({ userId, amount, reason, sendInboxNotification = true }) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+
+  const { data, error } = await supabase.rpc('admin_grant_points', {
+    target_user_id: userId,
+    grant_amount: Number(amount),
+    grant_reason: reason || 'Admin manual point grant',
+    send_inbox_notification: Boolean(sendInboxNotification)
+  })
+
+  if (error) throw error
+  window.dispatchEvent(new Event('wallet:refresh'))
+  window.dispatchEvent(new Event('site-messages:refresh'))
+  return Array.isArray(data) ? data[0] : data
+}
+
+export async function adminResetUserReward({ userId, rewardKey }) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const { data, error } = await supabase.rpc('admin_reset_user_reward', {
+    target_user_id: userId,
+    reward_key: rewardKey
+  })
+  if (error) throw error
+  return data
+}
+
+export async function adminResetAllUserRewards(userId) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const { data, error } = await supabase.rpc('admin_reset_all_user_rewards', {
+    target_user_id: userId
+  })
+  if (error) throw error
+  return data
+}
+
+export async function adminResetRewardForAll(rewardKey) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const { data, error } = await supabase.rpc('admin_reset_reward_for_all', {
+    reward_key: rewardKey
+  })
+  if (error) throw error
+  return data
+}
+
+export async function adminCreateScheduledPointAward(payload = {}) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+
+  const { data, error } = await supabase.rpc('admin_create_scheduled_point_award', {
+    award_payload: payload
+  })
+
+  if (error) throw error
+  return Array.isArray(data) ? data[0] : data
+}
+
+export async function adminListScheduledPointAwards() {
+  if (!supabase) return []
+  const { data, error } = await supabase
+    .from('scheduled_point_awards')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(100)
+
+  if (error) throw error
+  return data || []
+}
+
+export async function adminCancelScheduledPointAward(awardId) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+
+  const { data, error } = await supabase
+    .from('scheduled_point_awards')
+    .update({ active: false, status: 'canceled', updated_at: new Date().toISOString() })
+    .eq('id', awardId)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function adminProcessDueScheduledPointAwards() {
+  if (!supabase) throw new Error('Supabase is not configured.')
+  const { data, error } = await supabase.rpc('process_due_scheduled_point_awards')
+  if (error) throw error
+  window.dispatchEvent(new Event('wallet:refresh'))
+  window.dispatchEvent(new Event('site-messages:refresh'))
+  return data || []
+}
+
+export async function adminListRecentPointTransactions() {
+  if (!supabase) return []
+  const { data, error } = await supabase
+    .from('admin_point_transactions_view')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(100)
+
+  if (error) throw error
+  return data || []
+}
+

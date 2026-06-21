@@ -1,0 +1,163 @@
+/* Rewards Admin Center */
+.admin-rewards-panel {
+  display: grid;
+  gap: clamp(1rem, 2vw, 1.35rem);
+}
+
+.admin-rewards-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  padding: clamp(1.2rem, 2.6vw, 1.7rem) !important;
+}
+
+.admin-rewards-header p,
+.reward-settings-card p,
+.scheduled-award-item p {
+  margin: .35rem 0 0;
+  color: var(--muted);
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.admin-reward-tabs {
+  margin-bottom: 0;
+}
+
+.admin-reward-grid,
+.admin-manual-grid,
+.scheduled-awards-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(1rem, 2vw, 1.25rem);
+  align-items: start;
+}
+
+.reward-settings-card,
+.reward-user-search-card,
+.scheduled-award-form,
+.scheduled-awards-list,
+.reward-transactions-card {
+  display: grid;
+  gap: .85rem;
+  padding: clamp(1rem, 2.4vw, 1.45rem) !important;
+  overflow: hidden;
+}
+
+.reward-settings-card h3,
+.reward-user-search-card h3,
+.scheduled-award-form h3,
+.scheduled-awards-list h3,
+.reward-transactions-card h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.reward-toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .65rem;
+}
+
+.reward-input-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .75rem;
+}
+
+.reward-save-actions {
+  grid-column: 1 / -1;
+}
+
+.reward-user-results,
+.scheduled-award-items,
+.reward-transaction-list {
+  display: grid;
+  gap: .75rem;
+  max-height: 520px;
+  overflow: auto;
+  padding-right: .2rem;
+}
+
+.reward-user-results button,
+.scheduled-award-item,
+.reward-transaction-item {
+  width: 100%;
+  display: grid;
+  gap: .35rem;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: rgba(255,255,255,.045);
+  color: var(--text);
+  padding: .9rem;
+  overflow: hidden;
+}
+
+.reward-user-results button {
+  cursor: pointer;
+}
+
+.reward-user-results button:hover,
+.reward-user-results button.selected {
+  border-color: rgba(243,193,75,.7);
+  background: rgba(243,193,75,.07);
+}
+
+.reward-user-results strong,
+.reward-transaction-item strong,
+.scheduled-award-item h4 {
+  overflow-wrap: anywhere;
+}
+
+.reward-user-results small,
+.reward-transaction-item small,
+.scheduled-award-item small {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.reward-status {
+  display: inline-flex;
+  width: fit-content;
+  margin: .15rem .25rem .15rem 0;
+  padding: .28rem .48rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  background: rgba(255,255,255,.04);
+  font-size: .72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+
+.reward-status.processed {
+  color: #9ff0c2;
+  border-color: rgba(159,240,194,.55);
+}
+
+.reward-status.failed,
+.reward-status.canceled {
+  color: #ff9f9f;
+  border-color: rgba(255,159,159,.55);
+}
+
+.admin-reward-notice {
+  margin: 0;
+}
+
+@media (max-width: 900px) {
+  .admin-rewards-header {
+    display: grid;
+  }
+
+  .admin-reward-grid,
+  .admin-manual-grid,
+  .scheduled-awards-grid,
+  .reward-toggle-grid,
+  .reward-input-grid {
+    grid-template-columns: 1fr;
+  }
+}
