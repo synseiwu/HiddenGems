@@ -3,6 +3,7 @@ import Layout from '../components/Layout'
 import ProtectedRoute from '../components/ProtectedRoute'
 import Home from '../pages/Home'
 import Videos from '../pages/Videos'
+import FreeVideos from '../pages/FreeVideos'
 import VideoDetails from '../pages/VideoDetails'
 import Library from '../pages/Library'
 import Vip from '../pages/Vip'
@@ -33,6 +34,7 @@ const router = createBrowserRouter([
       { path: 'login', element: <Login /> },
       { path: 'signup', element: <Signup /> },
       { path: 'videos', element: <ProtectedRoute><Videos /></ProtectedRoute> },
+      { path: 'free-videos', element: <ProtectedRoute><FreeVideos /></ProtectedRoute> },
       { path: 'videos/:id', element: <ProtectedRoute><VideoDetails /></ProtectedRoute> },
       { path: 'vip', element: <ProtectedRoute><Vip /></ProtectedRoute> },
       { path: 'points', element: <ProtectedRoute><Points /></ProtectedRoute> },

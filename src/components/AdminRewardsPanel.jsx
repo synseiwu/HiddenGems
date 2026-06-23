@@ -41,7 +41,15 @@ const defaultSettings = {
   min_comment_seconds: 20,
   reward_popups_enabled: true,
   reward_inbox_notifications_enabled: true,
-  require_manual_grant_reason: true
+  require_manual_grant_reason: true,
+  free_video_reward_enabled: true,
+  free_video_default_points: 25,
+  free_video_min_watch_seconds: 20,
+  free_video_once_per_video: true,
+  free_video_repeat_cooldown_hours: 24,
+  free_video_daily_limit: 5,
+  free_video_reward_popup_enabled: true,
+  free_video_reward_inbox_enabled: false
 }
 
 const defaultSchedule = {
@@ -390,6 +398,21 @@ export default function AdminRewardsPanel() {
               <label>Points<input type="number" value={settings.comment_reward_points || 0} onChange={(e) => setSetting('comment_reward_points', Number(e.target.value))} /></label>
               <label>Cooldown hours<input type="number" value={settings.comment_reward_cooldown_hours || 24} onChange={(e) => setSetting('comment_reward_cooldown_hours', Number(e.target.value))} /></label>
             </div>
+          </article>
+
+          <article className="card reward-settings-card">
+            <span className="eyebrow">Free Videos</span>
+            <h3>Free Video Rewards</h3>
+            <label className="check"><input type="checkbox" checked={settings.free_video_reward_enabled !== false} onChange={(e) => setSetting('free_video_reward_enabled', e.target.checked)} /> Enabled</label>
+            <label className="check"><input type="checkbox" checked={settings.free_video_once_per_video !== false} onChange={(e) => setSetting('free_video_once_per_video', e.target.checked)} /> One reward per video</label>
+            <div className="reward-input-grid">
+              <label>Default points<input type="number" value={settings.free_video_default_points || 0} onChange={(e) => setSetting('free_video_default_points', Number(e.target.value))} /></label>
+              <label>Min watch seconds<input type="number" value={settings.free_video_min_watch_seconds || 0} onChange={(e) => setSetting('free_video_min_watch_seconds', Number(e.target.value))} /></label>
+              <label>Cooldown hours<input type="number" value={settings.free_video_repeat_cooldown_hours || 24} onChange={(e) => setSetting('free_video_repeat_cooldown_hours', Number(e.target.value))} /></label>
+              <label>Daily limit<input type="number" value={settings.free_video_daily_limit || 0} onChange={(e) => setSetting('free_video_daily_limit', Number(e.target.value))} /></label>
+            </div>
+            <label className="check"><input type="checkbox" checked={settings.free_video_reward_popup_enabled !== false} onChange={(e) => setSetting('free_video_reward_popup_enabled', e.target.checked)} /> Reward popup/toast</label>
+            <label className="check"><input type="checkbox" checked={Boolean(settings.free_video_reward_inbox_enabled)} onChange={(e) => setSetting('free_video_reward_inbox_enabled', e.target.checked)} /> Inbox notification</label>
           </article>
 
           <div className="actions reward-save-actions">

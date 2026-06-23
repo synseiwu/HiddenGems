@@ -284,7 +284,12 @@ export async function saveVideo(video) {
     preview_url: video.preview_url?.trim() || null,
     external_video_link: video.external_video_link?.trim(),
     access_type: video.access_type || 'points',
-    published: Boolean(video.published)
+    published: Boolean(video.published),
+    is_free: Boolean(video.is_free || video.access_type === 'free'),
+    free_reward_enabled: video.free_reward_enabled !== false,
+    free_reward_points: video.free_reward_points === '' || video.free_reward_points == null ? null : Number(video.free_reward_points),
+    free_reward_min_seconds: video.free_reward_min_seconds === '' || video.free_reward_min_seconds == null ? null : Number(video.free_reward_min_seconds),
+    free_reward_once_per_user: video.free_reward_once_per_user !== false
   }
 
   if (!payload.title) throw new Error('Title is required.')
@@ -1908,5 +1913,131 @@ export async function adminListRecentPointTransactions() {
 
   if (error) throw error
   return data || []
+}
+
+
+// Hidden Gems Free Videos
+
+export async function getPublicRewardSettings() {
+  if (!supabase) {
+    return {
+      free_video_reward_enabled: true,
+      free_video_default_points: 25,
+      free_video_min_watch_seconds: 20,
+      free_video_once_per_video: true,
+      free_video_repeat_cooldown_hours: 24,
+      free_video_daily_limit: 5,
+      free_video_reward_popup_enabled: true,
+      free_video_reward_inbox_enabled: false
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('reward_settings')
+    .select('free_video_reward_enabled, free_video_default_points, free_video_min_watch_seconds, free_video_once_per_video, free_video_repeat_cooldown_hours, free_video_daily_limit, free_video_reward_popup_enabled, free_video_reward_inbox_enabled')
+    .eq('id', true)
+    .maybeSingle()
+
+  if (error) {
+    return {
+      free_video_reward_enabled: true,
+      free_video_default_points: 25,
+      free_video_min_watch_seconds: 20,
+      free_video_once_per_video: true,
+      free_video_repeat_cooldown_hours: 24,
+      free_video_daily_limit: 5,
+      free_video_reward_popup_enabled: true,
+      free_video_reward_inbox_enabled: false
+    }
+  }
+
+  return data || {
+    free_video_reward_enabled: true,
+    free_video_default_points: 25,
+    free_video_min_watch_seconds: 20,
+    free_video_once_per_video: true,
+    free_video_repeat_cooldown_hours: 24,
+    free_video_daily_limit: 5,
+    free_video_reward_popup_enabled: true,
+    free_video_reward_inbox_enabled: false
+  }
+}
+
+export async function listFreeVideos() {
+  if (!supabase) return []
+  const settings = await getPublicSiteSettings()
+  if (shouldHideHiddenGemsContent(settings)) return []
+
+  const { data, error } = await supabase
+    .from('free_videos_public')
+    .select('*')
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return data || []
+}
+
+export async function listMyFreeVideoRewardClaims() {
+  if (!supabase) return []
+  const user = await getAuthUserOrThrow()
+
+  const { data, error } = await supabase
+    .from('free_video_reward_claims')
+    .select('id, video_id, points_awarded, claimed_at, claim_date')
+    .eq('user_id', user.id)
+    .order('claimed_at', { ascending: false })
+
+  if (error) throw error
+  return data || []
+}
+
+export async function claimFreeVideoReward(videoId) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+
+  const { data, error } = await supabase.rpc('claim_free_video_reward', {
+    target_video_id: videoId
+  })
+
+  if (error) throw error
+
+  const result = Array.isArray(data) ? data[0] : data
+  window.dispatchEvent(new Event('wallet:refresh'))
+  window.dispatchEvent(new Event('site-messages:refresh'))
+
+  return result
+}
+
+export async function adminResetFreeVideoRewardForUser(userId, videoId) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+
+  const { data, error } = await supabase.rpc('admin_reset_free_video_reward_for_user', {
+    target_user_id: userId,
+    target_video_id: videoId
+  })
+
+  if (error) throw error
+  return data
+}
+
+export async function adminResetAllFreeVideoRewardsForUser(userId) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+
+  const { data, error } = await supabase.rpc('admin_reset_all_free_video_rewards_for_user', {
+    target_user_id: userId
+  })
+
+  if (error) throw error
+  return data
+}
+
+export async function adminResetFreeVideoRewardForAll(videoId) {
+  if (!supabase) throw new Error('Supabase is not configured.')
+
+  const { data, error } = await supabase.rpc('admin_reset_free_video_reward_for_all', {
+    target_video_id: videoId
+  })
+
+  if (error) throw error
+  return data
 }
 

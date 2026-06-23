@@ -39,6 +39,7 @@ export default function Layout() {
         <nav className={open ? 'nav open' : 'nav'}>
           <NavLink onClick={close} to="/">Home</NavLink>
           {!hideMarketplaceNav && <NavLink onClick={close} to="/videos">Videos</NavLink>}
+          {!hideMarketplaceNav && <NavLink onClick={close} to="/free-videos">Free Videos</NavLink>}
           <NavLink onClick={close} to="/points">Buy Points</NavLink>
           {!hideMarketplaceNav && <NavLink onClick={close} to="/vip">VIP</NavLink>}
           {user && !hideMarketplaceNav && <NavLink onClick={close} to="/forum">Forum</NavLink>}

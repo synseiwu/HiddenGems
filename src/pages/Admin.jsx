@@ -34,7 +34,12 @@ const emptyVideoForm = {
   preview_url: '',
   external_video_link: '',
   access_type: 'points',
-  published: true
+  published: true,
+  is_free: false,
+  free_reward_enabled: true,
+  free_reward_points: '',
+  free_reward_min_seconds: '',
+  free_reward_once_per_user: true
 }
 
 const emptyTierForm = {
@@ -151,7 +156,16 @@ export default function Admin() {
   }
 
   function editVideo(video) {
-    setVideoForm({ ...video, point_cost: video.point_cost ?? video.price_cents ?? 0, preview_url: video.preview_url || '' })
+    setVideoForm({
+      ...video,
+      point_cost: video.point_cost ?? video.price_cents ?? 0,
+      preview_url: video.preview_url || '',
+      is_free: Boolean(video.is_free || video.access_type === 'free'),
+      free_reward_enabled: video.free_reward_enabled !== false,
+      free_reward_points: video.free_reward_points ?? '',
+      free_reward_min_seconds: video.free_reward_min_seconds ?? '',
+      free_reward_once_per_user: video.free_reward_once_per_user !== false
+    })
     setPanel('videos')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -264,7 +278,10 @@ export default function Admin() {
             <label>Point Cost<input type="number" value={videoForm.point_cost ?? 0} onChange={(e) => setVideoField('point_cost', e.target.value)} min="0" /></label>
             <label>External Video Link<input value={videoForm.external_video_link || ''} onChange={(e) => setVideoField('external_video_link', e.target.value)} required /></label>
             <label>Preview URL / Embed URL<input value={videoForm.preview_url || ''} onChange={(e) => setVideoField('preview_url', e.target.value)} placeholder="Optional preview/share link" /></label>
-            <label>Access Type<select value={videoForm.access_type} onChange={(e) => setVideoField('access_type', e.target.value)}>
+            <label>Access Type<select value={videoForm.access_type} onChange={(e) => {
+              setVideoField('access_type', e.target.value)
+              if (e.target.value === 'free') setVideoField('is_free', true)
+            }}>
               <option value="points">Points</option>
               <option value="vip">VIP</option>
               <option value="supervip">Super VIP</option>
@@ -272,6 +289,19 @@ export default function Admin() {
               <option value="free">Free</option>
               <option value="admin_only">Admin Only</option>
             </select></label>
+
+            <div className="admin-free-video-box">
+              <span className="eyebrow">Free Videos</span>
+              <h3>Free Video Rewards</h3>
+              <label className="check"><input type="checkbox" checked={Boolean(videoForm.is_free) || videoForm.access_type === 'free'} onChange={(e) => {
+                setVideoField('is_free', e.target.checked)
+                if (e.target.checked) setVideoField('access_type', 'free')
+              }} /> Show this listing in Free Videos</label>
+              <label className="check"><input type="checkbox" checked={videoForm.free_reward_enabled !== false} onChange={(e) => setVideoField('free_reward_enabled', e.target.checked)} /> Enable points reward for this video</label>
+              <label>Reward Points<input type="number" value={videoForm.free_reward_points ?? ''} onChange={(e) => setVideoField('free_reward_points', e.target.value)} placeholder="Use global default" min="0" /></label>
+              <label>Minimum Watch Seconds<input type="number" value={videoForm.free_reward_min_seconds ?? ''} onChange={(e) => setVideoField('free_reward_min_seconds', e.target.value)} placeholder="Use global default" min="0" /></label>
+              <label className="check"><input type="checkbox" checked={videoForm.free_reward_once_per_user !== false} onChange={(e) => setVideoField('free_reward_once_per_user', e.target.checked)} /> One reward per user for this video</label>
+            </div>
             <label>Thumbnail Upload<input type="file" accept="image/*" onChange={(e) => uploadThumb(e.target.files?.[0])} /></label>
             <label>Thumbnail URL<input value={videoForm.thumbnail_url || ''} onChange={(e) => setVideoField('thumbnail_url', e.target.value)} /></label>
             <label className="check"><input type="checkbox" checked={videoForm.published} onChange={(e) => setVideoField('published', e.target.checked)} /> Published</label>
@@ -286,7 +316,7 @@ export default function Admin() {
                 <img src={video.thumbnail_url || '/placeholder.svg'} alt="" />
                 <div>
                   <h3>{video.title}</h3>
-                  <small>{video.access_type} · {video.point_cost ?? video.price_cents ?? 0} pts · {video.published ? 'Published' : 'Draft'}</small>
+                  <small>{video.is_free || video.access_type === 'free' ? 'Free Video' : video.access_type} · {video.point_cost ?? video.price_cents ?? 0} pts · {video.published ? 'Published' : 'Draft'}</small>
                 </div>
                 <button className="ghost-button" onClick={() => editVideo(video)}>Edit</button>
                 <button className="danger-button" onClick={() => removeVideo(video.id)}>Delete</button>
