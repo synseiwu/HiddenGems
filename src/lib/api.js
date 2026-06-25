@@ -2041,3 +2041,72 @@ export async function adminResetFreeVideoRewardForAll(videoId) {
   return data
 }
 
+
+// Admin Purchases / Buyers
+
+export async function adminGetPurchaseDashboard() {
+  if (!supabase) {
+    return {
+      summary: null,
+      point_purchases: [],
+      vip_purchases: [],
+      video_purchases: []
+    }
+  }
+
+  const [summaryRes, pointRes, vipRes, videoRes] = await Promise.all([
+    supabase.from('admin_purchase_summary').select('*').maybeSingle(),
+    supabase.from('admin_point_purchase_history').select('*').order('purchased_at', { ascending: false }).limit(250),
+    supabase.from('admin_vip_purchase_history').select('*').order('started_at', { ascending: false }).limit(250),
+    supabase.from('admin_video_purchase_history').select('*').order('purchased_at', { ascending: false }).limit(250)
+  ])
+
+  if (summaryRes.error) throw summaryRes.error
+  if (pointRes.error) throw pointRes.error
+  if (vipRes.error) throw vipRes.error
+  if (videoRes.error) throw videoRes.error
+
+  return {
+    summary: summaryRes.data,
+    point_purchases: pointRes.data || [],
+    vip_purchases: vipRes.data || [],
+    video_purchases: videoRes.data || []
+  }
+}
+
+export async function adminListPointPurchases() {
+  if (!supabase) return []
+  const { data, error } = await supabase
+    .from('admin_point_purchase_history')
+    .select('*')
+    .order('purchased_at', { ascending: false })
+    .limit(500)
+
+  if (error) throw error
+  return data || []
+}
+
+export async function adminListVipPurchases() {
+  if (!supabase) return []
+  const { data, error } = await supabase
+    .from('admin_vip_purchase_history')
+    .select('*')
+    .order('started_at', { ascending: false })
+    .limit(500)
+
+  if (error) throw error
+  return data || []
+}
+
+export async function adminListVideoPurchases() {
+  if (!supabase) return []
+  const { data, error } = await supabase
+    .from('admin_video_purchase_history')
+    .select('*')
+    .order('purchased_at', { ascending: false })
+    .limit(500)
+
+  if (error) throw error
+  return data || []
+}
+
